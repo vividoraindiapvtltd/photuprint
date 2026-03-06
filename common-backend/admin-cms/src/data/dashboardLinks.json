@@ -1,0 +1,442 @@
+[
+  {
+    "id": 1,
+    "title": "Brand Manager",
+    "description": "Add/Edit/Delete Brand for the products",
+    "link": "/dashboard/addbrand",
+    "bgColor": "#007bff",
+    "icon": "MdAddAPhoto"
+  },
+  {
+    "id": 2,
+    "title": "Category Manager",
+    "description": "Add/Edit/Delete Category for the products",
+    "link": "/dashboard/addcategory",
+    "bgColor": "#007bff",
+    "icon": "MdAccessTime"
+  },
+  {
+    "id": 15,
+    "title": "Sub Category Manager",
+    "description": "Add/Edit/Delete Sub Category for the products",
+    "link": "/dashboard/addsubcategory",
+    "bgColor": "#007bff",
+    "icon": "MdAccountBalanceWallet"
+  },
+  {
+    "id": 26,
+    "title": "Variation Manager",
+    "description": "Configure which categories and subcategories support product variations",
+    "link": "/dashboard/variationmanager",
+    "bgColor": "#007bff",
+    "icon": "MdSwapHoriz"
+  },
+  {
+    "id": 19,
+    "title": "Product Manager",
+    "description": "Add/Edit/Delete products",
+    "link": "/dashboard/addproducts",
+    "bgColor": "#007bff",
+    "icon": "MdInfoOutline"
+  },
+  {
+    "id": 34,
+    "title": "Homepage Setting",
+    "description": "Manage homepage product display sections (Featured, New Arrivals, etc.)",
+    "link": "/dashboard/homepage-sections",
+    "bgColor": "#007bff",
+    "icon": "MdHome"
+  },
+  {
+    "id": 54,
+    "title": "Footer Manager",
+    "description": "Manage footer sections for storefront (links, contact, social, newsletter, etc.)",
+    "link": "/dashboard/footer-sections",
+    "bgColor": "#007bff",
+    "icon": "MdVerticalAlignBottom"
+  },
+  {
+    "id": 3,
+    "title": "Collar Style Manager",
+    "description": "Add/Edit/Delete Collar for the products",
+    "link": "/dashboard/addcollarstyle",
+    "bgColor": "#007bff",
+    "icon": "MdAccountCircle"
+  },
+  {
+    "id": 4,
+    "title": "Color Manager",
+    "description": "Add/Edit/Delete Color for the products",
+    "link": "/dashboard/addcolor",
+    "bgColor": "#007bff",
+    "icon": "MdAccountBox"
+  },
+  {
+    "id": 5,
+    "title": "Country of Origin Manager",
+    "description": "Add/Edit/Delete Country of Origin for the products",
+    "link": "/dashboard/addcountryoforigin",
+    "bgColor": "#007bff",
+    "icon": "MdAdd"
+  },
+  {
+    "id": 6,
+    "title": "Fit Type Manager",
+    "description": "Add/Edit/Delete Fit Type for the products",
+    "link": "/dashboard/addfittype",
+    "bgColor": "#007bff",
+    "icon": "MdAddCard"
+  },
+  {
+    "id": 27,
+    "title": "Printing Type Manager",
+    "description": "Add/Edit/Delete Printing Type for the products",
+    "link": "/dashboard/addprintingtype",
+    "bgColor": "#007bff",
+    "icon": "MdPrint"
+  },
+  {
+    "id": 7,
+    "title": "Height Manager",
+    "description": "Add/Edit/Delete Height for the products",
+    "link": "/dashboard/addheight",
+    "bgColor": "#007bff",
+    "icon": "MdClose"
+  },
+  {
+    "id": 8,
+    "title": "Length Manager",
+    "description": "Add/Edit/Delete Length for the products",
+    "link": "/dashboard/addlength",
+    "bgColor": "#007bff",
+    "icon": "MdDensitySmall"
+  },
+  {
+    "id": 9,
+    "title": "Material Manager",
+    "description": "Add/Edit/Delete Material for the products",
+    "link": "/dashboard/addmaterial",
+    "bgColor": "#007bff",
+    "icon": "MdDelete"
+  },
+  {
+    "id": 10,
+    "title": "Pattern Manager",
+    "description": "Add/Edit/Delete Pattern for the products",
+    "link": "/dashboard/addpattern",
+    "bgColor": "#007bff",
+    "icon": "MdDiscount"
+  },
+  {
+    "id": 11,
+    "title": "Pincode Manager",
+    "description": "Add/Edit/Delete Pincode for the products",
+    "link": "/dashboard/addpincode",
+    "bgColor": "#007bff",
+    "icon": "MdDone"
+  },
+  {
+    "id": 12,
+    "title": "Review Manager",
+    "description": "Add/Edit/Delete, approve and disapprove Review for the products",
+    "link": "/dashboard/reviewmanager",
+    "bgColor": "#007bff",
+    "icon": "MdDownload"
+  },
+  {
+    "id": 33,
+    "title": "Testimonial Manager",
+    "description": "Manage customer testimonials with approval workflow, categorization, and import",
+    "link": "/dashboard/testimonialmanager",
+    "bgColor": "#007bff",
+    "icon": "MdFormatQuote"
+  },
+  {
+    "id": 13,
+    "title": "Size Manager",
+    "description": "Add/Edit/Delete Size for the products",
+    "link": "/dashboard/addsize",
+    "bgColor": "#007bff",
+    "icon": "MdDownloadDone"
+  },
+  {
+    "id": 14,
+    "title": "Sleeve Type Manager",
+    "description": "Add/Edit/Delete Sleeve Type for the products",
+    "link": "/dashboard/addsleevetype",
+    "bgColor": "#007bff",
+    "icon": "MdExpandLess"
+  },
+  {
+    "id": 16,
+    "title": "Width Manager",
+    "description": "Add/Edit/Delete Width for the products",
+    "link": "/dashboard/addwidth",
+    "bgColor": "#007bff",
+    "icon": "MdExpandMore"
+  },
+  {
+    "id": 17,
+    "title": "Coupon Manager",
+    "description": "Add/Edit/Delete Coupons for the products",
+    "link": "/dashboard/addcoupon",
+    "bgColor": "#007bff",
+    "icon": "MdFileUpload"
+  },
+  {
+    "id": 18,
+    "title": "Template Manager",
+    "description": "Upload and manage design templates for each category",
+    "link": "/dashboard/templatemanager",
+    "bgColor": "#007bff",
+    "icon": "MdImage"
+  },
+  {
+    "id": 20,
+    "title": "User Manager",
+    "description": "Add/Edit/Delete and manage application users",
+    "link": "/dashboard/adduser",
+    "bgColor": "#007bff",
+    "icon": "MdPerson"
+  },
+  {
+    "id": 35,
+    "title": "Client Management",
+    "description": "Manage clients, track interactions, follow-ups, and sales pipeline",
+    "link": "/dashboard/clients",
+    "bgColor": "#007bff",
+    "icon": "MdPeople"
+  },
+  {
+    "id": 36,
+    "title": "User Access Manager",
+    "description": "Manage staff users, roles, and permissions (RBAC)",
+    "link": "/dashboard/user-access",
+    "bgColor": "#dc3545",
+    "icon": "MdSecurity"
+  },
+  {
+    "id": 21,
+    "title": "Order Manager",
+    "description": "View and manage all customer orders",
+    "link": "/dashboard/addorder",
+    "bgColor": "#007bff",
+    "icon": "MdShoppingCart"
+  },
+  {
+    "id": 22,
+    "title": "Shipping Manager",
+    "description": "Manage customer shipping addresses for orders",
+    "link": "/dashboard/addshipping",
+    "bgColor": "#007bff",
+    "icon": "MdLocalShipping"
+  },
+  {
+    "id": 27,
+    "title": "Shipping Cost Manager",
+    "description": "Configure shipping zones, rates, and pincode mappings for India",
+    "link": "/dashboard/shipping-cost-manager",
+    "bgColor": "#007bff",
+    "icon": "MdCalculate"
+  },
+  {
+    "id": 53,
+    "title": "Product Cost Calculator",
+    "description": "Calculate optimal selling price, break-even, profit and generate AI pricing prompt",
+    "link": "/dashboard/product-cost-calculator",
+    "bgColor": "#007bff",
+    "icon": "MdCalculate"
+  },
+  {
+    "id": 23,
+    "title": "GST Slab Manager",
+    "description": "Manage GST tax slabs and rates",
+    "link": "/dashboard/addgstslab",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 24,
+    "title": "Company Manager",
+    "description": "Manage company details for invoices and shipping labels",
+    "link": "/dashboard/addcompany",
+    "bgColor": "#007bff",
+    "icon": "MdBusiness"
+  },
+  {
+    "id": 25,
+    "title": "Website Manager",
+    "description": "Manage multiple websites for multi-tenant support",
+    "link": "/dashboard/addwebsite",
+    "bgColor": "#007bff",
+    "icon": "MdLanguage"
+  },
+  {
+    "id": 28,
+    "title": "PixelCraft",
+    "description": "Template platform blueprint & reference code",
+    "link": "/dashboard/pixelcraft",
+    "bgColor": "#007bff",
+    "icon": "MdImage"
+  },
+  {
+    "id": 29,
+    "title": "Element Manager",
+    "description": "Create and manage reusable elements for PixelCraft templates",
+    "link": "/dashboard/pixelcraft/elements",
+    "bgColor": "#007bff",
+    "icon": "MdExtension"
+  },
+  {
+    "id": 30,
+    "title": "Element Images",
+    "description": "Upload images, clipart, SVG/PNG/GIF to elements with color, orientation and animation",
+    "link": "/dashboard/pixelcraft/element-images",
+    "bgColor": "#007bff",
+    "icon": "MdImage"
+  },
+  {
+    "id": 31,
+    "title": "Template Dimensions",
+    "description": "Manage print area dimensions for T-Shirts, Mugs, Caps, etc.",
+    "link": "/dashboard/pixelcraft/dimensions",
+    "bgColor": "#007bff",
+    "icon": "MdStraighten"
+  },
+  {
+    "id": 32,
+    "title": "Image to Vector",
+    "description": "Convert raster images to print-ready SVG/PDF/EPS for DTF and sublimation",
+    "link": "/dashboard/pixelcraft/image-to-vector",
+    "bgColor": "#007bff",
+    "icon": "MdTransform"
+  },
+  {
+    "id": 37,
+    "title": "Reports",
+    "description": "Sales, customer, inventory, payment, and fulfillment reports",
+    "link": "/dashboard/reports",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 38,
+    "title": "Sales Summary",
+    "description": "Overall revenue, orders, AOV, discounts, tax, net revenue",
+    "link": "/dashboard/reports/sales-summary",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 39,
+    "title": "Order-wise Sales",
+    "description": "Paginated list of orders with filters",
+    "link": "/dashboard/reports/order-wise-sales",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 40,
+    "title": "Product-wise Sales",
+    "description": "Units sold, revenue, returns by product",
+    "link": "/dashboard/reports/product-wise-sales",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 41,
+    "title": "Category-wise Sales",
+    "description": "Revenue and % contribution by category",
+    "link": "/dashboard/reports/category-wise-sales",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 42,
+    "title": "Customer Overview",
+    "description": "Total, new, and returning customers",
+    "link": "/dashboard/reports/customer-overview",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 43,
+    "title": "Customer Purchase",
+    "description": "Spend, order count, last order, AOV per customer",
+    "link": "/dashboard/reports/customer-purchase",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 44,
+    "title": "Customer Lifetime Value",
+    "description": "CLV and order stats per customer",
+    "link": "/dashboard/reports/customer-lifetime-value",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 45,
+    "title": "Inventory Stock",
+    "description": "Current stock, low stock and reorder alerts",
+    "link": "/dashboard/reports/inventory-stock",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 46,
+    "title": "Inventory Valuation",
+    "description": "Stock value by product and total",
+    "link": "/dashboard/reports/inventory-valuation",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 47,
+    "title": "Payment Method",
+    "description": "Transactions and amounts by payment method",
+    "link": "/dashboard/reports/payment-method",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 48,
+    "title": "Refund & Cancellation",
+    "description": "Refunds, cancellations, impact on revenue",
+    "link": "/dashboard/reports/refund-cancellation",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 49,
+    "title": "Tax Report",
+    "description": "Tax collected by date",
+    "link": "/dashboard/reports/tax",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 50,
+    "title": "Coupon Usage",
+    "description": "Usage count and discount by coupon",
+    "link": "/dashboard/reports/coupon-usage",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 51,
+    "title": "Shipping Performance",
+    "description": "Delivery time and courier performance",
+    "link": "/dashboard/reports/shipping-performance",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 52,
+    "title": "Admin Activity",
+    "description": "Admin actions and audit log",
+    "link": "/dashboard/reports/admin-activity",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  }
+]

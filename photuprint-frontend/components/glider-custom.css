@@ -1,0 +1,35 @@
+.glider-carousel-wrapper .glider-track {
+  align-items: stretch;
+}
+.glider-carousel-wrapper .glider-slide {
+  display: flex;
+  min-height: auto;
+}
+.glider-carousel-wrapper .glider-slide > a {
+  width: 100%;
+}
+.glider-carousel-wrapper .glider-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+}
+.glider-carousel-wrapper .glider-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #d1d5db;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  transition: all 0.2s;
+}
+.glider-carousel-wrapper .glider-dot.active {
+  background: #2563eb;
+  width: 24px;
+  border-radius: 4px;
+}
+.glider-carousel-wrapper .glider-custom-prev[disabled],
+.glider-carousel-wrapper .glider-custom-next[disabled] {
+  opacity: 0.3;
+  cursor: not-allowed;
+}

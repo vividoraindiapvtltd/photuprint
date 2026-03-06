@@ -1,0 +1,1390 @@
+@import url('https://fonts.googleapis.com/css2?family=Poppins:ital,wght@0,100;0,200;0,300;0,400;0,500;0,600;0,700;0,800;0,900;1,100;1,200;1,300;1,400;1,500;1,600;1,700;1,800;1,900&display=swap');
+
+:root {
+    --color-primary: #7380ec;
+    --color-danger: #ff7782;
+    --color-success: #41f1b6;
+    --color-warning: #ffbb55;
+    --color-white: #fff;
+    --color-info-dark: #7d8da1;
+    --color-info-light: #dce1eb;
+    --color-dark: #363949;
+    --color-light: rgba(132, 139, 148, 0.18);
+    --color-primary-variant: #677483;
+    --color-dark-variant: #677483;
+    --color-background: #f6f6f9;
+
+    --card-border-radius: 2rem;
+    --border-radius-1: 0.4rem;
+    --border-radius-2: 0.8rem;
+    --border-radius-3: 1.2rem;
+
+    --card-padding: 1.8rem;
+    --padding-1: 1.2rem;
+
+    --box-shadow: 0 2rem 3rem var(--color-light);
+
+    --border-radius-sm: 0.1rem;
+    --border-radius-md: 0.3rem;
+    --border-radius-lg: 0.5rem;
+}
+
+/* reset everything */
+*, *::before,*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  border: 0 solid transparent;
+}
+
+/* prevent iOS font size change */
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+/* reset body line-height */
+body {
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.88rem;
+  color: var(--color-dark);
+  background-color: var(--color-background);
+  user-select: none;
+  overflow-x: hidden;
+  width: 100vw;
+  height: 100vh;
+  position: relative;
+  text-rendering: optimizeSpeed;
+}
+
+/* all media elements set to block and full width */
+img,
+svg,
+video,
+canvas,
+audio,
+iframe,
+embed,
+object {
+  display: block;
+  max-width: 100%;
+}
+
+/* inherit fonts for inputs and buttons */
+input,
+button,
+textarea,
+select {
+  font: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+/* collapse table */
+table {
+  border-collapse: collapse;
+  border-spacing: 0;
+}
+
+/* assign button hover state */
+button, [role="button"] {
+  cursor: pointer;
+}
+
+/* Modal Overlay Styles */
+.modalOverlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+  animation: fadeIn 0.3s ease-out;
+}
+
+.modalContent {
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  border: 1px solid #e5e7eb;
+  min-width: 400px;
+  max-width: 600px;
+  padding: 24px;
+  animation: slideInModal 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+}
+
+@keyframes slideInModal {
+  from {
+    opacity: 0;
+    transform: scale(0.9) translateY(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+/* Responsive modal */
+@media (max-width: 768px) {
+  .modalContent {
+    min-width: 320px;
+    max-width: calc(100vw - 32px);
+    margin: 0 16px;
+    padding: 20px;
+  }
+}
+
+button, [role="button"] {
+  cursor: pointer;
+  background-color: transparent;
+  -webkit-tap-highlight-color: transparent;
+  &:focus {
+    outline: 0;
+  }
+}
+
+/* reset anchor style */
+a {
+  cursor: pointer;
+  color: inherit;
+  text-decoration: inherit;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* reset heading style */
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-size: inherit;
+  font-weight: inherit;
+}
+
+/* reset list style */
+ol, ul {
+  list-style: none;
+}
+
+/* reset text input style */
+[type=date],
+[type=datetime],
+[type=datetime-local],
+[type=email],
+[type=month],
+[type=number],
+[type=password],
+[type=search],
+[type=tel],
+[type=text],
+[type=time],
+[type=url],
+[type=week],
+textarea,
+select {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  width: 100%;
+  &:focus {
+    outline: 0;
+  }
+}
+
+/* reset firefox placeholder opacity */
+::-moz-placeholder {
+  opacity: 1;
+}
+
+/* reset textarea style */
+textarea {
+  /* move the label to the top */
+  vertical-align: top;
+
+  /* turn off scroll bars in IE unless needed */
+  overflow: auto;
+}
+
+/* reset checkbox and radio style */
+[type='checkbox'],
+[type='radio'] {
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  appearance: none;
+  &:focus {
+    outline: 0
+  }
+}
+/* Font Sizes */
+.font10 {
+    font-size: calc(var(--font-scale, 1) * 10px);
+    line-height: calc(var(--font-scale, 1) * 14px);
+}
+.font12 {
+    font-size: calc(var(--font-scale, 1) * 12px);
+    line-height: calc(var(--font-scale, 1) * 16px);
+}
+.font14 {
+    font-size: calc(var(--font-scale, 1) * 14px);
+    line-height: calc(var(--font-scale, 1) * 18px);
+}
+.font16 {
+    font-size: calc(var(--font-scale, 1) * 16px);
+    line-height: calc(var(--font-scale, 1) * 20px);
+}
+.font18 {
+    font-size: calc(var(--font-scale, 1) * 18px);
+    line-height: calc(var(--font-scale, 1) * 22px);
+}
+.font20 {
+    font-size: calc(var(--font-scale, 1) * 20px);
+    line-height: calc(var(--font-scale, 1) * 24px);
+}
+.font22 {
+    font-size: calc(var(--font-scale, 1) * 22px);
+    line-height: calc(var(--font-scale, 1) * 26px);
+}
+.font24 {
+    font-size: calc(var(--font-scale, 1) * 24px);
+    line-height: calc(var(--font-scale, 1) * 28px);
+}
+.font26 {
+    font-size: calc(var(--font-scale, 1) * 26px);
+    line-height: calc(var(--font-scale, 1) * 30px);
+}
+.font28 {
+    font-size: calc(var(--font-scale, 1) * 28px);
+    line-height: calc(var(--font-scale, 1) * 32px);
+}
+.font30 {
+    font-size: calc(var(--font-scale, 1) * 30px);
+    line-height: calc(var(--font-scale, 1) * 34px);
+}
+.font32 {
+    font-size: calc(var(--font-scale, 1) * 32px);
+    line-height: calc(var(--font-scale, 1) * 36px);
+}
+.font34 {
+    font-size: calc(var(--font-scale, 1) * 34px);
+    line-height: calc(var(--font-scale, 1) * 38px);
+}
+.font36 {
+    font-size: calc(var(--font-scale, 1) * 36px);
+    line-height: calc(var(--font-scale, 1) * 40px);
+}
+.font38 {
+    font-size: calc(var(--font-scale, 1) * 38px);
+    line-height: calc(var(--font-scale, 1) * 42px);
+}
+.font40 {
+    font-size: calc(var(--font-scale, 1) * 40px);
+    line-height: calc(var(--font-scale, 1) * 44px);
+}
+.font42 {
+    font-size: calc(var(--font-scale, 1) * 42px);
+    line-height: calc(var(--font-scale, 1) * 46px);
+}
+.font44 {
+    font-size: calc(var(--font-scale, 1) * 44px);
+    line-height: calc(var(--font-scale, 1) * 48px);
+}
+.font46 {
+    font-size: calc(var(--font-scale, 1) * 46px);
+    line-height: calc(var(--font-scale, 1) * 50px);
+}
+.font48 {
+    font-size: calc(var(--font-scale, 1) * 48px);
+    line-height: calc(var(--font-scale, 1) * 52px);
+}
+.font50 {
+    font-size: calc(var(--font-scale, 1) * 50px);
+    line-height: calc(var(--font-scale, 1) * 54px);
+}
+
+/* Text Colors */
+.blackText {
+    color: var(--color-dark);
+}
+.whiteText {
+    color: var(--color-white);
+}
+.redText {
+    color: var(--color-danger);
+}
+.greenText {
+    color: var(--color-success);
+}
+.blueText {
+    color: var(--color-primary);
+}
+.yellowText {
+    color: var(--color-warning);
+}
+.purpleText {
+    color: var(--color-primary-variant);
+}
+.grayText {
+    color: var(--color-info-dark);
+}
+.lightGrayText {
+    color: var(--color-info-light);
+}
+.darkGrayText {
+    color: var(--color-dark-variant);
+}
+.lightBlueText {
+    color: var(--color-primary);
+}
+.lightGreenText {
+    color: var(--color-success);
+}
+
+/* Font Weights */
+.fontRegular {
+    font-weight: 400;
+}
+.fontMedium {
+    font-weight: 500;
+}
+.fontSemiBold {
+    font-weight: 600;
+}
+.fontBold {
+    font-weight: 700;
+}
+.fontExtraBold {
+    font-weight: 800;
+}
+.fontBlack {
+    font-weight: 900;
+}
+
+/* Text Alignments */
+.textCenter {
+    text-align: center;
+}
+.textLeft {
+    text-align: left;
+}
+.textRight {
+    text-align: right;
+}
+
+/* Text Transformations */
+.textUppercase {
+    text-transform: uppercase;
+}
+.textLowercase {
+    text-transform: lowercase;
+}
+.textCapitalize {
+    text-transform: capitalize;
+}
+
+/* Text Decorations */
+.textUnderline {
+    text-decoration: underline;
+}
+.textLineThrough {
+    text-decoration: line-through;
+}
+
+/* Text Shadows */
+.textShadow {
+    text-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+}
+
+/* Text Wrap */
+.textWrap {
+    word-wrap: break-word;
+}
+
+/* Text Overflow */
+.textOverflow {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Text Ellipsis */
+.textEllipsis {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Text Break */
+.textBreak {
+    word-break: break-word;
+}
+
+/* Text White Space */
+.textWhiteSpace {
+    white-space: nowrap;
+}
+
+/* Text Truncate */
+.textTruncate {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Cursor Pointer */
+.pointer {
+    cursor: pointer;
+}
+
+/* Hide */
+.hide {
+    display: none;
+}
+
+/* Img */
+.img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* Show */
+.show {
+    display: block;
+}
+
+.flexOne {
+    flex:1;
+}
+/* Flex */
+.makeFlex {
+    display: flex;
+}
+.makeFlex .flexOne {
+    flex: 1;
+}
+.makeFlex .flexTwo  {
+    flex: 2;
+}
+.makeFlex .flexWrap {
+    flex-wrap: wrap;
+}
+.makeFlex .flexNoWrap {
+    flex-wrap: nowrap;
+}
+.makeFlex .column {
+    flex-direction: column;
+}
+.makeFlex .row {
+    flex-direction: row;
+}
+.makeFlex.perfectCenter {
+    justify-content: center;
+    align-items: center;
+}
+.makeFlex.alignCenter {
+    align-items: center;
+}
+.makeFlex .spaceBetween {
+    justify-content: space-between;
+}
+.makeFlex .spaceAround {
+    justify-content: space-around;
+}
+.makeFlex .spaceEvenly {
+    justify-content: space-evenly;
+}
+.makeFlex .end {
+    align-items: flex-end;
+}
+.makeFlex .baseline {
+    align-items: baseline;
+}
+.makeFlex .top {
+    align-items: flex-start;
+}
+.makeFlex .inlineFlex {
+    display: inline-flex;
+}
+.makeFlex .justifyRight {
+    justify-self: flex-end;
+}
+.fullWidth {
+    width:100%;
+}
+.widthHalf {
+    width:50%;
+}
+.width5 {
+    width:5%;
+}
+.width10 {
+    width:10%;
+}
+.width15 {
+    width:15%;
+}
+.width20 {
+    width:20%;
+}
+.width25 {
+    width:25%;
+}
+.width30 {
+    width:30%;
+}
+.width35 {
+    width:35%;
+}
+.width40 {
+    width:40%;
+}
+.width45 {
+    width:45%;
+}
+.width55 {
+    width:55%;
+}
+.width60 {
+    width:60%;
+}
+.width65 {
+    width:65%;
+}
+.width70 {
+    width:70%;
+}
+.width75 {
+    width:75%;
+}
+.width80 {
+    width:80%;
+}
+.width85 {
+    width:85%;
+}
+.width90 {
+    width:90%;
+}
+.width95 {  
+    width:95%;
+}
+
+/* Margins All */
+.appendAll2 {
+    margin: 2px;
+}
+.appendAll4 {
+    margin: 4px;
+}
+.appendAll6 {
+    margin: 6px;
+}
+.appendAll8 {
+    margin: 8px;
+}
+.appendAll10 {
+    margin: 10px;
+}
+.appendAll12 {
+    margin: 12px;
+}
+.appendAll14 {
+    margin: 14px;
+}
+.appendAll16 {
+    margin: 16px;
+}
+.appendAll18 {
+    margin: 18px;
+}
+.appendAll20 {
+    margin: 20px;
+}
+.appendAll22 {
+    margin: 22px;
+}
+.appendAll24 {
+    margin: 24px;
+}
+.appendAll26 {
+    margin: 26px;
+}
+.appendAll28 {
+    margin: 28px;
+}
+.appendAll30 {
+    margin: 30px;
+}
+.appendAll32 {
+    margin: 32px;
+}
+.appendAll34 {
+    margin: 34px;
+}
+.appendAll36 {
+    margin: 36px;
+}
+.appendAll38 {
+    margin: 38px;
+}
+.appendAll40 {
+    margin: 40px;
+}
+.appendAll42 {
+    margin: 42px;
+}
+.appendAll44 {
+    margin: 44px;
+}
+.appendAll46 {
+    margin: 46px;
+}
+.appendAll48 {
+    margin: 48px;
+}
+.appendAll50 {
+    margin: 50px;
+}
+
+/* Top Margins */
+.appendTop2 {
+    margin-top: 2px;
+}
+.appendTop4 {
+    margin-top: 4px;
+}
+.appendTop6 {
+    margin-top: 6px;
+}
+.appendTop8 {
+    margin-top: 8px;
+}
+.appendTop10 {
+    margin-top: 10px;
+}
+.appendTop12 {
+    margin-top: 12px;
+}
+.appendTop14 {
+    margin-top: 14px;
+}
+.appendTop16 {
+    margin-top: 16px;
+}
+.appendTop18 {
+    margin-top: 18px;
+}
+.appendTop20 {
+    margin-top: 20px;
+}
+.appendTop22 {
+    margin-top: 22px;
+}
+.appendTop24 {
+    margin-top: 24px;
+}
+.appendTop26 {
+    margin-top: 26px;
+}
+.appendTop28 {
+    margin-top: 28px;
+}
+.appendTop30 {
+    margin-top: 30px;
+}
+.appendTop32 {
+    margin-top: 32px;
+}
+.appendTop34 {
+    margin-top: 34px;
+}
+.appendTop36 {
+    margin-top: 36px;
+}
+.appendTop38 {
+    margin-top: 38px;
+}
+.appendTop40 {
+    margin-top: 40px;
+}
+.appendTop42 {
+    margin-top: 42px;
+}
+.appendTop44 {
+    margin-top: 44px;
+}
+.appendTop46 {
+    margin-top: 46px;
+}
+.appendTop48 {
+    margin-top: 48px;
+}
+.appendTop50 {
+    margin-top: 50px;
+}
+
+/* Bottom Margins */
+.appendBottom2 {
+    margin-bottom: 2px;
+}
+.appendBottom4 {
+    margin-bottom: 4px;
+}
+.appendBottom6 {
+    margin-bottom: 6px;
+}
+.appendBottom8 {
+    margin-bottom: 8px;
+}
+.appendBottom10 {
+    margin-bottom: 10px;
+}
+.appendBottom12 {
+    margin-bottom: 12px;
+}
+.appendBottom14 {
+    margin-bottom: 14px;
+}
+.appendBottom16 {
+    margin-bottom:16px;
+}
+.appendBottom18 {
+    margin-bottom: 18px;
+}
+.appendBottom20 {
+    margin-bottom: 20px;
+}
+.appendBottom22 {
+    margin-bottom: 22px;
+}
+.appendBottom24 {
+    margin-bottom: 24px;
+}
+.appendBottom26 {
+    margin-bottom: 26px;
+}
+.appendBottom28 {
+    margin-bottom: 28px;
+}
+.appendBottom30 {
+    margin-bottom: 30px;
+}
+.appendBottom32 {
+    margin-bottom: 32px;
+}
+.appendBottom34 {
+    margin-bottom: 34px;
+}
+.appendBottom36 {
+    margin-bottom: 36px;
+}
+.appendBottom38 {
+    margin-bottom: 38px;
+}
+.appendBottom40 {
+    margin-bottom: 40px;
+}
+.appendBottom42 {
+    margin-bottom: 42px;
+}
+.appendBottom44 {
+    margin-bottom: 44px;
+}
+.appendBottom46 {
+    margin-bottom: 46px;
+}
+.appendBottom48 {
+    margin-bottom: 48px;
+}
+.appendBottom50 {
+    margin-bottom: 50px;
+}
+
+/* Left Margins */
+.appendLeft2 {
+    margin-left: 2px;
+}
+.appendLeft4 {
+    margin-left: 4px;
+}
+.appendLeft6 {
+    margin-left: 6px;
+}
+.appendLeft8 {
+    margin-left: 8px;
+}
+.appendLeft10 {
+    margin-left: 10px;
+}
+.appendLeft12 {
+    margin-left: 12px;
+}
+.appendLeft14 {
+    margin-left: 14px;
+}
+.appendLeft16 {
+    margin-left: 16px;
+}
+.appendLeft18 {
+    margin-left: 18px;
+}
+.appendLeft20 {
+    margin-left: 20px;
+}
+.appendLeft22 {
+    margin-left: 22px;
+}
+.appendLeft24 {
+    margin-left: 24px;
+}
+.appendLeft26 {
+    margin-left: 26px;
+}
+.appendLeft28 {
+    margin-left: 28px;
+}
+.appendLeft30 {
+    margin-left: 30px;
+}
+.appendLeft32 {
+    margin-left: 32px;
+}
+.appendLeft34 {
+    margin-left: 34px;
+}
+.appendLeft36 {
+    margin-left: 36px;
+}
+.appendLeft38 {
+    margin-left: 38px;
+}
+
+.appendLeft40 {
+    margin-left: 40px;
+}
+.appendLeft42 {
+    margin-left: 42px;
+}
+
+.appendLeft44 {
+    margin-left: 44px;
+}
+.appendLeft46 {
+    margin-left: 46px;
+}
+
+.appendLeft48 {
+    margin-left: 48px;
+}
+.appendLeft50 {
+    margin-left: 50px;
+}
+
+/* Right Margins */
+.appendRight2 {
+    margin-right: 2px;
+}
+.appendRight4 {
+    margin-right: 4px;
+}
+.appendRight6 {
+    margin-right: 6px;
+}
+.appendRight8 {
+    margin-right: 8px;
+}
+.appendRight10 {
+    margin-right: 10px;
+}
+.appendRight12 {
+    margin-right: 12px;
+}
+.appendRight14 {
+    margin-right: 14px;
+}
+.appendRight16 {
+    margin-right: 16px;
+}
+.appendRight18 {
+    margin-right: 18px;
+}
+.appendRight20 {
+    margin-right: 20px;
+}   
+.appendRight22 {
+    margin-right: 22px;
+}
+.appendRight24 {
+    margin-right: 24px;
+}
+.appendRight26 {
+    margin-right: 26px;
+}
+.appendRight28 {
+    margin-right: 28px;
+}
+.appendRight30 {
+    margin-right: 30px;
+}
+.appendRight32 {
+    margin-right: 32px;
+}
+.appendRight34 {
+    margin-right: 34px;
+}
+.appendRight36 {
+    margin-right: 36px;
+}
+.appendRight38 {
+    margin-right: 38px;
+}
+.appendRight40 {
+    margin-right: 40px;
+}
+
+.appendRight42 {
+    margin-right: 42px;
+}
+
+.appendRight44 {
+    margin-right: 44px;
+}
+.appendRight46 {
+    margin-right: 46px;
+}
+.appendRight48 {
+    margin-right: 48px;
+}
+.appendRight50 {
+    margin-right: 50px;
+}
+
+/* padding All */
+.paddingAll2 {
+    padding: 2px;
+}
+.paddingAll4 {
+    padding: 4px;
+}
+.paddingAll6 {
+    padding: 6px;
+}
+.paddingAll8 {
+    padding: 8px;
+}
+.paddingAll10 {
+    padding: 10px;
+}
+.paddingAll12 {
+    padding: 12px;
+}
+.paddingAll14 {
+    padding: 14px;
+}
+.paddingAll16 {
+    padding: 16px;
+}
+.paddingAll18 {
+    padding: 18px;
+}
+.paddingAll20 {
+    padding: 20px;
+}
+.paddingAll22 {
+    padding: 22px;
+}
+.paddingAll24 {
+    padding: 24px;
+}
+.paddingAll26 {
+    padding: 26px;
+}
+.paddingAll28 {
+    padding: 28px;
+}
+.paddingAll30 {
+    padding: 30px;
+}
+.paddingAll32 {
+    padding: 32px;
+}
+.paddingAll34 {     
+    padding: 34px;
+}
+.paddingAll36 {
+    padding: 36px;
+}
+.paddingAll38 {
+    padding: 38px;
+}
+.paddingAll40 {
+    padding: 40px;
+}
+.paddingAll42 {
+    padding: 42px;
+}
+.paddingAll44 {
+    padding: 44px;
+}
+.paddingAll46 {
+    padding: 46px;
+}
+.paddingAll48 {
+    padding: 48px;
+}
+.paddingAll50 {
+    padding: 50px;
+}
+
+/* padding Left */
+.paddingLeft2 {
+    padding-left: 2px;
+}
+.paddingLeft4 {
+    padding-left: 4px;
+}
+.paddingLeft6 {
+    padding-left: 6px;
+}
+.paddingLeft8 {
+    padding-left: 8px;
+}
+.paddingLeft10 {
+    padding-left: 10px;
+}
+.paddingLeft12 {
+    padding-left: 12px;
+}
+.paddingLeft14 {
+    padding-left: 14px;
+}
+.paddingLeft16 {
+    padding-left: 16px;
+}
+.paddingLeft18 {
+    padding-left: 18px;
+}
+.paddingLeft20 {
+    padding-left: 20px;
+}
+.paddingLeft22 {
+    padding-left: 22px;
+}
+.paddingLeft24 {
+    padding-left: 24px;
+}
+.paddingLeft26 {
+    padding-left: 26px;
+}
+.paddingLeft28 {
+    padding-left: 28px;
+}
+.paddingLeft30 {
+    padding-left: 30px;
+}
+.paddingLeft32 {
+    padding-left: 32px;
+}
+.paddingLeft34 {
+    padding-left: 34px;
+}
+.paddingLeft36 {    
+    padding-left: 36px;
+}
+.paddingLeft38 {
+    padding-left: 38px;
+}
+.paddingLeft40 {
+    padding-left: 40px;
+}
+.paddingLeft42 {
+    padding-left: 42px;
+}
+.paddingLeft44 {
+    padding-left: 44px;
+}
+.paddingLeft46 {
+    padding-left: 46px;
+}
+.paddingLeft48 {
+    padding-left: 48px;
+}
+.paddingLeft50 {
+    padding-left: 50px;
+}
+/* padding Right */
+.paddingRight2 {
+    padding-right: 2px;
+}
+.paddingRight4 {
+    padding-right: 4px;
+}
+.paddingRight6 {
+    padding-right: 6px;
+}
+.paddingRight8 {
+    padding-right: 8px;
+}
+.paddingRight10 {
+    padding-right: 10px;
+}
+.paddingRight12 {
+    padding-right: 12px;
+}
+.paddingRight14 {
+    padding-right: 14px;
+}
+.paddingRight16 {
+    padding-right: 16px;
+}
+.paddingRight18 {
+    padding-right: 18px;
+}
+.paddingRight20 {
+    padding-right: 20px;
+}
+.paddingRight22 {
+    padding-right: 22px;
+}
+.paddingRight24 {
+    padding-right: 24px;
+}
+.paddingRight26 {
+    padding-right: 26px;
+}
+.paddingRight28 {
+    padding-right: 28px;
+}
+.paddingRight30 {
+    padding-right: 30px;
+}
+.paddingRight32 {       
+    padding-right: 32px;
+}
+.paddingRight34 {
+    padding-right: 34px;
+}
+.paddingRight36 {
+    padding-right: 36px;
+}
+.paddingRight38 {
+    padding-right: 38px;
+}
+.paddingRight40 {
+    padding-right: 40px;
+}
+
+.paddingRight42 {
+    padding-right: 42px;
+}
+
+.paddingRight44 {
+    padding-right: 44px;
+}
+.paddingRight46 {
+    padding-right: 46px;
+}
+.paddingRight48 {   
+    padding-right: 48px;
+}
+.paddingRight50 {
+    padding-right: 50px;
+}
+
+/* padding Top */
+.paddingTop2 {
+    padding-top: 2px;
+}
+.paddingTop4 {
+    padding-top: 4px;
+}
+.paddingTop6 {
+    padding-top: 6px;
+}
+.paddingTop8 {
+    padding-top: 8px;
+}
+.paddingTop10 {
+    padding-top: 10px;
+}
+.paddingTop12 {
+    padding-top: 12px;
+}
+.paddingTop14 {
+    padding-top: 14px;
+}
+.paddingTop16 {
+    padding-top: 16px;
+}
+.paddingTop18 {
+    padding-top: 18px;
+}
+.paddingTop20 {
+    padding-top: 20px;
+}
+.paddingTop22 {
+    padding-top: 22px;
+}
+.paddingTop24 {
+    padding-top: 24px;
+}
+.paddingTop26 {
+    padding-top: 26px;
+}
+.paddingTop28 {
+    padding-top: 28px;
+}
+.paddingTop30 {
+    padding-top: 30px;
+}
+.paddingTop32 {
+    padding-top: 32px;
+}
+.paddingTop34 { 
+    padding-top: 34px;
+}
+.paddingTop36 {
+    padding-top: 36px;
+}
+.paddingTop38 {
+    padding-top: 38px;
+}   
+.paddingTop40 {
+    padding-top: 40px;
+}
+.paddingTop42 {
+    padding-top: 42px;
+}
+
+.paddingTop44 {
+    padding-top: 44px;
+}
+.paddingTop46 {
+    padding-top: 46px;
+}
+.paddingTop48 {
+    padding-top: 48px;
+}
+.paddingTop50 {
+    padding-top: 50px;
+}
+
+/* padding Bottom */
+.paddingBottom2 {
+    padding-bottom: 2px;
+}
+
+.paddingBottom4 {
+    padding-bottom: 4px;
+}
+
+
+.paddingBottom6 {
+    padding-bottom: 6px;
+}
+.paddingBottom8 {
+    padding-bottom: 8px;
+}
+.paddingBottom10 {
+    padding-bottom: 10px;
+}
+
+.paddingBottom12 {
+    padding-bottom: 12px;
+}
+.paddingBottom14 {
+    padding-bottom: 14px;
+}
+
+.paddingBottom16 {
+    padding-bottom: 16px;
+}
+.paddingBottom18 {
+    padding-bottom: 18px;
+}
+
+
+.paddingBottom20 {
+    padding-bottom: 20px;
+}
+.paddingBottom22 {
+    padding-bottom: 22px;
+}
+.paddingBottom24 {
+    padding-bottom: 24px;
+}
+.paddingBottom26 {
+    padding-bottom: 26px;
+}
+
+.paddingBottom28 {
+    padding-bottom: 28px;
+}
+.paddingBottom30 {
+    padding-bottom: 30px;
+}
+
+.paddingBottom32 {
+    padding-bottom: 32px;
+}
+.paddingBottom34 {
+    padding-bottom: 34px;
+}
+
+.paddingBottom36 {
+    padding-bottom: 36px;
+}
+.paddingBottom38 {
+    padding-bottom: 38px;
+}
+
+.paddingBottom40 {
+    padding-bottom: 40px;
+}
+.paddingBottom42 {
+    padding-bottom: 42px;
+}
+
+.paddingBottom44 {
+    padding-bottom: 44px;
+}
+.paddingBottom46 {
+    padding-bottom: 46px;
+}
+
+.paddingBottom48 {
+    padding-bottom: 48px;
+}
+.paddingBottom50 {
+    padding-bottom: 50px;
+}
+
+.marginAuto {
+    margin: 0 auto;
+}
+.gap4 {
+    gap: 10px;
+}
+.gap10 {
+    gap:10px;
+}
+.gap16 {
+    gap:16px;
+}
+
