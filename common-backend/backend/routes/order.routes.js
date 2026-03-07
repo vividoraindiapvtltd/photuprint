@@ -1,9 +1,11 @@
 import express from 'express';
 import {
   getOrders,
+  getMyOrders,
   getOrderById,
   createOrder,
   updateOrder,
+  cancelMyOrder,
   deleteOrder,
   hardDeleteOrder
 } from '../controllers/order.controller.js';
@@ -17,7 +19,12 @@ router.use(protect);
 router.use(resolveTenantFromHeader);
 router.use(requireTenant);
 
-// Protected routes
+// Protected routes – specific paths before /:id
+// Current user's orders (for account/profile page)
+router.get('/my-orders', getMyOrders);
+// User cancel own order (pending/confirmed only)
+router.post('/:id/cancel', cancelMyOrder);
+
 // Get all orders - admin only
 router.get('/', adminOnly, getOrders);
 // Get single order - admin only

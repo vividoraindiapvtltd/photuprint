@@ -1,24 +1,24 @@
-'use client'
+"use client"
 
 import { useState, useEffect } from "react"
 import { useRouter, useParams } from "next/navigation"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
+import { isObjectId } from "../utils/slugify"
 
-const ReviewForm = () => {
+const ReviewForm = ({ preselectedProductId, orderId }) => {
   const router = useRouter()
   const params = useParams()
-  const routeProductId = params?.productId
-  const { user, isAuthenticated } = useAuth()
+  const routeSlug = preselectedProductId || params?.slug || params?.productId
+  const { user, isAuthenticated, openLoginModal } = useAuth()
 
-  // Redirect to login if not authenticated
+  // Open login modal if not authenticated
   useEffect(() => {
     if (!isAuthenticated) {
-      const redirectPath = routeProductId ? `/product/${routeProductId}/review` : "/review"
-      console.log("Not authenticated, redirecting to login with return path:", redirectPath)
-      router.push(`/login?from=${encodeURIComponent(redirectPath)}`)
+      const redirectPath = routeSlug ? `/products/${routeSlug}/review` : "/review"
+      openLoginModal(redirectPath)
     }
-  }, [isAuthenticated, router, routeProductId])
+  }, [isAuthenticated, openLoginModal, routeSlug])
 
   // Pre-fill user info when authenticated
   useEffect(() => {
@@ -35,7 +35,7 @@ const ReviewForm = () => {
   const [formData, setFormData] = useState({
     categoryId: "",
     subCategoryId: "",
-    productId: routeProductId || "",
+    productId: "",
     productName: "",
     userId: user?.user?.id || user?.user?._id || "",
     name: user?.user?.name || user?.user?.email?.split("@")[0] || "",
@@ -60,12 +60,12 @@ const ReviewForm = () => {
     fetchCategories()
   }, [])
 
-  // If productId is provided via route, fetch product details
+  // If slug/productId is provided via route, fetch product details
   useEffect(() => {
-    if (routeProductId) {
-      fetchProductDetails(routeProductId)
+    if (routeSlug) {
+      fetchProductDetails(routeSlug)
     }
-  }, [routeProductId])
+  }, [routeSlug])
 
   // Fetch subcategories when category changes
   useEffect(() => {
@@ -129,48 +129,36 @@ const ReviewForm = () => {
     }
   }
 
-  const fetchProductDetails = async (productId) => {
+  const fetchProductDetails = async (slugOrId) => {
+    if (!slugOrId) return
     try {
       setLoading(true)
       setError("")
-      console.log("Fetching product with ID:", productId)
-
-      const response = await api.get(`/products/${productId}`)
-      const product = response.data
-      console.log("Fetched product details:", product)
-
+      const url = isObjectId(slugOrId) ? `/products/${slugOrId}` : `/products/slug/${encodeURIComponent(slugOrId)}`
+      const response = await api.get(url, { skipAuth: true })
+      const product = response?.data
       if (product) {
-        // Extract category and subcategory IDs (they might be objects or strings)
         const categoryId = product.category?._id || product.category || ""
         const subCategoryId = product.subcategory?._id || product.subcategory || ""
-
-        console.log("Setting categoryId:", categoryId, "subCategoryId:", subCategoryId)
-
         setFormData((prev) => ({
           ...prev,
-          productId: product._id || productId,
+          productId: product._id || product.id || "",
           productName: product.name || "",
           categoryId: categoryId,
           subCategoryId: subCategoryId,
         }))
         setSelectedProduct(product)
-
-        // Fetch subcategories for the category if needed
         if (categoryId) {
           await fetchSubcategories(categoryId)
         }
       } else {
-        console.error("No product data received")
-        setError("Product not found. Please check the product ID.")
+        setError("Product not found. Please check the link.")
       }
     } catch (err) {
       console.error("Error fetching product details:", err)
-      console.error("Error response:", err.response?.data)
-      console.error("Error status:", err.response?.status)
-
       let errorMessage = "Failed to load product details. "
       if (err.response?.status === 404) {
-        errorMessage = "Product not found. Please check the product ID."
+        errorMessage = "Product not found. Please check the link."
       } else if (err.response?.status === 401) {
         errorMessage = "Authentication required. Please login first."
       } else if (err.response?.data?.msg) {
@@ -178,7 +166,6 @@ const ReviewForm = () => {
       } else if (err.message) {
         errorMessage += err.message
       }
-
       setError(errorMessage)
     } finally {
       setLoading(false)
@@ -227,8 +214,8 @@ const ReviewForm = () => {
       // Check authentication
       if (!isAuthenticated || !user) {
         setError("You must be logged in to submit a review")
-        const redirectPath = routeProductId ? `/product/${routeProductId}/review` : "/review"
-        router.push(`/login?from=${encodeURIComponent(redirectPath)}`)
+        const redirectPath = routeSlug ? `/products/${routeSlug}/review` : "/review"
+        openLoginModal(redirectPath)
         setLoading(false)
         return
       }
@@ -241,8 +228,8 @@ const ReviewForm = () => {
       }
 
       // Category/subcategory are optional - backend will fetch from product if not provided
-      // Only validate if user is manually selecting products (no routeProductId)
-      if (!routeProductId && (!formData.categoryId || !formData.subCategoryId)) {
+      // Only validate if user is manually selecting products (no routeSlug)
+      if (!routeSlug && (!formData.categoryId || !formData.subCategoryId)) {
         setError("Please select category, subcategory, and product")
         setLoading(false)
         return
@@ -299,10 +286,10 @@ const ReviewForm = () => {
 
       // Reset form
       setFormData({
-        categoryId: routeProductId ? formData.categoryId : "",
-        subCategoryId: routeProductId ? formData.subCategoryId : "",
-        productId: routeProductId || "",
-        productName: routeProductId ? formData.productName : "",
+        categoryId: routeSlug ? formData.categoryId : "",
+        subCategoryId: routeSlug ? formData.subCategoryId : "",
+        productId: routeSlug || "",
+        productName: routeSlug ? formData.productName : "",
         userId: "",
         name: "",
         email: "",
@@ -315,8 +302,8 @@ const ReviewForm = () => {
 
       // Redirect to product page after 2 seconds
       setTimeout(() => {
-        if (routeProductId) {
-          router.push(`/product/${routeProductId}`)
+        if (routeSlug) {
+          router.push(`/products/${routeSlug}`)
         } else {
           router.push("/")
         }
@@ -333,13 +320,7 @@ const ReviewForm = () => {
     return (
       <div className="flex gap-2 items-center">
         {[1, 2, 3, 4, 5].map((star) => (
-          <button
-            key={star}
-            type="button"
-            onClick={() => handleRatingChange(star)}
-            className={`text-2xl cursor-pointer transition-colors ${star <= formData.rating ? "text-yellow-400" : "text-gray-300"} hover:text-yellow-400`}
-            style={{ userSelect: "none", background: "none", border: "none", padding: 0 }}
-          >
+          <button key={star} type="button" onClick={() => handleRatingChange(star)} className={`text-2xl cursor-pointer transition-colors ${star <= formData.rating ? "text-yellow-400" : "text-gray-300"} hover:text-yellow-400`} style={{ userSelect: "none", background: "none", border: "none", padding: 0 }}>
             ★
           </button>
         ))}
@@ -371,43 +352,29 @@ const ReviewForm = () => {
         <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
           <h2 className="font-semibold text-blue-900 mb-2">Reviewing Product:</h2>
           <p className="text-gray-700 font-medium">{selectedProduct.name}</p>
-          {selectedProduct.category && (
-            <p className="text-sm text-gray-600 mt-1">
-              Category: {typeof selectedProduct.category === "object" ? selectedProduct.category.name : "N/A"}
-            </p>
-          )}
+          {selectedProduct.category && <p className="text-sm text-gray-600 mt-1">Category: {typeof selectedProduct.category === "object" ? selectedProduct.category.name : "N/A"}</p>}
         </div>
       )}
 
-      {routeProductId && loading && !selectedProduct && (
+      {routeSlug && loading && !selectedProduct && (
         <div className="mb-6 p-4 bg-gray-50 rounded-lg text-center">
           <p className="text-gray-600">Loading product details...</p>
         </div>
       )}
 
-      {error && (
-        <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>
-      )}
+      {error && <div className="mb-4 p-4 bg-red-100 border border-red-400 text-red-700 rounded">{error}</div>}
 
-      {success && (
-        <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">{success}</div>
-      )}
+      {success && <div className="mb-4 p-4 bg-green-100 border border-green-400 text-green-700 rounded">{success}</div>}
 
       <form onSubmit={handleSubmit} className="space-y-6">
         {/* Product Selection - Only show if productId not provided via route */}
-        {!routeProductId && (
+        {!routeSlug && (
           <>
             <div>
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Category <span className="text-red-500">*</span>
               </label>
-              <select
-                name="categoryId"
-                value={formData.categoryId}
-                onChange={handleChange}
-                required
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-              >
+              <select name="categoryId" value={formData.categoryId} onChange={handleChange} required className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <option value="">Select Category</option>
                 {categories.map((cat) => (
                   <option key={cat._id} value={cat._id}>
@@ -421,14 +388,7 @@ const ReviewForm = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Subcategory <span className="text-red-500">*</span>
               </label>
-              <select
-                name="subCategoryId"
-                value={formData.subCategoryId}
-                onChange={handleChange}
-                required
-                disabled={!formData.categoryId}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              >
+              <select name="subCategoryId" value={formData.subCategoryId} onChange={handleChange} required disabled={!formData.categoryId} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100">
                 <option value="">Select Subcategory</option>
                 {subcategories.map((subcat) => (
                   <option key={subcat._id} value={subcat._id}>
@@ -442,14 +402,7 @@ const ReviewForm = () => {
               <label className="block text-sm font-medium text-gray-700 mb-2">
                 Product <span className="text-red-500">*</span>
               </label>
-              <select
-                name="productId"
-                value={formData.productId}
-                onChange={handleChange}
-                required
-                disabled={!formData.subCategoryId}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-              >
+              <select name="productId" value={formData.productId} onChange={handleChange} required disabled={!formData.subCategoryId} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100">
                 <option value="">Select Product</option>
                 {products.map((prod) => (
                   <option key={prod._id} value={prod._id}>
@@ -471,45 +424,20 @@ const ReviewForm = () => {
 
         {/* Name */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Your Name (Optional - will use your account name if not provided)
-          </label>
-          <input
-            type="text"
-            name="name"
-            value={formData.name}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter your name"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">Your Name (Optional - will use your account name if not provided)</label>
+          <input type="text" name="name" value={formData.name} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your name" />
         </div>
 
         {/* Email */}
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-2">
-            Email (Optional - will use your account email if not provided)
-          </label>
-          <input
-            type="email"
-            name="email"
-            value={formData.email}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Enter your email"
-          />
+          <label className="block text-sm font-medium text-gray-700 mb-2">Email (Optional - will use your account email if not provided)</label>
+          <input type="email" name="email" value={formData.email} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Enter your email" />
         </div>
 
         {/* Title (Optional) */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Review Title (Optional)</label>
-          <input
-            type="text"
-            name="title"
-            value={formData.title}
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Give your review a title"
-          />
+          <input type="text" name="title" value={formData.title} onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Give your review a title" />
         </div>
 
         {/* Comment */}
@@ -517,43 +445,21 @@ const ReviewForm = () => {
           <label className="block text-sm font-medium text-gray-700 mb-2">
             Your Review <span className="text-red-500">*</span>
           </label>
-          <textarea
-            name="comment"
-            value={formData.comment}
-            onChange={handleChange}
-            required
-            rows="5"
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-            placeholder="Share your experience with this product"
-          />
+          <textarea name="comment" value={formData.comment} onChange={handleChange} required rows="5" className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" placeholder="Share your experience with this product" />
         </div>
 
         {/* Avatar Upload */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Your Photo (Optional)</label>
-          <input
-            type="file"
-            name="avatar"
-            accept="image/*"
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+          <input type="file" name="avatar" accept="image/*" onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
           {formData.avatar && <p className="mt-2 text-sm text-gray-600">Selected: {formData.avatar.name}</p>}
         </div>
 
         {/* Product Image Upload */}
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-2">Product Photo (Optional)</label>
-          <input
-            type="file"
-            name="productImage"
-            accept="image/*"
-            onChange={handleChange}
-            className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
-          {formData.productImage && (
-            <p className="mt-2 text-sm text-gray-600">Selected: {formData.productImage.name}</p>
-          )}
+          <input type="file" name="productImage" accept="image/*" onChange={handleChange} className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" />
+          {formData.productImage && <p className="mt-2 text-sm text-gray-600">Selected: {formData.productImage.name}</p>}
         </div>
 
         {/* Show logged in user info */}
@@ -567,18 +473,10 @@ const ReviewForm = () => {
 
         {/* Submit Button */}
         <div className="flex gap-4">
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed"
-          >
+          <button type="submit" disabled={loading} className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
             {loading ? "Submitting..." : "Submit Review"}
           </button>
-          <button
-            type="button"
-            onClick={() => router.back()}
-            className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500"
-          >
+          <button type="button" onClick={() => router.back()} className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
             Cancel
           </button>
         </div>

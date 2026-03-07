@@ -56,6 +56,22 @@
     "icon": "MdVerticalAlignBottom"
   },
   {
+    "id": 55,
+    "title": "Footer Setting",
+    "description": "Customize footer appearance: background, title and link colors, font sizes",
+    "link": "/dashboard/footer-settings",
+    "bgColor": "#007bff",
+    "icon": "MdPalette"
+  },
+  {
+    "id": 56,
+    "title": "Full Width Carousel",
+    "description": "Full-width image carousel for the storefront with title, subtitle and link",
+    "link": "/dashboard/frontend",
+    "bgColor": "#007bff",
+    "icon": "MdViewCarousel"
+  },
+  {
     "id": 3,
     "title": "Collar Style Manager",
     "description": "Add/Edit/Delete Collar for the products",

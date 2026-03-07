@@ -1,8 +1,8 @@
 import express from "express"
 import multer from "multer"
-import { createProduct, getAllProducts, getProductById, updateProduct, deleteProduct, restoreProduct, hardDeleteProduct } from "../controllers/product.controller.js"
+import { createProduct, getAllProducts, getProductById, getProductBySlug, updateProduct, deleteProduct, restoreProduct, hardDeleteProduct } from "../controllers/product.controller.js"
 import upload from "../middlewares/productUpload.middleware.js"
-import { resolveTenantFromHeader, requireTenant } from "../middlewares/tenant.middleware.js"
+import { resolveTenant, requireTenant } from "../middlewares/tenant.middleware.js"
 
 const router = express.Router()
 
@@ -30,8 +30,9 @@ const handleUpload = (req, res, next) => {
   })
 }
 
-// Apply tenant resolution middleware to all routes
-router.use(resolveTenantFromHeader)
+// Resolve tenant from X-Website-Id (admin) or from request domain (storefront e.g. localhost:3001)
+// so GET /api/products/by-slug/:slug works without auth or header when storefront calls from same host
+router.use(resolveTenant)
 router.use(requireTenant)
 
 router.post(
@@ -40,6 +41,9 @@ router.post(
   createProduct
 )
 router.get("/", getAllProducts)
+// Storefront: both /api/products/by-slug/:slug and /api/products/slug/:slug (no auth required)
+router.get("/by-slug/:slug", getProductBySlug)
+router.get("/slug/:slug", getProductBySlug)
 router.get("/:id", getProductById)
 router.put("/:id/restore", restoreProduct)
 router.put(

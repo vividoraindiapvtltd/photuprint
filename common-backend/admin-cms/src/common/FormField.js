@@ -153,7 +153,7 @@ const FormField = forwardRef(({
             type="number"
             id={fieldId}
             name={name}
-            value={value || ''}
+            value={value !== undefined && value !== null ? value : ''}
             onChange={handleChange}
             onBlur={handleBlur}
             onFocus={handleFocus}

@@ -30,12 +30,11 @@ const templateSchema = new mongoose.Schema(
     pixelcraftDocument: { type: mongoose.Schema.Types.Mixed, default: null },
     pixelcraftStatus: { type: String, enum: ["draft", "published"], default: "draft" },
     pixelcraftVersion: { type: Number, default: 1 },
-    // Multi-tenant: Website/Tenant reference
+    // Multi-tenant: Website/Tenant reference (indexed via compound schema.index below)
     website: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Website',
       required: true,
-      index: true
     },
   },
   {

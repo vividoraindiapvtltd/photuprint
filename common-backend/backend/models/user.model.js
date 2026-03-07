@@ -4,12 +4,11 @@ import bcrypt from "bcryptjs"
 const userSchema = new mongoose.Schema(
   {
     name: { type: String, required: true },
-    email: { 
-      type: String, 
-      unique: true, 
+    email: {
+      type: String,
       required: true,
       lowercase: true,
-      trim: true 
+      trim: true,
     },
     password: {
       type: String,
@@ -34,13 +33,14 @@ const userSchema = new mongoose.Schema(
     },
     isActive: { type: Boolean, default: true },
     emailVerified: { type: Boolean, default: false },
+    verificationTokenHash: { type: String, default: null, select: false },
+    verificationTokenExpiresAt: { type: Date, default: null, select: false },
     deleted: { type: Boolean, default: false },
     // Multi-tenant: Website/Tenant reference (for customers, optional for admins)
     website: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Website',
       default: null,
-      index: true
     },
     // For super admins and website admins: list of websites they can access
     accessibleWebsites: [{
@@ -158,6 +158,7 @@ userSchema.pre("save", async function (next) {
 })
 
 userSchema.methods.matchPassword = async function (enteredPassword) {
+  if (!enteredPassword || !this.password) return false
   return await bcrypt.compare(enteredPassword, this.password)
 }
 

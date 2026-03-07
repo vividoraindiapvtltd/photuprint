@@ -421,6 +421,16 @@ export default function Products() {
     sleeveType: "",
     printingType: "",
     countryOfOrigin: "",
+    includedComponents: "",
+    productCareInstructions: "",
+    recommendedUsesForProduct: "",
+    reusability: "",
+    shape: "",
+    specialFeature: "",
+    specificUsesForProduct: "",
+    style: "",
+    design: "",
+    occasion: "",
     
     // Pricing & Inventory
     basePrice: "",
@@ -533,21 +543,21 @@ export default function Products() {
         printingTypesRes,
         countriesRes
       ] = await Promise.all([
-        api.get("/categories"),
-        api.get("/brands?showInactive=true&includeDeleted=true"),
-        api.get("/colors?showInactive=true&includeDeleted=true"),
-        api.get("/sizes?showInactive=true&includeDeleted=true"),
-        api.get("/heights?showInactive=true&includeDeleted=true"),
-        api.get("/lengths?showInactive=true&includeDeleted=true"),
-        api.get("/widths?showInactive=true&includeDeleted=true"),
-        api.get("/gst-slabs?showInactive=true&includeDeleted=true"),
-        api.get("/collar-styles?showInactive=true&includeDeleted=true"),
-        api.get("/materials?showInactive=true&includeDeleted=true"),
-        api.get("/patterns?showInactive=true&includeDeleted=true"),
-        api.get("/fit-types?showInactive=true&includeDeleted=true"),
-        api.get("/sleeve-types?showInactive=true&includeDeleted=true"),
-        api.get("/printing-types?showInactive=true&includeDeleted=true"),
-        api.get("/countries?showInactive=true&includeDeleted=true")
+        api.get(`/categories?_t=${Date.now()}`),
+        api.get(`/brands?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/colors?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/sizes?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/heights?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/lengths?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/widths?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/gst-slabs?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/collar-styles?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/materials?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/patterns?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/fit-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/sleeve-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/printing-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/countries?showInactive=true&includeDeleted=true&_t=${Date.now()}`)
       ])
 
       setCategories(categoriesRes.data || [])
@@ -631,7 +641,7 @@ export default function Products() {
       return
     }
     try {
-      const response = await api.get(`/subcategories?categoryId=${categoryId}&showInactive=true&includeDeleted=true`)
+      const response = await api.get(`/subcategories?categoryId=${categoryId}&showInactive=true&includeDeleted=true&_t=${Date.now()}`)
       setSubcategories(response.data || [])
     } catch (err) {
       setSubcategories([])
@@ -869,8 +879,9 @@ export default function Products() {
     
     if (name === "basePrice" || name === "discountPrice") {
       setFormData(prev => {
-        const basePrice = name === "basePrice" ? parseFloat(value) || 0 : parseFloat(prev.basePrice) || 0
-        const discountPrice = name === "discountPrice" ? parseFloat(value) || 0 : parseFloat(prev.discountPrice) || 0
+        const rounded = value === "" || value === null || value === undefined ? "" : Math.round(parseFloat(value))
+        const basePrice = name === "basePrice" ? (rounded === "" ? 0 : rounded) : parseFloat(prev.basePrice) || 0
+        const discountPrice = name === "discountPrice" ? (rounded === "" ? 0 : rounded) : parseFloat(prev.discountPrice) || 0
         
         let discountPercentage = ""
         if (basePrice > 0 && discountPrice > 0 && discountPrice < basePrice) {
@@ -879,7 +890,7 @@ export default function Products() {
         
         return {
           ...prev,
-          [name]: value,
+          [name]: value === "" ? "" : String(rounded),
           discountPercentage: discountPercentage
         }
       })
@@ -980,6 +991,10 @@ export default function Products() {
       ...prev,
       [name]: type === "checkbox" ? checked : value
     }))
+  }
+
+  const handleMultiSelect = (name, valueArray) => {
+    setFormData(prev => ({ ...prev, [name]: Array.isArray(valueArray) ? valueArray : [] }))
   }
 
   const validateFeaturedImage = (file) => {
@@ -1230,6 +1245,16 @@ export default function Products() {
       if (formData.sleeveType) productData.append("sleeveType", formData.sleeveType)
       if (formData.printingType) productData.append("printingType", formData.printingType)
       if (formData.countryOfOrigin) productData.append("countryOfOrigin", formData.countryOfOrigin)
+    productData.append("includedComponents", formData.includedComponents || "")
+    productData.append("productCareInstructions", formData.productCareInstructions || "")
+    productData.append("recommendedUsesForProduct", formData.recommendedUsesForProduct || "")
+    productData.append("reusability", formData.reusability || "")
+    productData.append("shape", formData.shape || "")
+    productData.append("specialFeature", formData.specialFeature || "")
+    productData.append("specificUsesForProduct", formData.specificUsesForProduct || "")
+    productData.append("style", formData.style || "")
+    productData.append("design", formData.design || "")
+    productData.append("occasion", formData.occasion || "")
 
     productData.append("price", formData.basePrice)
     if (formData.discountPrice) productData.append("discountedPrice", formData.discountPrice)
@@ -1590,94 +1615,140 @@ export default function Products() {
     })
   }
 
-  const handleEdit = (product) => {
+  const toOptionId = (v) => (v != null && v !== "" ? String(typeof v === "object" && v !== null && v._id != null ? v._id : v) : "")
+
+  const normalizeProductForForm = (p) => {
+    if (!p) return p
+    const dim = p.dimensions && typeof p.dimensions === "object" ? p.dimensions : {}
+    return {
+      ...p,
+      shortDescription: p.shortDescription ?? "",
+      tags: p.tags ?? "",
+      weight: p.weight != null && p.weight !== "" ? String(p.weight) : "",
+      shippingClass: p.shippingClass != null && p.shippingClass !== "" ? String(p.shippingClass) : "",
+      processingTime: p.processingTime != null && p.processingTime !== "" ? String(p.processingTime) : "",
+      dimensions: {
+        length: dim.length != null && dim.length !== "" ? (typeof dim.length === "object" && dim.length?._id != null ? String(dim.length._id) : String(dim.length)) : "",
+        width: dim.width != null && dim.width !== "" ? (typeof dim.width === "object" && dim.width?._id != null ? String(dim.width._id) : String(dim.width)) : "",
+        height: dim.height != null && dim.height !== "" ? (typeof dim.height === "object" && dim.height?._id != null ? String(dim.height._id) : String(dim.height)) : "",
+      },
+    }
+  }
+
+  const handleEdit = async (product) => {
     setEditingId(product._id)
     prevNameRef.current = product.name || ""
     prevProductTypeRef.current = product.productType || (product.displayMode === "customized" ? "customized" : "standard")
     seoAutoGeneratedRef.current = false
-    
+    let p = normalizeProductForForm(product)
+    let apiProduct = null
+    try {
+      const res = await api.get(`/products/${product._id}?_t=${Date.now()}`)
+      const raw = res.data?.product ?? res.data
+      if (raw && raw._id) {
+        apiProduct = raw
+        p = normalizeProductForForm(raw)
+      }
+    } catch (e) {
+      console.warn("Could not fetch full product, using list data:", e?.message)
+    }
+    const listProduct = normalizeProductForForm(product)
+    const fallback = (key, def = "") => (p[key] !== undefined && p[key] !== null && p[key] !== "" ? p[key] : (listProduct[key] !== undefined && listProduct[key] !== null && listProduct[key] !== "" ? listProduct[key] : def))
+    const fallbackStr = (key, def = "") => String(fallback(key, def) || "")
+
+    // Shipping & fulfillment: prefer values directly from API response so they always load in edit
+    const apiWeight = apiProduct != null && apiProduct.weight != null && apiProduct.weight !== "" ? String(apiProduct.weight) : ""
+    const apiShippingClass = apiProduct?.shippingClass != null && apiProduct.shippingClass !== "" ? String(apiProduct.shippingClass).trim() : ""
+    const apiProcessingTime = apiProduct?.processingTime != null && apiProduct.processingTime !== "" ? String(apiProduct.processingTime) : ""
+    const apiDim = apiProduct?.dimensions && typeof apiProduct.dimensions === "object" ? apiProduct.dimensions : {}
+    const apiDimLength = apiDim.length != null && apiDim.length !== "" ? (typeof apiDim.length === "object" && apiDim.length?._id != null ? String(apiDim.length._id) : String(apiDim.length)) : ""
+    const apiDimWidth = apiDim.width != null && apiDim.width !== "" ? (typeof apiDim.width === "object" && apiDim.width?._id != null ? String(apiDim.width._id) : String(apiDim.width)) : ""
+    const apiDimHeight = apiDim.height != null && apiDim.height !== "" ? (typeof apiDim.height === "object" && apiDim.height?._id != null ? String(apiDim.height._id) : String(apiDim.height)) : ""
+    const apiCollarStyle = apiProduct != null ? toOptionId(apiProduct.collarStyle?._id ?? apiProduct.collarStyle) : ""
+    const apiPattern = apiProduct != null ? toOptionId(apiProduct.pattern?._id ?? apiProduct.pattern) : ""
+    const apiFitType = apiProduct != null ? toOptionId(apiProduct.fitType?._id ?? apiProduct.fitType) : ""
+
     setFormData({
-      name: product.name || "",
-      productType: product.productType || (product.displayMode === "customized" ? "customized" : "standard"),
-      shortDescription: product.shortDescription || "",
-      longDescription: product.description || "",
-      category: product.category?._id || product.category || "",
-      subcategory: product.subcategory?._id || product.subcategory || "",
-      brand: product.brand?._id || product.brand || "",
-      tags: product.tags || "",
-      productStatus: product.productStatus || (product.isActive ? "active" : "draft"),
-      collarStyle: product.collarStyle?._id || product.collarStyle || "",
-      material: product.material?._id || product.material || "",
-      pattern: product.pattern?._id || product.pattern || "",
-      fitType: product.fitType?._id || product.fitType || "",
-      sleeveType: product.sleeveType?._id || product.sleeveType || "",
-      printingType: product.printingType?._id || product.printingType || "",
-      countryOfOrigin: product.countryOfOrigin?._id || product.countryOfOrigin || "",
-      
-      basePrice: product.price || "",
-      discountPrice: product.discountedPrice || "",
-      discountPercentage: product.discountPercentage || (product.price && product.discountedPrice && product.price > product.discountedPrice 
-        ? Math.round(((product.price - product.discountedPrice) / product.price * 100)) 
-        : ""),
-      taxClass: product.taxClass || "",
-      sku: product.sku || "",
-      noOfPcsIncluded: product.noOfPcsIncluded || "",
-      stockManagement: product.stock === -1 ? "unlimited" : "track",
-      quantity: product.stock === -1 ? "" : (product.stock || ""),
-      lowStockThreshold: product.lowStockThreshold || "10",
-      
+      name: p.name || listProduct.name || "",
+      productType: p.productType || (p.displayMode === "customized" ? "customized" : "standard"),
+      shortDescription: fallbackStr("shortDescription"),
+      longDescription: (p.description ?? listProduct.description) ?? "",
+      category: toOptionId(p.category?._id || p.category || listProduct.category?._id || listProduct.category),
+      subcategory: toOptionId(p.subcategory?._id || p.subcategory || listProduct.subcategory?._id || listProduct.subcategory),
+      brand: toOptionId(p.brand?._id || p.brand || listProduct.brand?._id || listProduct.brand),
+      tags: fallbackStr("tags"),
+      productStatus: p.productStatus || (p.isActive ? "active" : "draft"),
+      collarStyle: apiCollarStyle !== "" ? apiCollarStyle : toOptionId(p.collarStyle?._id || p.collarStyle || listProduct.collarStyle?._id || listProduct.collarStyle),
+      material: toOptionId(p.material?._id || p.material || listProduct.material?._id || listProduct.material),
+      pattern: apiPattern !== "" ? apiPattern : toOptionId(p.pattern?._id || p.pattern || listProduct.pattern?._id || listProduct.pattern),
+      fitType: apiFitType !== "" ? apiFitType : toOptionId(p.fitType?._id || p.fitType || listProduct.fitType?._id || listProduct.fitType),
+      sleeveType: toOptionId(p.sleeveType?._id || p.sleeveType),
+      printingType: toOptionId(p.printingType?._id || p.printingType),
+      countryOfOrigin: toOptionId(p.countryOfOrigin?._id || p.countryOfOrigin),
+      includedComponents: (p.includedComponents ?? listProduct.includedComponents) ?? "",
+      productCareInstructions: (p.productCareInstructions ?? listProduct.productCareInstructions) ?? "",
+      recommendedUsesForProduct: (p.recommendedUsesForProduct ?? listProduct.recommendedUsesForProduct) ?? "",
+      reusability: (p.reusability ?? listProduct.reusability) ?? "",
+      shape: (p.shape ?? listProduct.shape) ?? "",
+      specialFeature: (p.specialFeature ?? listProduct.specialFeature) ?? "",
+      specificUsesForProduct: (p.specificUsesForProduct ?? listProduct.specificUsesForProduct) ?? "",
+      style: (p.style ?? listProduct.style) ?? "",
+      design: (p.design ?? listProduct.design) ?? "",
+      occasion: (p.occasion ?? listProduct.occasion) ?? "",
+      basePrice: p.price != null && p.price !== "" ? Math.round(Number(p.price)) : "",
+      discountPrice: p.discountedPrice != null && p.discountedPrice !== "" ? Math.round(Number(p.discountedPrice)) : "",
+      discountPercentage: p.discountPercentage || (p.price && p.discountedPrice && p.price > p.discountedPrice ? Math.round(((p.price - p.discountedPrice) / p.price * 100)) : ""),
+      taxClass: toOptionId(p.taxClass),
+      sku: (p.sku ?? listProduct.sku) ?? "",
+      noOfPcsIncluded: (p.noOfPcsIncluded ?? listProduct.noOfPcsIncluded) ?? "",
+      stockManagement: p.stock === -1 ? "unlimited" : "track",
+      quantity: p.stock === -1 ? "" : (p.stock ?? listProduct.stock ?? ""),
+      lowStockThreshold: (p.lowStockThreshold ?? listProduct.lowStockThreshold) ?? "10",
       featuredImage: null,
       galleryImages: [],
-      existingFeaturedImage: product.mainImage || null,
-      existingGalleryImages: product.images || [],
-      
-      customizationEnabled: product.customizationEnabled || false,
-      textCustomization: product.textCustomization || initialFormData.textCustomization,
-      imageUploadCustomization: product.imageUploadCustomization || initialFormData.imageUploadCustomization,
-      predefinedOptions: product.predefinedOptions || [],
-      livePreviewEnabled: product.livePreviewEnabled || false,
-      
-      weight: product.weight || "",
-      dimensions: product.dimensions || { length: "", width: "", height: "" },
-      shippingClass: product.shippingClass || "",
-      processingTime: product.processingTime || "",
-      madeToOrder: product.madeToOrder !== undefined ? product.madeToOrder : (product.productType === "customized" || product.displayMode === "customized"),
-      
-      seoTitle: product.seo?.seoTitle || product.seoTitle || "",
-      metaDescription: product.seo?.metaDescription || product.metaDescription || "",
-      urlSlug: product.seo?.urlSlug || product.urlSlug || "",
-      index: product.seo?.index !== undefined ? product.seo.index : true,
-      primaryKeyword: product.seo?.primaryKeyword || "",
-      secondaryKeywords: product.seo?.secondaryKeywords || "",
-      openGraphImage: product.seo?.openGraphImage || "",
-      canonicalUrl: product.seo?.canonicalUrl || product.canonicalLink || "",
-      schemaType: product.seo?.schemaType || "Product",
-      customSchema: product.seo?.customSchema || product.jsonLd || "",
-      robotsMeta: product.seo?.robotsMeta || { noimageindex: false, nosnippet: false },
-      
-      selectedTemplates: product.templates?.map(t => typeof t === "object" ? t._id : t) || [],
-      selectedColors: product.colors?.map(c => typeof c === "object" ? c._id : c) || [],
-      selectedSizes: product.sizes?.map(s => typeof s === "object" ? s._id : s) || [],
-      selectedHeights: product.heights?.map(h => typeof h === "object" ? h._id : h) || [],
-      selectedLengths: product.lengths?.map(l => typeof l === "object" ? l._id : l) || [],
+      existingFeaturedImage: p.mainImage || listProduct.mainImage || null,
+      existingGalleryImages: p.images || listProduct.images || [],
+      customizationEnabled: p.customizationEnabled ?? listProduct.customizationEnabled ?? false,
+      textCustomization: p.textCustomization ?? listProduct.textCustomization ?? initialFormData.textCustomization,
+      imageUploadCustomization: p.imageUploadCustomization ?? listProduct.imageUploadCustomization ?? initialFormData.imageUploadCustomization,
+      predefinedOptions: p.predefinedOptions ?? listProduct.predefinedOptions ?? [],
+      livePreviewEnabled: p.livePreviewEnabled ?? listProduct.livePreviewEnabled ?? false,
+      weight: apiWeight !== "" ? apiWeight : fallbackStr("weight"),
+      dimensions: {
+        length: apiDimLength !== "" ? apiDimLength : toOptionId(p.dimensions?.length?._id ?? p.dimensions?.length ?? listProduct.dimensions?.length?._id ?? listProduct.dimensions?.length),
+        width: apiDimWidth !== "" ? apiDimWidth : toOptionId(p.dimensions?.width?._id ?? p.dimensions?.width ?? listProduct.dimensions?.width?._id ?? listProduct.dimensions?.width),
+        height: apiDimHeight !== "" ? apiDimHeight : toOptionId(p.dimensions?.height?._id ?? p.dimensions?.height ?? listProduct.dimensions?.height?._id ?? listProduct.dimensions?.height),
+      },
+      shippingClass: (() => {
+        const raw = (apiShippingClass !== "" ? apiShippingClass : (p.shippingClass != null && p.shippingClass !== "" ? String(p.shippingClass) : (listProduct.shippingClass != null && listProduct.shippingClass !== "" ? String(listProduct.shippingClass) : ""))).trim()
+        const lower = raw.toLowerCase()
+        if (lower === "standard" || lower === "express") return lower
+        return raw || ""
+      })(),
+      processingTime: apiProcessingTime !== "" ? apiProcessingTime : (p.processingTime ?? listProduct.processingTime) ?? "",
+      madeToOrder: p.madeToOrder !== undefined ? p.madeToOrder : (p.productType === "customized" || p.displayMode === "customized"),
+      seoTitle: p.seo?.seoTitle || p.seoTitle || "",
+      metaDescription: p.seo?.metaDescription || p.metaDescription || "",
+      urlSlug: p.seo?.urlSlug || p.urlSlug || "",
+      index: p.seo?.index !== undefined ? p.seo.index : true,
+      primaryKeyword: p.seo?.primaryKeyword || "",
+      secondaryKeywords: p.seo?.secondaryKeywords || "",
+      openGraphImage: p.seo?.openGraphImage || "",
+      canonicalUrl: p.seo?.canonicalUrl || p.canonicalLink || "",
+      schemaType: p.seo?.schemaType || "Product",
+      customSchema: p.seo?.customSchema || p.jsonLd || "",
+      robotsMeta: p.seo?.robotsMeta || { noimageindex: false, nosnippet: false },
+      selectedTemplates: (p.templates || []).map(t => String(typeof t === "object" && t != null && t._id != null ? t._id : t)),
+      selectedColors: (p.colors || []).map(c => String(typeof c === "object" && c != null && c._id != null ? c._id : c)),
+      selectedSizes: (p.sizes || []).map(s => String(typeof s === "object" && s != null && s._id != null ? s._id : s)),
+      selectedHeights: (p.heights || []).map(h => String(typeof h === "object" && h != null && h._id != null ? h._id : h)),
+      selectedLengths: (p.lengths || []).map(l => String(typeof l === "object" && l != null && l._id != null ? l._id : l)),
     })
 
-    const categoryId = product.category?._id || product.category
-    if (categoryId) {
-      fetchSubcategories(categoryId)
-      if (product.productType === "customized" || product.displayMode === "customized") {
-        fetchTemplates(categoryId)
-      }
-    }
-
+    // Subcategories/templates are fetched by useEffect when formData.category (and productType) update
     setActiveTab("details")
     setTimeout(() => {
-      if (formRef.current) {
-        formRef.current.scrollIntoView({ 
-          behavior: 'smooth', 
-          block: 'start' 
-        })
-      }
+      if (formRef.current) formRef.current.scrollIntoView({ behavior: "smooth", block: "start" })
     }, 100)
   }
 
@@ -1884,6 +1955,41 @@ export default function Products() {
     return !!categorySetting
   }, [formData.category, formData.subcategory, variationSettings])
 
+  // Resolve variation setting for current product (subcategory first, then category)
+  const variationSettingForProduct = useMemo(() => {
+    if (!formData.category) return null
+    if (formData.subcategory) {
+      const sub = variationSettings.find(setting =>
+        setting.subcategory &&
+        (setting.subcategory._id === formData.subcategory || setting.subcategory._id?.toString() === formData.subcategory) &&
+        setting.enabled === true && !setting.deleted
+      )
+      if (sub) return sub
+    }
+    return variationSettings.find(setting =>
+      setting.category &&
+      (setting.category._id === formData.category || setting.category._id?.toString() === formData.category) &&
+      !setting.subcategory && setting.enabled === true && !setting.deleted
+    ) || null
+  }, [formData.category, formData.subcategory, variationSettings])
+
+  // Which attributes are required when creating variants (from variation setting basis)
+  const variationRequiredAttributes = useMemo(() => {
+    const basis = variationSettingForProduct?.variationBasis || "size_and_color"
+    if (basis === "color_only") return ["color"]
+    if (basis === "size_only") return ["size"]
+    return ["color", "size"]
+  }, [variationSettingForProduct])
+
+  // Attribute order for variant UI: color_first => [color, size], size_first => [size, color]
+  const variationAttributeOrder = useMemo(() => {
+    const basis = variationSettingForProduct?.variationBasis || "size_and_color"
+    const displayBasis = variationSettingForProduct?.displayBasis || "color_first"
+    if (basis === "color_only") return ["color"]
+    if (basis === "size_only") return ["size"]
+    return displayBasis === "size_first" ? ["size", "color"] : ["color", "size"]
+  }, [variationSettingForProduct])
+
   // Switch away from variations tab if category doesn't support it
   useEffect(() => {
     if (activeTab === "variations" && !categorySupportsVariations) {
@@ -1992,10 +2098,11 @@ export default function Products() {
             </div>
             {/* Product Details Tab */}
             {activeTab === "details" && (
-              <div className="tab-content-enter">
+              <div className="tab-content-enter" key={`details-${editingId || "new"}`}>
                 <ProductDetailsTab
                   formData={formData}
                   handleInputChange={handleInputChange}
+                  handleMultiSelect={handleMultiSelect}
                   categories={categories}
                   subcategories={subcategories}
                   brands={brands}
@@ -2010,6 +2117,9 @@ export default function Products() {
                   lengths={lengths}
                   widths={widths}
                   heights={heights}
+                  colors={colors}
+                  sizes={sizes}
+                  categorySupportsVariations={categorySupportsVariations}
                   getUnitAbbreviation={getUnitAbbreviation}
                 />
               </div>
@@ -2032,6 +2142,8 @@ export default function Products() {
                     productId={editingId}
                     productName={editingId ? (formData.name || "Product") : "Product"}
                     productQuantity={formData.stockManagement === "track" ? (parseInt(formData.quantity) || 0) : -1}
+                    requiredAttributes={variationRequiredAttributes}
+                    attributeOrder={variationAttributeOrder}
                     onVariantsChange={handleVariantsChange}
                     onNextTab={handleMoveToNextTab}
                   />

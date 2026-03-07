@@ -140,7 +140,10 @@ export const createCoupon = async (req, res) => {
       suffix,
       codeGenerationType,
       useSeparator,
-      separatorLength
+      separatorLength,
+      offerType,
+      applicableProductIds,
+      bankName
     } = req.body;
     
     if (!discountType || !discountValue || !expiryDate) {
@@ -230,6 +233,9 @@ export const createCoupon = async (req, res) => {
         });
       }
 
+      const normalizedOfferType = ['cart', 'product_base', 'bank_offer'].includes(offerType) ? offerType : 'cart';
+      const normalizedProductIds = Array.isArray(applicableProductIds) ? applicableProductIds.filter(Boolean) : [];
+
       // Create bulk coupons
       const bulkCoupons = generatedCodes.map(couponCode => ({
         code: couponCode,
@@ -248,6 +254,9 @@ export const createCoupon = async (req, res) => {
         useSeparator: useSeparator || false,
         separatorLength: separatorLength ? Number(separatorLength) : null,
         isActive: isActiveValue,
+        offerType: normalizedOfferType,
+        applicableProductIds: normalizedOfferType === 'product_base' ? normalizedProductIds : [],
+        bankName: normalizedOfferType === 'bank_offer' && bankName ? String(bankName).trim() : null,
         website: req.websiteId // Multi-tenant: Set website
       }));
 
@@ -275,6 +284,9 @@ export const createCoupon = async (req, res) => {
       return res.status(400).json({ msg: 'Coupon code already exists' });
     }
 
+    const normalizedOfferType = ['cart', 'product_base', 'bank_offer'].includes(offerType) ? offerType : 'cart';
+    const normalizedProductIds = Array.isArray(applicableProductIds) ? applicableProductIds.filter(Boolean) : [];
+
     const coupon = new Coupon({
       code: code.trim().toUpperCase(),
       type: 'single',
@@ -285,6 +297,9 @@ export const createCoupon = async (req, res) => {
       startDate: startDateObj,
       expiryDate: expiryDateObj,
       isActive: isActiveValue,
+      offerType: normalizedOfferType,
+      applicableProductIds: normalizedOfferType === 'product_base' ? normalizedProductIds : [],
+      bankName: normalizedOfferType === 'bank_offer' && bankName ? String(bankName).trim() : null,
       website: req.websiteId // Multi-tenant: Set website
     });
 
@@ -325,7 +340,10 @@ export const updateCoupon = async (req, res) => {
       suffix,
       codeGenerationType,
       useSeparator,
-      separatorLength
+      separatorLength,
+      offerType,
+      applicableProductIds,
+      bankName
     } = req.body;
     
     // Check if coupon exists and belongs to the website
@@ -395,6 +413,17 @@ export const updateCoupon = async (req, res) => {
       }
     }
     if (separatorLength !== undefined) coupon.separatorLength = separatorLength ? Number(separatorLength) : null;
+    if (offerType !== undefined && ['cart', 'product_base', 'bank_offer'].includes(offerType)) {
+      coupon.offerType = offerType;
+      if (offerType !== 'product_base') coupon.applicableProductIds = [];
+      if (offerType !== 'bank_offer') coupon.bankName = null;
+    }
+    if (applicableProductIds !== undefined) {
+      coupon.applicableProductIds = Array.isArray(applicableProductIds) ? applicableProductIds.filter(Boolean) : [];
+    }
+    if (bankName !== undefined) {
+      coupon.bankName = coupon.offerType === 'bank_offer' && bankName ? String(bankName).trim() : null;
+    }
     if (used !== undefined) {
       if (typeof used === 'string') {
         coupon.used = used === 'true';

@@ -173,7 +173,7 @@ const SizeManager = () => {
   // Validate size initial for duplicates
   const validateSizeInitial = (initial) => {
     if (!initial || !initial.trim()) {
-      return { isValid: false, error: "Size Initial is required" }
+      return { isValid: true, error: "" }
     }
 
     // Check for duplicate initials only against active, non-deleted sizes (excluding current size being edited)
@@ -664,7 +664,7 @@ const SizeManager = () => {
 
           <div className="makeFlex row gap10">
             <div className="fullWidth">
-              <FormField type="text" name="initial" label="Size Initial" value={formData.initial} onChange={handleChange} placeholder="Enter Size Initial (e.g., S, M, L)" required={true} maxLength={3} />
+              <FormField type="text" name="initial" label="Size Initial (optional)" value={formData.initial} onChange={handleChange} placeholder="Enter Size Initial (e.g., S, M, L)" required={false} maxLength={3} />
             </div>
           </div>
 

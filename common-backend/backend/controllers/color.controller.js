@@ -68,10 +68,6 @@ export const createColor = async (req, res) => {
       return res.status(400).json({ msg: "Color name is required" })
     }
 
-    if (!code || !code.trim()) {
-      return res.status(400).json({ msg: "Color code is required" })
-    }
-
     // Check if color with same name already exists within the same website
     const existingColor = await Color.findOne({
       name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
@@ -92,7 +88,7 @@ export const createColor = async (req, res) => {
 
     const color = new Color({
       name: name.trim(),
-      code: code.trim(),
+      code: (code && typeof code === "string" && code.trim()) ? code.trim() : null,
       image: imageUrl,
       isActive: isActive === "true" ? true : isActive === true ? true : false,
       website: req.websiteId // Multi-tenant: Set website
@@ -158,7 +154,7 @@ export const updateColor = async (req, res) => {
     }
 
     if (code !== undefined) {
-      color.code = code.trim()
+      color.code = (code && typeof code === "string" && code.trim()) ? code.trim() : null
     }
 
     if (isActive !== undefined) {

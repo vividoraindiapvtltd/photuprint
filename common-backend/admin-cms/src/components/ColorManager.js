@@ -17,6 +17,54 @@ import {
   generateEntityColor 
 } from '../common';
 
+// 216 web-safe colors (6 levels per channel: 00, 33, 66, 99, CC, FF) – first row = first 18
+const WEB_SAFE_HEX = (() => {
+  const levels = ["00", "33", "66", "99", "CC", "FF"];
+  const out = [];
+  for (const r of levels) for (const g of levels) for (const b of levels) out.push(`#${r}${g}${b}`);
+  return out;
+})();
+
+// Web-safe hex to display name (for Color Name field when picking from palette)
+const WEB_SAFE_NAMES = {
+  "#000000": "Black", "#003300": "Dark Green", "#006600": "Green", "#009900": "Green", "#00CC00": "Lime", "#00FF00": "Lime",
+  "#330000": "Dark Maroon", "#333300": "Dark Olive", "#336600": "Olive", "#339900": "Olive", "#33CC00": "Lime", "#33FF00": "Lime",
+  "#660000": "Maroon", "#663300": "Brown", "#666600": "Olive", "#669900": "Olive", "#66CC00": "Lime", "#66FF00": "Lime",
+  "#990000": "Red", "#993300": "Orange", "#996600": "Olive", "#999900": "Yellow", "#99CC00": "Lime", "#99FF00": "Lime",
+  "#CC0000": "Red", "#CC3300": "Orange", "#CC6600": "Orange", "#CC9900": "Gold", "#CCCC00": "Yellow", "#CCFF00": "Lime",
+  "#FF0000": "Red", "#FF3300": "Orange", "#FF6600": "Orange", "#FF9900": "Orange", "#FFCC00": "Gold", "#FFFF00": "Yellow",
+  "#000033": "Navy", "#003333": "Teal", "#006633": "Green", "#009933": "Green", "#00CC33": "Green", "#00FF33": "Lime",
+  "#333333": "Gray", "#336633": "Olive", "#339933": "Green", "#33CC33": "Green", "#33FF33": "Lime",
+  "#666633": "Olive", "#669933": "Green", "#66CC33": "Green", "#66FF33": "Lime",
+  "#999933": "Yellow", "#99CC33": "Green", "#99FF33": "Lime",
+  "#CC9933": "Gold", "#CCCC33": "Yellow", "#CCFF33": "Lime",
+  "#FF9933": "Orange", "#FFCC33": "Gold", "#FFFF33": "Yellow",
+  "#000066": "Navy", "#003366": "Navy", "#006666": "Teal", "#009966": "Teal", "#00CC66": "Green", "#00FF66": "Spring Green",
+  "#330066": "Purple", "#333366": "Navy", "#336666": "Teal", "#339966": "Teal", "#33CC66": "Green", "#33FF66": "Spring Green",
+  "#660066": "Purple", "#663366": "Purple", "#666666": "Gray", "#669966": "Gray", "#66CC66": "Green", "#66FF66": "Spring Green",
+  "#990066": "Purple", "#993366": "Brown", "#996666": "Gray", "#999966": "Olive", "#99CC66": "Green", "#99FF66": "Spring Green",
+  "#CC0066": "Red", "#CC3366": "Red", "#CC6666": "Gray", "#CC9966": "Tan", "#CCCC66": "Yellow", "#CCFF66": "Lime",
+  "#FF0066": "Pink", "#FF3366": "Red", "#FF6666": "Red", "#FF9966": "Orange", "#FFCC66": "Gold", "#FFFF66": "Yellow",
+  "#000099": "Navy", "#003399": "Blue", "#006699": "Blue", "#009999": "Cyan", "#00CC99": "Green", "#00FF99": "Spring Green",
+  "#330099": "Purple", "#333399": "Navy", "#336699": "Blue", "#339999": "Teal", "#33CC99": "Green", "#33FF99": "Spring Green",
+  "#660099": "Purple", "#663399": "Purple", "#666699": "Slate", "#669999": "Teal", "#66CC99": "Green", "#66FF99": "Spring Green",
+  "#990099": "Magenta", "#993399": "Purple", "#996699": "Gray", "#999999": "Gray", "#99CC99": "Green", "#99FF99": "Mint",
+  "#CC0099": "Magenta", "#CC3399": "Pink", "#CC6699": "Pink", "#CC9999": "Tan", "#CCCC99": "Beige", "#CCFF99": "Mint",
+  "#FF0099": "Magenta", "#FF3399": "Pink", "#FF6699": "Pink", "#FF9999": "Salmon", "#FFCC99": "Peach", "#FFFF99": "Yellow",
+  "#0000CC": "Blue", "#0033CC": "Blue", "#0066CC": "Blue", "#0099CC": "Blue", "#00CCCC": "Cyan", "#00FFCC": "Cyan",
+  "#3300CC": "Blue", "#3333CC": "Blue", "#3366CC": "Blue", "#3399CC": "Blue", "#33CCCC": "Cyan", "#33FFCC": "Cyan",
+  "#6600CC": "Purple", "#6633CC": "Purple", "#6666CC": "Blue", "#6699CC": "Blue", "#66CCCC": "Cyan", "#66FFCC": "Cyan",
+  "#9900CC": "Purple", "#9933CC": "Purple", "#9966CC": "Purple", "#9999CC": "Gray", "#99CCCC": "Cyan", "#99FFCC": "Mint",
+  "#CC00CC": "Magenta", "#CC33CC": "Magenta", "#CC66CC": "Pink", "#CC99CC": "Pink", "#CCCCCC": "Silver", "#CCFFCC": "Mint",
+  "#FF00CC": "Magenta", "#FF33CC": "Pink", "#FF66CC": "Pink", "#FF99CC": "Pink", "#FFCCCC": "Pink", "#FFFFCC": "Cream",
+  "#0000FF": "Blue", "#0033FF": "Blue", "#0066FF": "Blue", "#0099FF": "Blue", "#00CCFF": "Cyan", "#00FFFF": "Cyan",
+  "#3300FF": "Blue", "#3333FF": "Blue", "#3366FF": "Blue", "#3399FF": "Blue", "#33CCFF": "Cyan", "#33FFFF": "Cyan",
+  "#6600FF": "Blue", "#6633FF": "Blue", "#6666FF": "Blue", "#6699FF": "Blue", "#66CCFF": "Cyan", "#66FFFF": "Cyan",
+  "#9900FF": "Purple", "#9933FF": "Purple", "#9966FF": "Purple", "#9999FF": "Lavender", "#99CCFF": "Light Blue", "#99FFFF": "Cyan",
+  "#CC00FF": "Magenta", "#CC33FF": "Magenta", "#CC66FF": "Purple", "#CC99FF": "Lavender", "#CCCCFF": "Lavender", "#CCFFFF": "Cyan",
+  "#FF00FF": "Magenta", "#FF33FF": "Magenta", "#FF66FF": "Pink", "#FF99FF": "Pink", "#FFCCFF": "Pink", "#FFFFFF": "White",
+};
+
 const ColorManager = () => {
   const [colors, setColors] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -62,6 +110,7 @@ const ColorManager = () => {
   const [formData, setFormData] = useState(initialFormData);
   const [currentImageUrl, setCurrentImageUrl] = useState(null); // Track current image URL separately
   const [searchQuery, setSearchQuery] = useState(""); // Search query state
+  const [colorPaletteOpen, setColorPaletteOpen] = useState(false);
 
   // Validate image dimensions (max 1200x1200px)
   const validateImageDimensions = (file) => {
@@ -305,11 +354,6 @@ const ColorManager = () => {
       return;
     }
 
-    if (!formData.code.trim()) {
-      setError("Color Code is required");
-      return;
-    }
-
     try {
       setLoading(true);
       setSuccess(""); // Clear any existing success message
@@ -324,14 +368,14 @@ const ColorManager = () => {
         // Use FormData for file upload
         colorData = new FormData();
         colorData.append('name', formData.name.trim());
-        colorData.append('code', formData.code.trim());
+        if (formData.code && formData.code.trim()) colorData.append('code', formData.code.trim());
         colorData.append('isActive', formData.isActive ? 'true' : 'false');
         colorData.append('image', formData.image);
       } else {
         // Use JSON for better boolean handling
         colorData = {
           name: formData.name.trim(),
-          code: formData.code.trim(),
+          code: (formData.code && formData.code.trim()) ? formData.code.trim() : null,
           isActive: formData.isActive,
           // If editing and no new image, send null to remove image, or keep existing
           image: editingId && !currentImageUrl ? null : (currentImageUrl || null)
@@ -645,16 +689,83 @@ const ColorManager = () => {
 
           <div className="makeFlex row gap10">
             <div className="fullWidth">
-              <FormField
-                type="text"
-                name="code"
-                label="Color Code"
-                value={formData.code}
-                onChange={handleChange}
-                placeholder="Enter Color Code (e.g., #000000)"
-                required={true}
-                info="Type hex color code manually (e.g., #000000 for black)"
-              />
+              <label className="formLabel font14 fontSemiBold blackText" style={{ display: "block", marginBottom: "6px" }}>Color Code (optional)</label>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: "12px", flexWrap: "nowrap" }}>
+                <div style={{ flexShrink: 0, position: "relative" }}>
+                  <button
+                    type="button"
+                    onClick={() => setColorPaletteOpen((open) => !open)}
+                    title="Open web-safe color palette"
+                    style={{
+                      width: "44px",
+                      height: "38px",
+                      padding: "2px",
+                      border: "1px solid #ced4da",
+                      borderRadius: "6px",
+                      backgroundColor: (formData.code && /^#[0-9A-Fa-f]{6}$/.test(formData.code.trim())) ? formData.code.trim() : "#f0f0f0",
+                      cursor: "pointer",
+                      display: "block",
+                    }}
+                  />
+                  {colorPaletteOpen && (
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: 0,
+                        top: "100%",
+                        zIndex: 1000,
+                        marginTop: "4px",
+                        display: "grid",
+                        gridTemplateColumns: "repeat(18, 12px)",
+                        gap: "2px",
+                        padding: "8px",
+                        border: "1px solid #ced4da",
+                        borderRadius: "6px",
+                        backgroundColor: "#fff",
+                        boxShadow: "0 4px 12px rgba(0,0,0,0.15)",
+                        maxHeight: "160px",
+                        overflow: "auto",
+                      }}
+                    >
+                      {WEB_SAFE_HEX.map((hex) => (
+                        <button
+                          key={hex}
+                          type="button"
+                          onClick={() => {
+                            const name = WEB_SAFE_NAMES[hex] || hex;
+                            setFormData((prev) => ({ ...prev, code: hex, name }));
+                            setColorPaletteOpen(false);
+                          }}
+                          title={`${WEB_SAFE_NAMES[hex] || hex} ${hex}`}
+                          style={{
+                            width: "12px",
+                            height: "12px",
+                            padding: 0,
+                            border: formData.code && formData.code.trim().toUpperCase() === hex ? "2px solid #333" : "1px solid #dee2e6",
+                            borderRadius: "2px",
+                            backgroundColor: hex,
+                            cursor: "pointer",
+                            minWidth: "12px",
+                            minHeight: "12px",
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{ flex: "1", minWidth: "140px" }}>
+                  <FormField
+                    type="text"
+                    name="code"
+                    label=""
+                    value={formData.code}
+                    onChange={handleChange}
+                    placeholder="Or enter hex (e.g., #000000)"
+                    required={false}
+                    info="Click the color box to open web-safe palette; picked color name appears in Color Name"
+                  />
+                </div>
+              </div>
             </div>
           </div>
 

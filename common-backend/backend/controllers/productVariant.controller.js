@@ -249,11 +249,14 @@ export const getProductVariants = async (req, res) => {
       console.log("Sample variant attributes:", JSON.stringify(variantsWithPlainAttributes[0].attributes))
     }
     
-    // Calculate aggregated stats
-    const totalStock = variantsWithPlainAttributes.reduce((sum, v) => sum + (v.stock || 0), 0)
+    // Calculate aggregated stats (exclude unlimited stock variants with stock === -1)
+    const totalStock = variantsWithPlainAttributes.reduce((sum, v) => {
+      if (v.stock === -1) return sum; // Skip unlimited stock
+      return sum + (v.stock || 0);
+    }, 0)
     const activeVariants = variantsWithPlainAttributes.filter(v => v.isActive).length
     const outOfStockVariants = variantsWithPlainAttributes.filter(v => v.isOutOfStock).length
-    const lowStockVariants = variantsWithPlainAttributes.filter(v => v.stock > 0 && v.stock <= (v.lowStockThreshold || 10)).length
+    const lowStockVariants = variantsWithPlainAttributes.filter(v => v.stock !== -1 && v.stock > 0 && v.stock <= (v.lowStockThreshold || 10)).length
     
     res.json({
       variants: variantsWithPlainAttributes,

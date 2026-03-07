@@ -14,41 +14,43 @@ const ProductReviews = ({ productId }) => {
     itemsPerPage: 20,
   })
 
-  useEffect(() => {
-    if (productId) {
-      fetchReviews()
-    }
-  }, [productId])
-
-  const fetchReviews = async (page = 1) => {
+  const fetchReviews = async (page = 1, signal = null) => {
     if (!productId) return
-
     try {
       setLoading(true)
       setError("")
-      const response = await api.get(`/reviews`, {
+      const config = {
         params: {
           productId,
           status: "approved",
           page,
           limit: pagination.itemsPerPage,
         },
-      })
-
+      }
+      if (signal) config.signal = signal
+      const response = await api.get(`/reviews`, config)
       const reviewsData = response.data.reviews || response.data || []
       setReviews(Array.isArray(reviewsData) ? reviewsData : [])
-
       if (response.data.pagination) {
         setPagination(response.data.pagination)
       }
     } catch (err) {
-      console.error("Error fetching reviews:", err)
-      setError("Failed to load reviews")
-      setReviews([])
+      if (err.name !== "CanceledError" && err.code !== "ERR_CANCELED") {
+        console.error("Error fetching reviews:", err)
+        setError("Failed to load reviews")
+        setReviews([])
+      }
     } finally {
       setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (!productId) return
+    const ac = new AbortController()
+    fetchReviews(1, ac.signal).catch(() => {}) // ignore CanceledError when effect cleans up
+    return () => ac.abort()
+  }, [productId])
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= pagination.totalPages) {

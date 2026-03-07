@@ -12,10 +12,15 @@ import { useMemo, useState } from "react";
  * - Save ONLY variableValues (not canvas JSON) to cart/order
  */
 export function UserPersonalizationEditorShell({
+  slug,
   productId,
 }: {
-  productId: string;
+  /** Product slug for URL (e.g. /product/my-slug, /personalize/my-slug). */
+  slug?: string;
+  /** @deprecated Use slug instead for storefront URLs. */
+  productId?: string;
 }) {
+  const identifier = slug ?? productId ?? "";
   const [values, setValues] = useState<Record<string, string>>({
     customer_name: "",
   });
@@ -32,7 +37,7 @@ export function UserPersonalizationEditorShell({
     <div className="mx-auto max-w-5xl">
       <div className="mb-3">
         <div className="text-sm text-gray-500">Personalize product</div>
-        <div className="text-xl font-semibold">{productId}</div>
+        <div className="text-xl font-semibold">{identifier}</div>
       </div>
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">

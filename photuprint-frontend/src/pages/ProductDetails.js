@@ -92,7 +92,7 @@ export default function ProductDetails() {
 
           {/* Submit Review Button */}
           <div className="mt-6">
-            <Link to={`/product/${productId}/review`} className="inline-block px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
+            <Link to={`/products/${productId}/review`} className="inline-block px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
               Write a Review
             </Link>
           </div>

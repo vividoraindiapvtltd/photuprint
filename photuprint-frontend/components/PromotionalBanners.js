@@ -42,23 +42,17 @@ export default function PromotionalBanners() {
 
   return (
     <div className="bg-white py-6">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         {/* Banner Grid - Side by Side */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
           {banners.map((banner, index) => (
-            <Link
-              key={banner.id}
-              href={banner.link}
-              className="relative group overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-all duration-300"
-            >
+            <Link key={banner.id} href={banner.link} className="relative group overflow-hidden rounded-lg shadow-sm hover:shadow-md transition-all duration-300">
               <div className={`${banner.color} h-64 flex items-center justify-center relative`}>
                 {/* Placeholder for banner image */}
                 <div className="absolute inset-0 bg-gradient-to-br from-gray-200 to-gray-300 opacity-30"></div>
                 <div className="relative z-10 text-center p-6 w-full">
                   <h3 className="text-lg font-bold text-gray-900 mb-1 leading-tight">{banner.title}</h3>
-                  {banner.subtitle && (
-                    <p className="text-xs text-gray-600 mt-1">{banner.subtitle}</p>
-                  )}
+                  {banner.subtitle && <p className="text-xs text-gray-600 mt-1">{banner.subtitle}</p>}
                 </div>
                 {/* Hover overlay */}
                 <div className="absolute inset-0 bg-black bg-opacity-0 group-hover:bg-opacity-5 transition-opacity"></div>
@@ -70,14 +64,7 @@ export default function PromotionalBanners() {
         {/* Carousel Dots - Below Banners */}
         <div className="flex justify-center space-x-1.5">
           {banners.map((_, index) => (
-            <button
-              key={index}
-              onClick={() => setCurrentIndex(index)}
-              className={`h-1.5 rounded-full transition-all ${
-                index === currentIndex ? "bg-gray-800 w-8" : "bg-gray-300 w-1.5"
-              }`}
-              aria-label={`Go to banner ${index + 1}`}
-            />
+            <button key={index} onClick={() => setCurrentIndex(index)} className={`h-1.5 rounded-full transition-all ${index === currentIndex ? "bg-gray-800 w-8" : "bg-gray-300 w-1.5"}`} aria-label={`Go to banner ${index + 1}`} />
           ))}
         </div>
       </div>

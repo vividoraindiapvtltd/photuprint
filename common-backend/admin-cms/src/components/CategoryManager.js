@@ -11,6 +11,7 @@ const CategoryManager = () => {
   const initialFormData = {
     name: "",
     description: "",
+    order: 0,
     image: null,
     isActive: false,
   }
@@ -187,6 +188,7 @@ const CategoryManager = () => {
         categoryData = new FormData()
         categoryData.append("name", formData.name.trim())
         categoryData.append("description", formData.description.trim() || "")
+        categoryData.append("order", String(formData.order != null ? formData.order : 0))
         // Convert boolean to string for FormData
         categoryData.append("isActive", formData.isActive ? "true" : "false")
         categoryData.append("image", formData.image)
@@ -197,6 +199,7 @@ const CategoryManager = () => {
         categoryData = {
           name: formData.name.trim(),
           description: formData.description.trim() || "",
+          order: formData.order != null && formData.order !== '' ? Number(formData.order) : 0,
           isActive: formData.isActive,
           // If editing and no new image, send null to remove image, or keep existing
           image: editingId && !currentImageUrl ? null : (currentImageUrl || null)
@@ -295,6 +298,7 @@ const CategoryManager = () => {
       ...initialFormData,
       name: category.name || "",
       description: category.description || "",
+      order: category.order != null ? category.order : 0,
       image: null, // Reset image field for new file selection
       isActive: category.isActive !== undefined ? category.isActive : false,
     })
@@ -703,6 +707,12 @@ const CategoryManager = () => {
 
           <div className="makeFlex row gap10">
             <div className="fullWidth">
+              <FormField type="number" name="order" label="Display Order" value={formData.order != null ? formData.order : ""} onChange={handleChange} placeholder="0" min={0} step={1} info="Lower number appears first on homepage and listing (e.g. 0, 1, 2)" />
+            </div>
+          </div>
+
+          <div className="makeFlex row gap10">
+            <div className="fullWidth">
               <FormField 
                 ref={imageInputRef}
                 type="file" 
@@ -880,6 +890,10 @@ const CategoryManager = () => {
                             <span className="detailLabel font14 fontSemiBold grayText textUppercase">Name:</span>
                             <span className="detailValue font14 blackText appendLeft6">{category.name}</span>
                           </div>
+                          <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
+                            <span className="detailLabel font14 fontSemiBold grayText textUppercase">Display Order:</span>
+                            <span className="detailValue font14 blackText appendLeft6">{category.order != null ? category.order : 0}</span>
+                          </div>
                           {category.description && (
                             <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
                               <span className="detailLabel font14 fontSemiBold grayText textUppercase">Description:</span>
@@ -917,6 +931,7 @@ const CategoryManager = () => {
                         <th className="tableHeader">Image</th>
                         <th className="tableHeader">Category ID</th>
                         <th className="tableHeader">Name</th>
+                        <th className="tableHeader">Order</th>
                         <th className="tableHeader">Description</th>
                         <th className="tableHeader">Status</th>
                         <th className="tableHeader">Created</th>
@@ -948,6 +963,9 @@ const CategoryManager = () => {
                           </td>
                           <td className="tableCell">
                             <span className="brandNameText">{category.name}</span>
+                          </td>
+                          <td className="tableCell">
+                            <span className="brandIdText">{category.order != null ? category.order : 0}</span>
                           </td>
                           <td className="tableCell">
                             <span className="companyNameText" title={category.description}>

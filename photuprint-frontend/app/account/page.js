@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState, Suspense } from "react"
+import { useEffect, useState, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useAuth } from "../../src/context/AuthContext"
 import Header from "../../src/components/Header"
 import api from "../../src/utils/api"
+import { getProductSlug } from "../../src/utils/slugify"
 
 // Tab Components
 function ProfileTab({ profile, onUpdate, loading }) {
@@ -24,7 +25,7 @@ function ProfileTab({ profile, onUpdate, loading }) {
     if (profile) {
       setFormData({
         name: profile.name || "",
-        mobile: profile.mobile || "",
+        mobile: profile.phone || profile.mobile || "",
         dateOfBirth: profile.dateOfBirth ? new Date(profile.dateOfBirth).toISOString().split("T")[0] : "",
         gender: profile.gender || "",
         emailNotifications: profile.emailNotifications ?? true,
@@ -37,19 +38,31 @@ function ProfileTab({ profile, onUpdate, loading }) {
   const handleSave = async () => {
     setSaving(true)
     try {
-      await api.put("/users/profile", formData)
-      onUpdate()
+      const name = formData.name?.trim() || profile?.name || ""
+      const phone = formData.mobile?.trim() || null
+      if (!name) {
+        alert("Name is required")
+        setSaving(false)
+        return
+      }
+      await api.put("/users/profile", { name, phone })
+      await onUpdate()
       setEditing(false)
     } catch (error) {
       console.error("Error updating profile:", error)
-      alert("Failed to update profile")
+      alert(error?.response?.data?.msg || "Failed to update profile")
     } finally {
       setSaving(false)
     }
   }
 
   if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-1/3"></div><div className="h-32 bg-gray-200 rounded"></div></div>
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+      </div>
+    )
   }
 
   return (
@@ -70,11 +83,7 @@ function ProfileTab({ profile, onUpdate, loading }) {
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Full Name</label>
-              {editing ? (
-                <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-              ) : (
-                <p className="text-gray-900">{profile?.name || "-"}</p>
-              )}
+              {editing ? <input type="text" value={formData.name} onChange={(e) => setFormData({ ...formData, name: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" /> : <p className="text-gray-900">{profile?.name || "-"}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Email</label>
@@ -83,19 +92,11 @@ function ProfileTab({ profile, onUpdate, loading }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Mobile Number</label>
-              {editing ? (
-                <input type="tel" value={formData.mobile} onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="10-digit mobile number" />
-              ) : (
-                <p className="text-gray-900">{profile?.mobile || "-"}</p>
-              )}
+              {editing ? <input type="tel" value={formData.mobile} onChange={(e) => setFormData({ ...formData, mobile: e.target.value.replace(/\D/g, "").slice(0, 10) })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" placeholder="10-digit mobile number" /> : <p className="text-gray-900">{profile?.phone || profile?.mobile || "-"}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Date of Birth</label>
-              {editing ? (
-                <input type="date" value={formData.dateOfBirth} onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-              ) : (
-                <p className="text-gray-900">{profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : "-"}</p>
-              )}
+              {editing ? <input type="date" value={formData.dateOfBirth} onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" /> : <p className="text-gray-900">{profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : "-"}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Gender</label>
@@ -146,54 +147,80 @@ function ProfileTab({ profile, onUpdate, loading }) {
         )}
       </div>
 
-      {/* Addresses Section */}
-      <AddressSection addresses={profile?.addresses || []} onUpdate={onUpdate} />
+      {/* Shipping & Billing Address (single address saved via profile) */}
+      <AddressSection profile={profile} onUpdate={onUpdate} />
     </div>
   )
 }
 
-function AddressSection({ addresses, onUpdate }) {
+// Single shipping & billing address saved via PUT /users/profile (backend has one address object)
+function AddressSection({ profile, onUpdate }) {
+  const addr = profile?.address || {}
   const [showForm, setShowForm] = useState(false)
-  const [editingId, setEditingId] = useState(null)
   const [formData, setFormData] = useState({
-    fullName: "",
     addressLine1: "",
     addressLine2: "",
     city: "",
     state: "",
     pincode: "",
+    country: "",
     phone: "",
-    isDefault: false,
   })
   const [saving, setSaving] = useState(false)
 
-  const handleEdit = (address) => {
+  useEffect(() => {
+    const a = profile?.address || {}
+    const street = a.street || ""
+    const parts = street
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
     setFormData({
-      fullName: address.fullName,
-      addressLine1: address.addressLine1,
-      addressLine2: address.addressLine2 || "",
-      city: address.city,
-      state: address.state,
-      pincode: address.pincode,
-      phone: address.phone,
-      isDefault: address.isDefault,
+      addressLine1: parts[0] || "",
+      addressLine2: parts.slice(1).join(", ") || "",
+      city: a.city || "",
+      state: a.state || "",
+      pincode: a.zipCode || "",
+      country: a.country || "",
+      phone: profile?.phone || "",
     })
-    setEditingId(address._id)
+  }, [profile])
+
+  const handleOpenForm = () => {
+    const street = addr.street || ""
+    const parts = street
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean)
+    setFormData({
+      addressLine1: parts[0] || "",
+      addressLine2: parts.slice(1).join(", ") || "",
+      city: addr.city || "",
+      state: addr.state || "",
+      pincode: addr.zipCode || "",
+      country: addr.country || "",
+      phone: profile?.phone || "",
+    })
     setShowForm(true)
   }
 
   const handleSave = async () => {
     setSaving(true)
     try {
-      if (editingId) {
-        await api.put(`/users/addresses/${editingId}`, formData)
-      } else {
-        await api.post("/users/addresses", formData)
-      }
+      const street = [formData.addressLine1, formData.addressLine2].filter(Boolean).join(", ")
+      await api.put("/users/profile", {
+        name: profile?.name,
+        phone: formData.phone?.trim() || null,
+        address: {
+          street: street || null,
+          city: formData.city?.trim() || null,
+          state: formData.state?.trim() || null,
+          zipCode: formData.pincode?.trim() || null,
+          country: formData.country?.trim() || null,
+        },
+      })
       onUpdate()
       setShowForm(false)
-      setEditingId(null)
-      setFormData({ fullName: "", addressLine1: "", addressLine2: "", city: "", state: "", pincode: "", phone: "", isDefault: false })
     } catch (error) {
       console.error("Error saving address:", error)
       alert("Failed to save address")
@@ -202,96 +229,134 @@ function AddressSection({ addresses, onUpdate }) {
     }
   }
 
-  const handleDelete = async (addressId) => {
-    if (!confirm("Are you sure you want to delete this address?")) return
-    try {
-      await api.delete(`/users/addresses/${addressId}`)
-      onUpdate()
-    } catch (error) {
-      console.error("Error deleting address:", error)
-      alert("Failed to delete address")
-    }
-  }
+  const hasAddress = !!(addr.street || addr.city || addr.state || addr.zipCode || addr.country)
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
       <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-        <h3 className="text-lg font-semibold text-gray-900">Saved Addresses</h3>
-        <button onClick={() => { setShowForm(true); setEditingId(null); setFormData({ fullName: "", addressLine1: "", addressLine2: "", city: "", state: "", pincode: "", phone: "", isDefault: false }); }} className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
-          + Add Address
+        <h3 className="text-lg font-semibold text-gray-900">Shipping & Billing Address</h3>
+        <button onClick={handleOpenForm} className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
+          {hasAddress ? "Edit Address" : "+ Add Address"}
         </button>
       </div>
 
       {showForm && (
         <div className="p-6 border-b border-gray-100 bg-gray-50">
-          <h4 className="font-medium text-gray-900 mb-4">{editingId ? "Edit Address" : "Add New Address"}</h4>
+          <h4 className="font-medium text-gray-900 mb-4">{hasAddress ? "Edit Address" : "Add default address"}</h4>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input type="text" placeholder="Full Name" value={formData.fullName} onChange={(e) => setFormData({ ...formData, fullName: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="tel" placeholder="Phone Number" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <input type="tel" placeholder="Phone Number" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "").slice(0, 15) })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <div className="md:col-span-2" />
             <input type="text" placeholder="Address Line 1" value={formData.addressLine1} onChange={(e) => setFormData({ ...formData, addressLine1: e.target.value })} className="md:col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
             <input type="text" placeholder="Address Line 2 (Optional)" value={formData.addressLine2} onChange={(e) => setFormData({ ...formData, addressLine2: e.target.value })} className="md:col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
             <input type="text" placeholder="City" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
             <input type="text" placeholder="State" value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <label className="flex items-center space-x-2">
-              <input type="checkbox" checked={formData.isDefault} onChange={(e) => setFormData({ ...formData, isDefault: e.target.checked })} className="w-4 h-4 text-blue-600 rounded focus:ring-blue-500" />
-              <span className="text-sm text-gray-700">Set as default address</span>
-            </label>
+            <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, "").slice(0, 10) })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+            <input type="text" placeholder="Country" value={formData.country} onChange={(e) => setFormData({ ...formData, country: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
           </div>
           <div className="flex justify-end space-x-3 mt-4">
-            <button onClick={() => { setShowForm(false); setEditingId(null); }} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">Cancel</button>
-            <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">{saving ? "Saving..." : "Save Address"}</button>
+            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+              Cancel
+            </button>
+            <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+              {saving ? "Saving..." : "Save Address"}
+            </button>
           </div>
         </div>
       )}
 
       <div className="p-6">
-        {addresses.length === 0 ? (
-          <p className="text-gray-500 text-center py-8">No saved addresses. Add your first address!</p>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {addresses.map((address) => (
-              <div key={address._id} className={`p-4 border rounded-lg ${address.isDefault ? "border-blue-500 bg-blue-50" : "border-gray-200"}`}>
-                {address.isDefault && <span className="inline-block px-2 py-0.5 text-xs font-medium text-blue-600 bg-blue-100 rounded mb-2">Default</span>}
-                <p className="font-medium text-gray-900">{address.fullName}</p>
-                <p className="text-sm text-gray-600">{address.addressLine1}</p>
-                {address.addressLine2 && <p className="text-sm text-gray-600">{address.addressLine2}</p>}
-                <p className="text-sm text-gray-600">{address.city}, {address.state} - {address.pincode}</p>
-                <p className="text-sm text-gray-600">Phone: {address.phone}</p>
-                <div className="flex space-x-2 mt-3">
-                  <button onClick={() => handleEdit(address)} className="text-sm text-blue-600 hover:text-blue-700">Edit</button>
-                  <button onClick={() => handleDelete(address._id)} className="text-sm text-red-600 hover:text-red-700">Delete</button>
-                </div>
-              </div>
-            ))}
+        {!hasAddress && !showForm ? (
+          <p className="text-gray-500 text-center py-8">No saved address. Add your default shipping and billing address.</p>
+        ) : !showForm ? (
+          <div className="p-4 border border-gray-200 rounded-lg">
+            <p className="font-medium text-gray-900">{profile?.name}</p>
+            <p className="text-sm text-gray-600">{addr.street}</p>
+            <p className="text-sm text-gray-600">
+              {[addr.city, addr.state].filter(Boolean).join(", ")}
+              {addr.zipCode ? ` - ${addr.zipCode}` : ""}
+              {addr.country ? `, ${addr.country}` : ""}
+            </p>
+            <p className="text-sm text-gray-600">Phone: {profile?.phone || "-"}</p>
+            <button onClick={handleOpenForm} className="text-sm text-blue-600 hover:text-blue-700 mt-2">
+              Edit
+            </button>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )
 }
 
-function OrdersTab() {
+// Order status & payment status labels and badge styles (aligned with order API enums)
+const ORDER_STATUS_MAP = {
+  pending: { label: "Pending", class: "bg-amber-100 text-amber-800" },
+  confirmed: { label: "Confirmed", class: "bg-blue-100 text-blue-800" },
+  processing: { label: "Processing", class: "bg-indigo-100 text-indigo-800" },
+  shipped: { label: "Shipped", class: "bg-purple-100 text-purple-800" },
+  delivered: { label: "Delivered", class: "bg-green-100 text-green-800" },
+  cancelled: { label: "Cancelled", class: "bg-red-100 text-red-800" },
+  returned: { label: "Returned", class: "bg-gray-100 text-gray-800" },
+}
+const PAYMENT_STATUS_MAP = {
+  pending: { label: "Pending", class: "bg-amber-100 text-amber-800" },
+  processing: { label: "Processing", class: "bg-blue-100 text-blue-800" },
+  paid: { label: "Paid", class: "bg-green-100 text-green-800" },
+  failed: { label: "Failed", class: "bg-red-100 text-red-800" },
+  refunded: { label: "Refunded", class: "bg-gray-100 text-gray-800" },
+  cancelled: { label: "Cancelled", class: "bg-red-100 text-red-800" },
+}
+
+function OrdersTab({ isAuthenticated, token }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
-
-  useEffect(() => {
-    fetchOrders()
-  }, [])
+  const [cancellingId, setCancellingId] = useState(null)
 
   const fetchOrders = async () => {
+    if (!isAuthenticated || !token) return
     try {
-      const response = await api.get("/users/orders")
+      const response = await api.get("/orders/my-orders")
       setOrders(response.data || [])
     } catch (error) {
+      if (error?.response?.status === 401) {
+        setOrders([])
+      }
       console.error("Error fetching orders:", error)
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    if (!isAuthenticated || !token) {
+      setLoading(false)
+      return
+    }
+    fetchOrders()
+  }, [isAuthenticated, token])
+
+  const handleCancelOrder = async (orderId) => {
+    setCancellingId(orderId)
+    try {
+      await api.post(`/orders/${orderId}/cancel`)
+      await fetchOrders()
+    } catch (err) {
+      const msg = err?.response?.data?.msg || err?.message || "Failed to cancel order"
+      alert(msg)
+    } finally {
+      setCancellingId(null)
+    }
+  }
+
+  const getBaseUrl = () => (typeof window !== "undefined" && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "") : "http://localhost:8080")
+
   if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-1/3"></div><div className="h-32 bg-gray-200 rounded"></div><div className="h-32 bg-gray-200 rounded"></div></div>
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+      </div>
+    )
   }
 
   return (
@@ -305,39 +370,54 @@ function OrdersTab() {
           </svg>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No orders yet</h3>
           <p className="text-gray-500 mb-4">Start shopping to see your orders here!</p>
-          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Browse Products</a>
+          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+            Browse Products
+          </a>
         </div>
       ) : (
         <div className="space-y-4">
-          {orders.map((order) => (
-            <div key={order._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
-              <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
-                <div>
-                  <p className="text-sm text-gray-500">Order #{order._id.slice(-8).toUpperCase()}</p>
-                  <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold text-gray-900">₹{order.amount}</p>
-                  <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${order.paymentStatus === "completed" ? "bg-green-100 text-green-700" : order.paymentStatus === "pending" ? "bg-yellow-100 text-yellow-700" : "bg-gray-100 text-gray-700"}`}>
-                    {order.paymentStatus}
-                  </span>
-                </div>
-              </div>
-              <div className="p-4">
-                {order.products?.map((item, idx) => (
-                  <div key={idx} className="flex items-center space-x-4 py-2">
-                    {item.product?.mainImage && (
-                      <img src={item.product.mainImage.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product.mainImage}`} alt={item.product.name} className="w-16 h-16 object-cover rounded" />
-                    )}
-                    <div className="flex-1">
-                      <p className="font-medium text-gray-900">{item.product?.name || "Product"}</p>
-                      <p className="text-sm text-gray-500">Qty: {item.quantity} × ₹{item.price}</p>
-                    </div>
+          {orders.map((order) => {
+            const orderStatusInfo = ORDER_STATUS_MAP[order.orderStatus] || { label: order.orderStatus, class: "bg-gray-100 text-gray-800" }
+            const paymentStatusInfo = PAYMENT_STATUS_MAP[order.paymentStatus] || { label: order.paymentStatus, class: "bg-gray-100 text-gray-800" }
+            const canCancel = ["pending", "confirmed"].includes(order.orderStatus)
+            return (
+              <div key={order._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                <div className="p-4 bg-gray-50 border-b border-gray-200 flex flex-wrap justify-between items-center gap-2">
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">Order #{order.orderNumber || order._id?.slice(-8).toUpperCase()}</p>
+                    <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString("en-IN", { year: "numeric", month: "long", day: "numeric" })}</p>
                   </div>
-                ))}
+                  <div className="flex flex-wrap items-center gap-2">
+                    <p className="font-semibold text-gray-900">₹{Number(order.totalAmount ?? order.amount ?? 0).toFixed(0)}</p>
+                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${orderStatusInfo.class}`}>{orderStatusInfo.label}</span>
+                    <span className={`inline-block px-2 py-0.5 text-xs font-medium rounded ${paymentStatusInfo.class}`}>{paymentStatusInfo.label}</span>
+                    {canCancel && (
+                      <button type="button" onClick={() => handleCancelOrder(order._id)} disabled={cancellingId === order._id} className="px-3 py-1 text-xs font-medium text-red-700 bg-red-50 rounded hover:bg-red-100 transition-colors disabled:opacity-50">
+                        {cancellingId === order._id ? "Cancelling..." : "Cancel order"}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="p-4">
+                  {order.products?.map((item, idx) => {
+                    const img = item.productImage || item.product?.images?.[0] || item.product?.image
+                    const src = img && (img.startsWith("http") ? img : `${getBaseUrl()}${img.startsWith("/") ? "" : "/"}${img}`)
+                    return (
+                      <div key={idx} className="flex items-center space-x-4 py-2">
+                        {src && <img src={src} alt={item.productName || item.product?.name} className="w-16 h-16 object-cover rounded" />}
+                        <div className="flex-1">
+                          <p className="font-medium text-gray-900">{item.productName || item.product?.name || "Product"}</p>
+                          <p className="text-sm text-gray-500">
+                            Qty: {item.quantity} × ₹{Number(item.price || 0).toFixed(0)}
+                          </p>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -348,32 +428,44 @@ function WishlistTab() {
   const [wishlist, setWishlist] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchWishlist()
-  }, [])
-
   const fetchWishlist = async () => {
     try {
-      const response = await api.get("/users/wishlist")
-      setWishlist(response.data || [])
+      const response = await api.get("/wishlist")
+      const items = response.data?.items ?? []
+      setWishlist(items.map((i) => i.product).filter(Boolean))
     } catch (error) {
-      console.error("Error fetching wishlist:", error)
+      if (error?.response?.status !== 401) console.error("Error fetching wishlist:", error)
+      setWishlist([])
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    fetchWishlist()
+  }, [])
+
   const removeFromWishlist = async (productId) => {
     try {
-      await api.delete(`/users/wishlist/${productId}`)
-      setWishlist(wishlist.filter((p) => p._id !== productId))
+      await api.delete(`/wishlist/${productId}`)
+      setWishlist(wishlist.filter((p) => (p._id || p.id) !== productId))
     } catch (error) {
       console.error("Error removing from wishlist:", error)
     }
   }
 
   if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-1/3"></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div></div></div>
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -387,31 +479,40 @@ function WishlistTab() {
           </svg>
           <h3 className="text-lg font-medium text-gray-900 mb-2">Your wishlist is empty</h3>
           <p className="text-gray-500 mb-4">Save items you love by clicking the heart icon!</p>
-          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Browse Products</a>
+          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+            Browse Products
+          </a>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-          {wishlist.map((product) => (
-            <div key={product._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group">
-              <div className="relative">
-                <a href={`/product/${product._id}`}>
-                  <img src={product.mainImage?.startsWith("http") ? product.mainImage : `http://localhost:8080${product.mainImage}`} alt={product.name} className="w-full h-40 object-cover group-hover:scale-105 transition-transform" />
-                </a>
-                <button onClick={() => removeFromWishlist(product._id)} className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md text-red-500 hover:bg-red-50 transition-colors" title="Remove from wishlist">
-                  <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                  </svg>
-                </button>
-              </div>
-              <div className="p-4">
-                <a href={`/product/${product._id}`} className="font-medium text-gray-900 hover:text-blue-600 line-clamp-2">{product.name}</a>
-                <div className="mt-2 flex items-center space-x-2">
-                  <span className="font-bold text-blue-600">₹{product.discountedPrice || product.price}</span>
-                  {product.discountedPrice && <span className="text-sm text-gray-500 line-through">₹{product.price}</span>}
+          {wishlist.map((product) => {
+            const pid = product._id || product.id
+            const imgSrc = product.mainImage?.startsWith("http") ? product.mainImage : product.mainImage ? `http://localhost:8080${product.mainImage}` : null
+            const slug = getProductSlug(product)
+            return (
+              <div key={pid} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group">
+                <div className="relative">
+                  <a href={slug ? `/products/${slug}` : "/products"}>
+                    <img src={imgSrc || "/placeholder-product.png"} alt={product.name} className="w-full h-40 object-cover group-hover:scale-105 transition-transform" />
+                  </a>
+                  <button onClick={() => removeFromWishlist(pid)} className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md text-red-500 hover:bg-red-50 transition-colors" title="Remove from wishlist">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
+                      <path d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="p-4">
+                  <a href={slug ? `/products/${slug}` : "/products"} className="font-medium text-gray-900 hover:text-blue-600 line-clamp-2">
+                    {product.name}
+                  </a>
+                  <div className="mt-2 flex items-center space-x-2">
+                    <span className="font-bold text-blue-600">₹{product.discountedPrice || product.price}</span>
+                    {product.discountedPrice && <span className="text-sm text-gray-500 line-through">₹{product.price}</span>}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            )
+          })}
         </div>
       )}
     </div>
@@ -428,17 +529,32 @@ function RecentlyViewedTab() {
 
   const fetchRecentlyViewed = async () => {
     try {
-      const response = await api.get("/users/recently-viewed")
-      setItems(response.data || [])
+      const response = await api.get("/recently-viewed-products")
+      const raw = response.data?.items ?? response.data?.products ?? response.data ?? []
+      const list = Array.isArray(raw) ? raw : []
+      // Normalize: backend may return [{ product, viewedAt }] or [{ _id, name, ... }]
+      const items = list.map((item) => (item.product != null ? item : { product: item, viewedAt: item.viewedAt ?? item.updatedAt ?? new Date().toISOString() }))
+      setItems(items)
     } catch (error) {
       console.error("Error fetching recently viewed:", error)
+      setItems([])
     } finally {
       setLoading(false)
     }
   }
 
   if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-1/3"></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div></div></div>
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -453,20 +569,25 @@ function RecentlyViewedTab() {
           </svg>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No recently viewed items</h3>
           <p className="text-gray-500 mb-4">Start browsing to see your recently viewed products!</p>
-          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Browse Products</a>
+          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+            Browse Products
+          </a>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {items.map((item) => (
-            <a key={item._id} href={`/product/${item.product?._id}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
-              <img src={item.product?.mainImage?.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product?.mainImage}`} alt={item.product?.name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
-              <div className="p-3">
-                <p className="font-medium text-gray-900 text-sm line-clamp-2">{item.product?.name}</p>
-                <p className="text-blue-600 font-bold mt-1">₹{item.product?.discountedPrice || item.product?.price}</p>
-                <p className="text-xs text-gray-400 mt-1">Viewed {new Date(item.viewedAt).toLocaleDateString()}</p>
-              </div>
-            </a>
-          ))}
+          {items.map((item) => {
+            const slug = item.product ? getProductSlug(item.product) : ""
+            return (
+              <a key={item._id} href={slug ? `/products/${slug}` : "/products"} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
+                <img src={item.product?.mainImage?.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product?.mainImage}`} alt={item.product?.name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
+                <div className="p-3">
+                  <p className="font-medium text-gray-900 text-sm line-clamp-2">{item.product?.name}</p>
+                  <p className="text-blue-600 font-bold mt-1">₹{item.product?.discountedPrice || item.product?.price}</p>
+                  <p className="text-xs text-gray-400 mt-1">Viewed {new Date(item.viewedAt).toLocaleDateString()}</p>
+                </div>
+              </a>
+            )
+          })}
         </div>
       )}
     </div>
@@ -493,7 +614,17 @@ function RecommendationsTab() {
   }
 
   if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-1/3"></div><div className="grid grid-cols-2 md:grid-cols-4 gap-4"><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div><div className="h-48 bg-gray-200 rounded"></div></div></div>
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+          <div className="h-48 bg-gray-200 rounded"></div>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -508,12 +639,14 @@ function RecommendationsTab() {
           </svg>
           <h3 className="text-lg font-medium text-gray-900 mb-2">No recommendations yet</h3>
           <p className="text-gray-500 mb-4">Browse more products to get personalized recommendations!</p>
-          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">Browse Products</a>
+          <a href="/" className="inline-block px-6 py-3 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 transition-colors">
+            Browse Products
+          </a>
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {recommendations.map((product) => (
-            <a key={product._id} href={`/product/${product._id}`} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
+            <a key={product._id} href={getProductSlug(product) ? `/products/${getProductSlug(product)}` : "/products"} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
               <img src={product.mainImage?.startsWith("http") ? product.mainImage : `http://localhost:8080${product.mainImage}`} alt={product.name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
               <div className="p-3">
                 <p className="font-medium text-gray-900 text-sm line-clamp-2">{product.name}</p>
@@ -530,33 +663,41 @@ function RecommendationsTab() {
   )
 }
 
-function ReturnsTab() {
+function ReturnsTab({ isAuthenticated, token }) {
   const [orders, setOrders] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
-    fetchOrders()
-  }, [])
-
   const fetchOrders = async () => {
+    if (!isAuthenticated || !token) return
     try {
-      const response = await api.get("/users/orders")
-      // Filter for completed orders that are eligible for return (within 30 days)
+      const response = await api.get("/orders/my-orders")
       const thirtyDaysAgo = new Date()
       thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-      const eligibleOrders = (response.data || []).filter(
-        (order) => order.paymentStatus === "completed" && new Date(order.createdAt) > thirtyDaysAgo
-      )
+      const eligibleOrders = (response.data || []).filter((order) => order.orderStatus === "delivered" && order.paymentStatus === "paid" && new Date(order.createdAt) > thirtyDaysAgo && order.orderStatus !== "returned")
       setOrders(eligibleOrders)
     } catch (error) {
+      if (error?.response?.status === 401) setOrders([])
       console.error("Error fetching orders:", error)
     } finally {
       setLoading(false)
     }
   }
 
+  useEffect(() => {
+    if (!isAuthenticated || !token) {
+      setLoading(false)
+      return
+    }
+    fetchOrders()
+  }, [isAuthenticated, token])
+
   if (loading) {
-    return <div className="animate-pulse space-y-4"><div className="h-8 bg-gray-200 rounded w-1/3"></div><div className="h-32 bg-gray-200 rounded"></div></div>
+    return (
+      <div className="animate-pulse space-y-4">
+        <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+        <div className="h-32 bg-gray-200 rounded"></div>
+      </div>
+    )
   }
 
   return (
@@ -578,19 +719,18 @@ function ReturnsTab() {
             <div key={order._id} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
               <div className="p-4 bg-gray-50 border-b border-gray-200 flex justify-between items-center">
                 <div>
-                  <p className="text-sm text-gray-500">Order #{order._id.slice(-8).toUpperCase()}</p>
+                  <p className="text-sm font-medium text-gray-900">Order #{order.orderNumber || order._id?.slice(-8).toUpperCase()}</p>
                   <p className="text-xs text-gray-400">{new Date(order.createdAt).toLocaleDateString()}</p>
                 </div>
-                <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">
-                  Request Return
-                </button>
+                <div className="flex items-center gap-2">
+                  <p className="font-semibold text-gray-900">₹{Number(order.totalAmount ?? 0).toFixed(0)}</p>
+                  <button className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-lg hover:bg-blue-100 transition-colors">Request Return</button>
+                </div>
               </div>
               <div className="p-4">
                 {order.products?.map((item, idx) => (
                   <div key={idx} className="flex items-center space-x-4 py-2">
-                    {item.product?.mainImage && (
-                      <img src={item.product.mainImage.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product.mainImage}`} alt={item.product.name} className="w-12 h-12 object-cover rounded" />
-                    )}
+                    {item.product?.mainImage && <img src={item.product.mainImage.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product.mainImage}`} alt={item.product.name} className="w-12 h-12 object-cover rounded" />}
                     <div className="flex-1">
                       <p className="font-medium text-gray-900 text-sm">{item.product?.name || "Product"}</p>
                       <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
@@ -610,18 +750,36 @@ function ReturnsTab() {
 function AccountPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, user, logout, openLoginModal } = useAuth()
   const [activeTab, setActiveTab] = useState("profile")
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const wasAuthenticated = useRef(false)
+
+  const token = user?.token
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      wasAuthenticated.current = true
+    }
+  }, [isAuthenticated])
 
   useEffect(() => {
     if (!isAuthenticated) {
-      router.push("/login")
+      if (wasAuthenticated.current) {
+        if (typeof window !== "undefined") window.location.replace("/")
+        return
+      }
+      openLoginModal("/account")
+      setLoading(false)
       return
     }
-    fetchProfile()
-  }, [isAuthenticated, router])
+    if (token) {
+      fetchProfile()
+    } else {
+      setLoading(false)
+    }
+  }, [isAuthenticated, token, openLoginModal])
 
   useEffect(() => {
     const tab = searchParams.get("tab")
@@ -632,10 +790,25 @@ function AccountPageContent() {
 
   const fetchProfile = async () => {
     try {
-      const response = await api.get("/users/profile")
-      setProfile(response.data)
+      let response = await api.get("/users/profile").catch((err) => {
+        if (err.response?.status === 403) {
+          return null
+        }
+        throw err
+      })
+      if (!response) {
+        response = await api.get("/users/me")
+      }
+      setProfile(response?.data?.user ?? response?.data)
     } catch (error) {
+      const status = error.response?.status
+      if (status === 401 || status === 403) {
+        logout()
+        if (typeof window !== "undefined") window.location.replace("/")
+        return
+      }
       console.error("Error fetching profile:", error)
+      setProfile(null)
     } finally {
       setLoading(false)
     }
@@ -656,14 +829,21 @@ function AccountPageContent() {
   ]
 
   if (!isAuthenticated) {
-    return null
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="text-center px-4">
+          <p className="text-gray-600 mb-4">Please log in to view your account.</p>
+          <p className="text-sm text-gray-500">The login dialog should be open above. If not, use the LOGIN link in the menu.</p>
+        </div>
+      </div>
+    )
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <Header title="My Account" />
 
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row gap-8">
           {/* Sidebar Navigation */}
           <aside className="lg:w-64 flex-shrink-0">
@@ -671,16 +851,10 @@ function AccountPageContent() {
               {/* User Info */}
               <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white">
                 <div className="flex items-center space-x-3">
-                  {user?.picture ? (
-                    <img src={user.picture} alt={user.name} className="w-12 h-12 rounded-full border-2 border-white/30" />
-                  ) : (
-                    <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-semibold">
-                      {user?.name?.charAt(0).toUpperCase() || "U"}
-                    </div>
-                  )}
+                  {user?.user?.picture ? <img src={user.user.picture} alt={user.user.name} className="w-12 h-12 rounded-full border-2 border-white/30" /> : <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-semibold">{user?.user?.name?.charAt(0).toUpperCase() || "U"}</div>}
                   <div>
-                    <p className="font-semibold">{user?.name}</p>
-                    <p className="text-xs text-white/80">{user?.email}</p>
+                    <p className="font-semibold">{user?.user?.name}</p>
+                    <p className="text-xs text-white/80">{user?.user?.email}</p>
                   </div>
                 </div>
               </div>
@@ -688,11 +862,7 @@ function AccountPageContent() {
               {/* Navigation */}
               <nav className="p-2">
                 {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    onClick={() => handleTabChange(tab.id)}
-                    className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === tab.id ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-50"}`}
-                  >
+                  <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === tab.id ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-50"}`}>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
                     </svg>
@@ -706,11 +876,11 @@ function AccountPageContent() {
           {/* Main Content */}
           <main className="flex-1 min-w-0">
             {activeTab === "profile" && <ProfileTab profile={profile} onUpdate={fetchProfile} loading={loading} />}
-            {activeTab === "orders" && <OrdersTab />}
+            {activeTab === "orders" && <OrdersTab isAuthenticated={isAuthenticated} token={token} />}
             {activeTab === "wishlist" && <WishlistTab />}
             {activeTab === "recently-viewed" && <RecentlyViewedTab />}
             {activeTab === "recommendations" && <RecommendationsTab />}
-            {activeTab === "returns" && <ReturnsTab />}
+            {activeTab === "returns" && <ReturnsTab isAuthenticated={isAuthenticated} token={token} />}
           </main>
         </div>
       </div>
@@ -721,7 +891,13 @@ function AccountPageContent() {
 // Main Export with Suspense
 export default function AccountPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div></div>}>
+    <Suspense
+      fallback={
+        <div className="min-h-screen flex items-center justify-center">
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+        </div>
+      }
+    >
       <AccountPageContent />
     </Suspense>
   )

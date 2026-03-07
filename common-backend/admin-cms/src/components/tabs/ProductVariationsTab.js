@@ -1,6 +1,28 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import api from "../../api/axios";
+import api, { getUploadBaseURL } from "../../api/axios";
 import { AlertMessage, ViewToggle, DeleteConfirmationPopup } from "../../common";
+
+/** Build full URL for variant/product images (uploads or Cloudinary). Uses same base as API. */
+function buildVariantImageUrl(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== "string") return null;
+  const base = getUploadBaseURL();
+  const trimmed = imageUrl.trim();
+  if (!trimmed) return null;
+  if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
+    if (trimmed.includes("/backend/uploads/") || trimmed.includes("/Users/")) {
+      const filename = trimmed.split("/").pop();
+      return `${base}/uploads/${filename}`;
+    }
+    return trimmed;
+  }
+  if (trimmed.includes("/backend/uploads/") || trimmed.includes("/Users/")) {
+    const filename = trimmed.split("/").pop();
+    return `${base}/uploads/${filename}`;
+  }
+  if (trimmed.startsWith("/uploads/")) return `${base}${trimmed}`;
+  if (trimmed.startsWith("uploads/")) return `${base}/${trimmed}`;
+  return `${base}/uploads/${trimmed}`;
+}
 
 /**
  * Image Popup Component
@@ -108,15 +130,17 @@ const CreateVariantsForm = ({
   onCreate,
   loading,
   generatedCount,
-  requiredAttributes = ["color", "size"], // Color first, then Size
+  requiredAttributes = ["color", "size"],
+  attributeOrder: attributeOrderProp,
 }) => {
   // Check if all required attributes have at least one value selected
   const isDisabled = loading || requiredAttributes.some(
     attr => !selectedAttributes[attr]?.length
   );
 
-  // Define attribute order: Color first, then Size, then Material
-  const attributeOrder = ["color", "size", "material"];
+  // Use prop order for display; include material if available. Default: color, size, material
+  const baseOrder = Array.isArray(attributeOrderProp) && attributeOrderProp.length > 0 ? [...attributeOrderProp] : ["color", "size"];
+  const attributeOrder = baseOrder.includes("material") || !availableAttributes.material?.length ? baseOrder : [...baseOrder, "material"];
 
   return (
     <div
@@ -197,10 +221,10 @@ const CreateVariantsForm = ({
           {loading ? "Creating..." : `Generate ${generatedCount} Variant(s)`}
         </button>
 
-        {/* Warning if required attributes are missing */}
+        {/* Warning if required attributes are missing (varies by variation basis) */}
         {isDisabled && !loading && (
           <div style={{ color: "#dc3545", fontSize: "12px", marginTop: "5px" }}>
-            ⚠️ Please select at least one Color and one Size.
+            ⚠️ Please select at least one {requiredAttributes.map(a => a.charAt(0).toUpperCase() + a.slice(1)).join(" and one ")}.
           </div>
         )}
       </div>
@@ -217,34 +241,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
   // Local state for stock input when not in edit mode
   const [localStock, setLocalStock] = useState(variant.stock || 0);
 
-  // Normalize image URLs helper function
-  const normalizeImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    
-    // If it's already a full URL (Cloudinary or localhost), return as is
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      // Check if it's a system path incorrectly formatted
-      if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-        const filename = imageUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
-      }
-      return imageUrl;
-    }
-    
-    // Handle old system paths
-    if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-      const filename = imageUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
-    }
-    
-    // Handle relative paths
-    if (imageUrl.startsWith('/uploads/')) {
-      return `http://localhost:8080${imageUrl}`;
-    }
-    
-    // Relative path without leading slash
-    return `http://localhost:8080/uploads/${imageUrl}`;
-  };
+  const normalizeImageUrl = buildVariantImageUrl;
   const [formData, setFormData] = useState({
     price: variant.price || "",
     stock: variant.stock || 0,
@@ -274,7 +271,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
   useEffect(() => {
     setLocalStock(variant.stock || 0);
   }, [variant.stock, variant._id]);
-  const isLowStock = variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
+  const isLowStock = variant.stock !== -1 && variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
 
   // Handle main/primary image upload
   const handlePrimaryImageChange = async (e) => {
@@ -748,7 +745,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
                   <div style={{ fontSize: "10px", color: "#666", marginBottom: "4px", fontWeight: "500" }}>Main Image:</div>
                   <div style={{ position: "relative", display: "inline-block" }}>
                     <img 
-                      src={variant.primaryImage || variant.image} 
+                      src={normalizeImageUrl(variant.primaryImage || variant.image)} 
                       alt="Primary" 
                       style={{ width: "50px", height: "50px", objectFit: "cover", borderRadius: "4px", border: "1px solid #dee2e6" }}
                     />
@@ -867,48 +864,12 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
   // Image popup state
   const [imagePopup, setImagePopup] = useState({ isOpen: false, imageUrl: null });
 
-  // Normalize image URLs
-  const normalizeImageUrl = (imageUrl) => {
-    if (!imageUrl) return null;
-    
-    // If it's already a full URL (Cloudinary or localhost), return as is
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      // Check if it's a system path incorrectly formatted
-      if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-        const filename = imageUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
-      }
-      return imageUrl;
-    }
-    
-    // Handle old system paths
-    if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-      const filename = imageUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
-    }
-    
-    // Handle relative paths
-    if (imageUrl.startsWith('/uploads/')) {
-      return `http://localhost:8080${imageUrl}`;
-    }
-    
-    // Relative path without leading slash
-    return `http://localhost:8080/uploads/${imageUrl}`;
-  };
+  const normalizeImageUrl = buildVariantImageUrl;
 
   // Normalize variant images - recompute when variant changes
-  // Variants should already be normalized when fetched, but normalize again to be safe
   const normalizedPrimaryImage = useMemo(() => {
     const img = variant.primaryImage || variant.image;
-    if (!img) return null;
-    // If already a full URL, use it directly (already normalized)
-    if (img.startsWith('http://') || img.startsWith('https://')) {
-      return img;
-    }
-    // Otherwise normalize it
-    const normalized = normalizeImageUrl(img);
-    console.log("VariantCard normalizedPrimaryImage - variant._id:", variant._id, "original:", img, "normalized:", normalized);
-    return normalized;
+    return img ? normalizeImageUrl(img) : null;
   }, [variant.primaryImage, variant.image]);
   
   const normalizedImages = useMemo(() => {
@@ -936,7 +897,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
   });
 
   const isEditing = editingId === variant._id;
-  const isLowStock = variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
+  const isLowStock = variant.stock !== -1 && variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
   const isOutOfStock = variant.stock === 0;
 
   // Update formData when entering edit mode or variant changes
@@ -1609,7 +1570,7 @@ const VariantTable = ({ variants, editingId, onEdit, onUpdate, onCancel, onStock
 /**
  * Main Product Variations Component
  */
-const ProductVariationsTab = ({ productId, productName, productQuantity = -1, onVariantsChange, onNextTab }) => {
+const ProductVariationsTab = ({ productId, productName, productQuantity = -1, requiredAttributes = ["color", "size"], attributeOrder: attributeOrderProp, onVariantsChange, onNextTab }) => {
   const [variants, setVariants] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -1641,34 +1602,15 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
 
   const memoizedProductName = useMemo(() => productName || "Product", [productName]);
 
-  // Normalize image URLs helper (shared function)
-  const normalizeImageUrl = useCallback((imageUrl) => {
-    if (!imageUrl) return null;
-    if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-      if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-        const filename = imageUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
-      }
-      return imageUrl;
-    }
-    if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-      const filename = imageUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
-    }
-    if (imageUrl.startsWith('/uploads/')) {
-      return `http://localhost:8080${imageUrl}`;
-    }
-    return `http://localhost:8080/uploads/${imageUrl}`;
-  }, []);
+  const normalizeImageUrl = buildVariantImageUrl;
 
   // Normalize variants helper
   const normalizeVariants = useCallback((variants) => {
     return (variants || []).map(variant => {
-      const normalizedPrimaryImage = normalizeImageUrl(variant.primaryImage || variant.image);
-      const normalizedImages = Array.isArray(variant.images) 
-        ? variant.images.map(img => normalizeImageUrl(img)).filter(Boolean)
+      const normalizedPrimaryImage = buildVariantImageUrl(variant.primaryImage || variant.image);
+      const normalizedImages = Array.isArray(variant.images)
+        ? variant.images.map(img => buildVariantImageUrl(img)).filter(Boolean)
         : [];
-      
       return {
         ...variant,
         primaryImage: normalizedPrimaryImage,
@@ -1676,7 +1618,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
         images: normalizedImages
       };
     });
-  }, [normalizeImageUrl]);
+  }, []);
 
   // Debug: Log when variants change
   useEffect(() => {
@@ -1818,30 +1760,10 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
           return;
         }
         
-        // Normalize image URLs for all variants
-        const normalizeImageUrlLocal = (imageUrl) => {
-          if (!imageUrl) return null;
-          if (imageUrl.startsWith('http://') || imageUrl.startsWith('https://')) {
-            if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-              const filename = imageUrl.split('/').pop();
-              return `http://localhost:8080/uploads/${filename}`;
-            }
-            return imageUrl;
-          }
-          if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
-            const filename = imageUrl.split('/').pop();
-            return `http://localhost:8080/uploads/${filename}`;
-          }
-          if (imageUrl.startsWith('/uploads/')) {
-            return `http://localhost:8080${imageUrl}`;
-          }
-          return `http://localhost:8080/uploads/${imageUrl}`;
-        };
-        
         const normalizedVariants = (response.data.variants || []).map(variant => {
-          const normalizedPrimaryImage = normalizeImageUrlLocal(variant.primaryImage || variant.image);
-          const normalizedImages = Array.isArray(variant.images) 
-            ? variant.images.map(img => normalizeImageUrlLocal(img)).filter(Boolean)
+          const normalizedPrimaryImage = buildVariantImageUrl(variant.primaryImage || variant.image);
+          const normalizedImages = Array.isArray(variant.images)
+            ? variant.images.map(img => buildVariantImageUrl(img)).filter(Boolean)
             : [];
           
           return {
@@ -1957,15 +1879,15 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
     }
   }, [loading]);
 
-  // Generate combinations
+  // Generate combinations from required attributes only (respects variation basis: color_only, size_only, size_and_color)
+  const allowedKeys = Array.isArray(requiredAttributes) && requiredAttributes.length > 0 ? requiredAttributes : ["color", "size"];
   const generatedCombinations = useMemo(() => {
-    const keys = Object.keys(selectedAttributes).filter(k => selectedAttributes[k]?.length);
+    const keys = allowedKeys.filter(k => selectedAttributes[k]?.length > 0);
     if (!keys.length) return [];
     const values = keys.map(k => selectedAttributes[k]);
     const combinations = values.reduce((acc, cur) => acc.flatMap(a => cur.map(v => [...a, v])), [[]]);
-    console.log("Generated combinations:", combinations.length, "from", keys, "attributes");
     return combinations;
-  }, [selectedAttributes]);
+  }, [selectedAttributes, allowedKeys]);
 
   const handleAttributeChange = useCallback((type, values) => {
     console.log(`Attribute changed - ${type}:`, values, "Type:", typeof values, "Is Array:", Array.isArray(values));
@@ -1993,12 +1915,11 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
       setError("");
       setSuccess("");
       
-      // Build attributes object from selectedAttributes
-      // Only include attributes that have values selected
+      // Build attributes object from required attributes only (respects variation basis)
+      const attrKeys = Array.isArray(requiredAttributes) && requiredAttributes.length > 0 ? requiredAttributes : ["color", "size"];
       const attributes = {};
-      Object.keys(selectedAttributes).forEach(key => {
+      attrKeys.forEach(key => {
         if (selectedAttributes[key]?.length > 0) {
-          // Get the actual attribute values (IDs) from selectedAttributes
           attributes[key] = selectedAttributes[key];
         }
       });
@@ -2523,6 +2444,21 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
     }
   };
 
+  // Sort variants by attribute order (color first => group by color then size; size first => group by size then color)
+  const sortedVariants = useMemo(() => {
+    const order = Array.isArray(attributeOrderProp) && attributeOrderProp.length > 0 ? attributeOrderProp : ["color", "size"];
+    return [...variants].sort((a, b) => {
+      const attrsA = a.attributes instanceof Map ? Object.fromEntries(a.attributes) : (a.attributes || {});
+      const attrsB = b.attributes instanceof Map ? Object.fromEntries(b.attributes) : (b.attributes || {});
+      for (const key of order) {
+        const valA = attrsA[key]?.toString?.() ?? attrsA[key] ?? "";
+        const valB = attrsB[key]?.toString?.() ?? attrsB[key] ?? "";
+        if (valA !== valB) return valA.localeCompare(valB, undefined, { numeric: true });
+      }
+      return 0;
+    });
+  }, [variants, attributeOrderProp]);
+
   return (
     <div onKeyDown={handleKeyDown}>
       {error && <AlertMessage type="error" message={error} />}
@@ -2545,6 +2481,8 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
             onCreate={handleCreateVariants}
             loading={loading}
             generatedCount={generatedCombinations.length}
+            requiredAttributes={requiredAttributes}
+            attributeOrder={attributeOrderProp}
           />
 
           {/* View Toggle */}
@@ -2580,7 +2518,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
               {/* Card View */}
               {viewMode === 'card' && (
                 <VariantCardGrid
-                  variants={variants}
+                  variants={sortedVariants}
                   editingId={editingVariantId}
                   onEdit={handleEdit}
                   onUpdate={handleUpdate}
@@ -2596,7 +2534,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, on
               {/* List/Table View */}
               {viewMode === 'list' && (
                 <VariantTable
-                  variants={variants}
+                  variants={sortedVariants}
                   editingId={editingVariantId}
                   onEdit={handleEdit}
                   onUpdate={handleUpdate}

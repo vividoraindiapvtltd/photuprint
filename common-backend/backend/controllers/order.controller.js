@@ -1,6 +1,7 @@
 import Order from '../models/order.model.js';
 import User from '../models/user.model.js';
 import Product from '../models/product.model.js';
+import { scheduleReviewEmail } from "../utils/reviewEmailScheduler.js"
 
 // Get all orders
 export const getOrders = async (req, res) => {
@@ -63,6 +64,30 @@ export const getOrders = async (req, res) => {
     res.status(500).json({ msg: 'Failed to fetch orders' });
   }
 };
+
+// Get current user's orders (for profile / account page)
+export const getMyOrders = async (req, res) => {
+  try {
+    if (!req.websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+    const userId = req.user?.id || req.user?._id
+    if (!userId) {
+      return res.status(401).json({ msg: "Not authorized" })
+    }
+    const orders = await Order.find({
+      user: userId,
+      website: req.websiteId,
+      deleted: false,
+    })
+      .populate("products.product", "name images price")
+      .sort({ createdAt: -1 })
+    res.json(orders)
+  } catch (error) {
+    console.error("Error fetching my orders:", error)
+    res.status(500).json({ msg: "Failed to fetch orders" })
+  }
+}
 
 // Get single order by ID
 export const getOrderById = async (req, res) => {
@@ -210,6 +235,10 @@ export const createOrder = async (req, res) => {
       .populate('user', 'name email phone')
       .populate('products.product', 'name images price')
       .populate('couponId', 'code discountType discountValue');
+
+    // Schedule product review email 1 day after order (non-blocking)
+    const orderObj = populatedOrder?.toObject ? { ...populatedOrder.toObject(), user: populatedOrder.user } : populatedOrder
+    scheduleReviewEmail(orderObj).catch((err) => console.error("[createOrder] Review email schedule error:", err.message))
 
     res.status(201).json(populatedOrder);
   } catch (error) {
@@ -373,6 +402,43 @@ export const updateOrder = async (req, res) => {
     res.status(500).json({ msg: 'Failed to update order' });
   }
 };
+
+// Cancel own order (user can set orderStatus to cancelled if pending or confirmed)
+export const cancelMyOrder = async (req, res) => {
+  try {
+    if (!req.websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+    const userId = req.user?.id || req.user?._id
+    if (!userId) {
+      return res.status(401).json({ msg: "Not authorized" })
+    }
+    const order = await Order.findOne({
+      _id: req.params.id,
+      website: req.websiteId,
+      user: userId,
+      deleted: false,
+    })
+    if (!order) {
+      return res.status(404).json({ msg: "Order not found" })
+    }
+    const allowedToCancel = ["pending", "confirmed"].includes(order.orderStatus)
+    if (!allowedToCancel) {
+      return res.status(400).json({
+        msg: `Order cannot be cancelled. Current status: ${order.orderStatus}. Only pending or confirmed orders can be cancelled.`,
+      })
+    }
+    order.orderStatus = "cancelled"
+    order.paymentStatus = order.paymentStatus === "paid" ? "refunded" : "cancelled"
+    await order.save()
+    const populated = await Order.findById(order._id)
+      .populate("products.product", "name images price")
+    res.json(populated)
+  } catch (error) {
+    console.error("Error cancelling order:", error)
+    res.status(500).json({ msg: "Failed to cancel order" })
+  }
+}
 
 // Delete order (soft delete)
 export const deleteOrder = async (req, res) => {

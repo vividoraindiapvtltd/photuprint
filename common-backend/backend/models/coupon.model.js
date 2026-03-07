@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from "mongoose"
 
 const couponSchema = new mongoose.Schema(
   {
@@ -88,31 +88,44 @@ const couponSchema = new mongoose.Schema(
     // Multi-tenant: Website/Tenant reference
     website: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: 'Website',
+      ref: "Website",
       required: true,
-      index: true
+      index: true,
+    },
+    // Product-specific: when set, coupon applies only when cart contains at least one of these products. Empty = site-wide.
+    applicableProductIds: [
+      {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: "Product",
+        default: undefined,
+      },
+    ],
+    // Bank offer: when true, shown in coupon list. Generic coupons (no applicableProductIds, not bank offer) are apply-able via text box only.
+    isBankOffer: {
+      type: Boolean,
+      default: false,
     },
   },
-  { timestamps: true }
-);
+  { timestamps: true },
+)
 
 // Virtual field to check if coupon is expired
-couponSchema.virtual('isExpired').get(function() {
-  if (!this.expiryDate) return false;
-  return new Date(this.expiryDate) < new Date();
-});
+couponSchema.virtual("isExpired").get(function () {
+  if (!this.expiryDate) return false
+  return new Date(this.expiryDate) < new Date()
+})
 
 // Pre-save hook to automatically set isActive to false if expired
-couponSchema.pre('save', function(next) {
+couponSchema.pre("save", function (next) {
   if (this.expiryDate && new Date(this.expiryDate) < new Date() && this.isActive && !this.deleted) {
-    this.isActive = false;
+    this.isActive = false
   }
-  next();
-});
+  next()
+})
 
 // Compound unique index on code for non-deleted coupons within a website
-couponSchema.index({ code: 1, website: 1 }, { unique: true, partialFilterExpression: { deleted: false } });
-couponSchema.index({ website: 1, deleted: 1, isActive: 1 });
-couponSchema.index({ website: 1, expiryDate: 1 });
+couponSchema.index({ code: 1, website: 1 }, { unique: true, partialFilterExpression: { deleted: false } })
+couponSchema.index({ website: 1, deleted: 1, isActive: 1 })
+couponSchema.index({ website: 1, expiryDate: 1 })
 
-export default mongoose.model("Coupon", couponSchema);
+export default mongoose.model("Coupon", couponSchema)

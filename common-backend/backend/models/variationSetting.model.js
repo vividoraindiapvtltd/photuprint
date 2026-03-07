@@ -27,7 +27,21 @@ const variationSettingSchema = new mongoose.Schema(
       type: Boolean,
       default: true
     },
-    
+
+    // Which attributes define variants: size_and_color (e.g. T-shirts), color_only, size_only
+    variationBasis: {
+      type: String,
+      enum: ["size_and_color", "color_only", "size_only"],
+      default: "size_and_color"
+    },
+
+    // When variationBasis is size_and_color: display/group by "color_first" or "size_first"
+    displayBasis: {
+      type: String,
+      enum: ["color_first", "size_first"],
+      default: "color_first"
+    },
+
     // Multi-tenant: Website reference
     website: {
       type: mongoose.Schema.Types.ObjectId,

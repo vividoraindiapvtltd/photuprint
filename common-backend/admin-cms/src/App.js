@@ -50,6 +50,8 @@ import ImageToVector from "./components/ImageToVector"
 import TestimonialManager from "./components/TestimonialManager"
 import HomepageSectionManager from "./components/HomepageSectionManager"
 import FooterManager from "./components/FooterManager"
+import FooterSetting from "./components/FooterSetting"
+import FrontendCarousel from "./components/FrontendCarousel"
 import ClientManager from "./components/ClientManager"
 import UserAccessManager from "./components/UserAccessManager"
 import Reports from "./pages/Reports"
@@ -186,10 +188,26 @@ export default function App() {
               }
             />
             <Route
+              path="frontend"
+              element={
+                <PrivateRoute>
+                  <FrontendCarousel />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="footer-sections"
               element={
                 <PrivateRoute>
                   <FooterManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="footer-settings"
+              element={
+                <PrivateRoute>
+                  <FooterSetting />
                 </PrivateRoute>
               }
             />

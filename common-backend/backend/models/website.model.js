@@ -7,12 +7,11 @@ const websiteSchema = new mongoose.Schema(
       required: true,
       trim: true
     },
-    domain: { 
-      type: String, 
+    domain: {
+      type: String,
       required: true,
-      unique: true,
       trim: true,
-      lowercase: true
+      lowercase: true,
     },
     description: { 
       type: String, 

@@ -7,24 +7,25 @@ export const dynamic = "force-dynamic"
 
 const FETCH_TIMEOUT_MS = 8000
 
-export async function GET() {
+export async function GET(request) {
   const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
   const websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID
-
-  if (!websiteId) {
-    console.warn("[API Route] Footer sections: NEXT_PUBLIC_WEBSITE_ID not configured")
-    return NextResponse.json({ sections: [] })
-  }
 
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS)
 
+  const headers = { "Content-Type": "application/json" }
+  if (websiteId) {
+    headers["x-website-id"] = websiteId
+  } else {
+    // Fallback: forward host so backend can resolve tenant by domain (e.g. localhost -> first website in dev)
+    const host = request.headers.get("host") || request.headers.get("x-forwarded-host")
+    if (host) headers["x-forwarded-host"] = host
+  }
+
   try {
     const response = await fetch(`${backendUrl}/footer-sections/public`, {
-      headers: {
-        "x-website-id": websiteId,
-        "Content-Type": "application/json",
-      },
+      headers,
       cache: "no-store",
       signal: controller.signal,
     })
@@ -33,11 +34,13 @@ export async function GET() {
     if (!response.ok) {
       const errorText = await response.text()
       console.error("[API Route] Footer sections fetch failed:", response.status, errorText)
-      return NextResponse.json({ sections: [] })
+      return NextResponse.json({ sections: [], theme: {} })
     }
 
     const data = await response.json()
-    return NextResponse.json(data)
+    const sections = Array.isArray(data.sections) ? data.sections : []
+    const theme = data.theme && typeof data.theme === "object" ? data.theme : {}
+    return NextResponse.json({ sections, theme })
   } catch (error) {
     clearTimeout(timeoutId)
     if (error.name === "AbortError") {
@@ -45,6 +48,6 @@ export async function GET() {
     } else {
       console.error("[API Route] Footer sections error:", error.message)
     }
-    return NextResponse.json({ sections: [] })
+    return NextResponse.json({ sections: [], theme: {} })
   }
 }

@@ -20,6 +20,55 @@ function sanitizeHTML(html) {
   }
 }
 
+function parseDimensions(dim) {
+  if (dim == null || dim === "") return { length: null, width: null, height: null }
+  try {
+    const o = typeof dim === "string" ? JSON.parse(dim) : dim
+    return {
+      length: o && (o.length || o.length === "") ? (o.length || null) : null,
+      width: o && (o.width || o.width === "") ? (o.width || null) : null,
+      height: o && (o.height || o.height === "") ? (o.height || null) : null,
+    }
+  } catch {
+    return { length: null, width: null, height: null }
+  }
+}
+
+/** Ensure product has all fields the admin edit form expects (plain object with defaults). */
+function toId(v) {
+  if (v == null || v === "") return null
+  if (typeof v === "object" && v._id != null) return String(v._id)
+  return String(v)
+}
+
+function normalizeProductForEdit(product) {
+  if (!product) return null
+  const doc = product.toObject ? product.toObject() : { ...product }
+  if (doc.shortDescription === undefined) doc.shortDescription = ""
+  if (doc.tags === undefined) doc.tags = ""
+  // Shipping & fulfillment: always expose as strings for edit form
+  if (doc.weight === undefined || doc.weight === null) doc.weight = ""
+  else doc.weight = String(doc.weight)
+  if (doc.shippingClass === undefined || doc.shippingClass === null) doc.shippingClass = ""
+  else {
+    const sc = String(doc.shippingClass).trim()
+    const lower = sc.toLowerCase()
+    doc.shippingClass = (lower === "standard" || lower === "express") ? lower : sc
+  }
+  if (doc.processingTime === undefined || doc.processingTime === null) doc.processingTime = ""
+  else doc.processingTime = String(doc.processingTime)
+  if (!doc.dimensions || typeof doc.dimensions !== "object") doc.dimensions = { length: null, width: null, height: null }
+  doc.dimensions = {
+    length: toId(doc.dimensions.length),
+    width: toId(doc.dimensions.width),
+    height: toId(doc.dimensions.height),
+  }
+  doc.collarStyle = toId(doc.collarStyle)
+  doc.pattern = toId(doc.pattern)
+  doc.fitType = toId(doc.fitType)
+  return doc
+}
+
 console.log("Product controller loaded successfully")
 
 export const createProduct = async (req, res) => {
@@ -126,6 +175,13 @@ export const createProduct = async (req, res) => {
       ...req.body,
       // Sanitize description HTML content
       description: req.body.description ? sanitizeHTML(req.body.description) : req.body.description,
+      shortDescription: req.body.shortDescription != null ? String(req.body.shortDescription) : "",
+      tags: req.body.tags != null ? String(req.body.tags) : "",
+      material: req.body.material && String(req.body.material).trim() ? req.body.material : null,
+      weight: req.body.weight != null && String(req.body.weight).trim() !== "" ? String(req.body.weight) : null,
+      shippingClass: req.body.shippingClass != null ? String(req.body.shippingClass) : "",
+      processingTime: req.body.processingTime != null ? String(req.body.processingTime) : "",
+      dimensions: parseDimensions(req.body.dimensions),
       price: parseFloat(req.body.price),
       discountedPrice: req.body.discountedPrice ? parseFloat(req.body.discountedPrice) : null,
       discountPercentage: req.body.discountPercentage 
@@ -150,6 +206,10 @@ export const createProduct = async (req, res) => {
       templates: Array.isArray(req.body.templates) ? req.body.templates : req.body.templates ? [req.body.templates] : [],
       heights: Array.isArray(req.body.heights) ? req.body.heights : req.body.heights ? [req.body.heights] : [],
       lengths: Array.isArray(req.body.lengths) ? req.body.lengths : req.body.lengths ? [req.body.lengths] : [],
+      taxClass: req.body.taxClass && String(req.body.taxClass).trim() ? req.body.taxClass : null,
+      collarStyle: req.body.collarStyle && String(req.body.collarStyle).trim() ? req.body.collarStyle : null,
+      pattern: req.body.pattern && String(req.body.pattern).trim() ? req.body.pattern : null,
+      fitType: req.body.fitType && String(req.body.fitType).trim() ? req.body.fitType : null,
       // SEO Fields as object
       seo: {
         metaKeywords: req.body.metaKeywords || "",
@@ -170,6 +230,9 @@ export const createProduct = async (req, res) => {
       .populate("category", "name categoryId")
       .populate("subcategory", "name subcategoryId")
       .populate("brand", "name brandId")
+      .populate("collarStyle", "name")
+      .populate("pattern", "name")
+      .populate("fitType", "name")
       .populate("colors", "name code image")
       .populate("sizes", "name dimensions")
       .populate({
@@ -270,6 +333,9 @@ export const getAllProducts = async (req, res) => {
       .populate("category", "name categoryId")
       .populate("subcategory", "name subcategoryId")
       .populate("brand", "name brandId")
+      .populate("collarStyle", "name")
+      .populate("pattern", "name")
+      .populate("fitType", "name")
       .populate("colors", "name code image")
       .populate("sizes", "name dimensions")
       .populate({
@@ -290,11 +356,13 @@ export const getAllProducts = async (req, res) => {
 
     console.log(`Returning ${products.length} products`)
 
+    const normalizedProducts = products.map((p) => normalizeProductForEdit(p))
+
     res.json({
       total,
       page,
       pages: Math.ceil(total / limit),
-      products,
+      products: normalizedProducts,
     })
   } catch (err) {
     console.error("Error in getAllProducts:", err)
@@ -303,9 +371,21 @@ export const getAllProducts = async (req, res) => {
   }
 }
 
+/**
+ * Get product by slug (for storefront URLs like /product/my-product-slug).
+ * Uses same logic as getProductById but expects req.params.slug.
+ */
+export const getProductBySlug = async (req, res) => {
+  if (!req.params.slug) {
+    return res.status(400).json({ msg: "Product slug is required" })
+  }
+  req.params.id = req.params.slug
+  return getProductById(req, res)
+}
+
 export const getProductById = async (req, res) => {
   try {
-    console.log("Fetching product by ID:", req.params.id)
+    console.log("Fetching product by ID or slug:", req.params.id)
 
     if (!req.params.id) {
       return res.status(400).json({ msg: "Product ID is required" })
@@ -330,10 +410,11 @@ export const getProductById = async (req, res) => {
         return res.status(400).json({ msg: "Invalid product ID format" })
       }
     } else {
-      // Search by productId, slug, or other identifier
+      // Search by slug (or productId); scope by website for multi-tenant
       query = {
         $or: [{ productId: req.params.id }, { slug: req.params.id }],
         deleted: { $ne: true },
+        website: req.websiteId,
       }
     }
 
@@ -356,6 +437,9 @@ export const getProductById = async (req, res) => {
         .populate("category", "name categoryId")
         .populate("subcategory", "name subcategoryId")
         .populate("brand", "name brandId")
+        .populate("collarStyle", "name")
+        .populate("pattern", "name")
+        .populate("fitType", "name")
         .populate("colors", "name code image")
         .populate("sizes", "name dimensions")
         .populate({
@@ -378,17 +462,20 @@ export const getProductById = async (req, res) => {
       }
 
       console.log("Product fetched successfully:", product.name)
-      res.json(product)
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate")
+      res.set("Pragma", "no-cache")
+      res.json(normalizeProductForEdit(product))
     } catch (populateError) {
       console.error("Error during populate:", populateError)
       console.error("Populate error stack:", populateError.stack)
-      // If populate fails, return product without populate
       const basicProduct = await Product.findById(productExists._id)
       if (!basicProduct) {
         return res.status(404).json({ msg: "Product not found" })
       }
       console.log("Returning product without full populate due to error")
-      res.json(basicProduct)
+      res.set("Cache-Control", "no-store, no-cache, must-revalidate")
+      res.set("Pragma", "no-cache")
+      res.json(normalizeProductForEdit(basicProduct))
     }
   } catch (err) {
     console.error("Error fetching product by ID:", err)
@@ -451,22 +538,25 @@ export const updateProduct = async (req, res) => {
       }
     }
 
-    // Handle additional images uploads
+    // Handle additional/gallery images uploads (same pattern as main image: check Cloudinary config first)
     let newImageUrls = []
     if (req.files.images && req.files.images.length > 0) {
-      try {
-        const cloudinary = (await import("../utils/cloudinary.js")).default
-        for (const file of req.files.images) {
-          const result = await cloudinary.uploader.upload(file.path, {
-            folder: "photuprint/products",
-          })
-          newImageUrls.push(result.secure_url)
-          removeLocalFile(file.path)
+      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
+      if (isCloudinaryConfigured()) {
+        try {
+          for (const file of req.files.images) {
+            const result = await cloudinary.uploader.upload(file.path, {
+              folder: "photuprint/products",
+            })
+            newImageUrls.push(result.secure_url)
+            removeLocalFile(file.path)
+          }
+          console.log("New additional images uploaded to Cloudinary:", newImageUrls)
+        } catch (uploadError) {
+          console.error("Cloudinary upload failed:", uploadError)
+          newImageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
         }
-        console.log("New additional images uploaded to Cloudinary:", newImageUrls)
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError)
-        // Fallback to local storage
+      } else {
         newImageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
       }
     }
@@ -529,6 +619,17 @@ export const updateProduct = async (req, res) => {
         canonicalLink: req.body.canonicalLink !== undefined ? req.body.canonicalLink : product.seo?.canonicalLink || "",
         jsonLd: req.body.jsonLd !== undefined ? req.body.jsonLd : product.seo?.jsonLd || "",
       },
+      taxClass: req.body.taxClass !== undefined ? (req.body.taxClass && String(req.body.taxClass).trim() ? req.body.taxClass : null) : product.taxClass,
+      collarStyle: req.body.collarStyle !== undefined ? (req.body.collarStyle && String(req.body.collarStyle).trim() ? req.body.collarStyle : null) : product.collarStyle,
+      pattern: req.body.pattern !== undefined ? (req.body.pattern && String(req.body.pattern).trim() ? req.body.pattern : null) : product.pattern,
+      fitType: req.body.fitType !== undefined ? (req.body.fitType && String(req.body.fitType).trim() ? req.body.fitType : null) : product.fitType,
+      shortDescription: req.body.shortDescription !== undefined ? String(req.body.shortDescription || "") : product.shortDescription,
+      tags: req.body.tags !== undefined ? String(req.body.tags || "") : product.tags,
+      material: req.body.material !== undefined ? (req.body.material && String(req.body.material).trim() ? req.body.material : null) : product.material,
+      weight: req.body.weight !== undefined ? (req.body.weight != null && String(req.body.weight).trim() !== "" ? String(req.body.weight) : null) : product.weight,
+      shippingClass: req.body.shippingClass !== undefined ? String(req.body.shippingClass || "") : product.shippingClass,
+      processingTime: req.body.processingTime !== undefined ? String(req.body.processingTime || "") : product.processingTime,
+      dimensions: req.body.dimensions !== undefined ? parseDimensions(req.body.dimensions) : (product.dimensions || { length: null, width: null, height: null }),
     }
 
     // Handle gallery images update
@@ -577,6 +678,9 @@ export const updateProduct = async (req, res) => {
       .populate("category", "name categoryId")
       .populate("subcategory", "name subcategoryId")
       .populate("brand", "name brandId")
+      .populate("collarStyle", "name")
+      .populate("pattern", "name")
+      .populate("fitType", "name")
       .populate("colors", "name code image")
       .populate("sizes", "name dimensions")
       .populate({

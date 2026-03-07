@@ -1,14 +1,12 @@
 import express from 'express';
 import { getDashboardStats } from '../controllers/dashboard.controller.js';
 import { protect, adminOnly } from '../middlewares/auth.middleware.js';
-import { resolveTenant } from '../middlewares/tenant.middleware.js';
+import { resolveTenantFromHeader } from '../middlewares/tenant.middleware.js';
 
 const router = express.Router();
 
-// Apply tenant resolution middleware
-router.use(resolveTenant);
-
-// Get dashboard statistics (admin only)
-router.get('/stats', protect, adminOnly, getDashboardStats);
+// Get dashboard statistics (admin only).
+// Order: protect first so unauthenticated requests get 401 without running tenant resolution.
+router.get('/stats', protect, adminOnly, resolveTenantFromHeader, getDashboardStats);
 
 export default router;

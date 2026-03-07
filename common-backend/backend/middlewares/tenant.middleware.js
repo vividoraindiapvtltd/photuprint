@@ -74,7 +74,14 @@ export const resolveTenantFromHeader = async (req, res, next) => {
         return next();
       }
 
-      // Check if user has access to this website
+      // Storefront customers can place orders on any active website (X-Website-Id = which store they're buying from)
+      if (user.role === 'customer') {
+        req.tenant = website;
+        req.websiteId = website._id;
+        return next();
+      }
+
+      // For editor/other roles: check if they have access to this website
       const hasAccess = 
         user.website?.toString() === websiteId ||
         (user.accessibleWebsites && user.accessibleWebsites.some(w => w.toString() === websiteId));
@@ -120,18 +127,18 @@ export const resolveTenantFromDomain = async (req, res, next) => {
 
     console.log(`Resolving tenant from domain: ${domain}`);
 
-    // For local development: if domain is localhost, try to find a default website or first active website
+    // For local development: if domain is localhost, use first active website (no header needed)
     let website;
     if (domain === 'localhost' || domain === '127.0.0.1') {
-      // In development, try to find the first active website as fallback
-      if (process.env.NODE_ENV === 'development') {
+      // Use first active website when not in production (covers NODE_ENV=development or unset)
+      if (process.env.NODE_ENV !== 'production') {
         website = await Website.findOne({ 
           deleted: false,
           isActive: true
         }).sort({ createdAt: 1 }); // Get the first created website
         
         if (website) {
-          console.log(`Development mode: Using default website ${website.name} for localhost`);
+          console.log(`Localhost: Using default website ${website.name} (${website._id})`);
         }
       }
     }

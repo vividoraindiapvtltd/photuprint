@@ -8,6 +8,8 @@ export const getLengths = async (req, res) => {
       return res.status(400).json({ msg: 'Website context is missing' });
     }
     const lengths = await Length.find({ website: req.websiteId }).sort({ createdAt: -1 });
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.set("Pragma", "no-cache");
     res.json(lengths);
   } catch (err) {
     res.status(500).json({ msg: "Failed to fetch lengths" });

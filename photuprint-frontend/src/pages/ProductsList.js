@@ -1,12 +1,14 @@
 import React, { useEffect, useState } from "react"
-import { Link, useNavigate } from "react-router-dom"
+import Link from "next/link"
+import { useRouter } from "next/router"
 import DOMPurify from "dompurify"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
+import { getProductSlug } from "../utils/slugify"
 
 export default function ProductsList() {
   const { isAuthenticated, user } = useAuth()
-  const navigate = useNavigate()
+  const router = useRouter()
   const [products, setProducts] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -14,14 +16,14 @@ export default function ProductsList() {
   const [filteredProducts, setFilteredProducts] = useState([])
 
   useEffect(() => {
-    // Redirect to login if not authenticated
+    // Redirect to home if not authenticated (login modal can be opened from there)
     if (!isAuthenticated) {
-      navigate("/login", { state: { from: { pathname: "/" } } })
+      router.replace("/")
       return
     }
 
     fetchProducts()
-  }, [isAuthenticated, navigate])
+  }, [isAuthenticated, router])
 
   useEffect(() => {
     // Filter products based on search query
@@ -59,7 +61,7 @@ export default function ProductsList() {
   if (loading) {
     return (
       <div className="min-h-screen bg-gray-50 py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="text-center py-12">
             <div className="inline-block animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             <p className="mt-4 text-gray-600">Loading products...</p>
@@ -71,7 +73,7 @@ export default function ProductsList() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
         {/* Header */}
         <div className="mb-8">
           <div className="flex items-center justify-between mb-4">
@@ -81,11 +83,11 @@ export default function ProductsList() {
             </div>
             <div className="flex items-center gap-4">
               <Link
-                to="/login"
+                href="/"
                 onClick={(e) => {
                   e.preventDefault()
                   localStorage.removeItem("user")
-                  window.location.href = "/login"
+                  window.location.href = "/"
                 }}
                 className="text-gray-600 hover:text-gray-900 text-sm"
               >
@@ -117,6 +119,7 @@ export default function ProductsList() {
             {filteredProducts.map((product) => {
               const productImage = product.images?.[0] || product.image || null
               const productId = product._id || product.id
+              const productSlug = getProductSlug(product)
 
               return (
                 <div key={productId} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow duration-200">
@@ -148,10 +151,10 @@ export default function ProductsList() {
 
                     {/* Action Buttons */}
                     <div className="flex gap-2">
-                      <Link to={`/product/${productId}`} className="flex-1 text-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium">
+                      <Link href={productSlug ? `/products/${productSlug}` : "/products"} className="flex-1 text-center px-4 py-2 bg-gray-100 text-gray-700 rounded-md hover:bg-gray-200 transition-colors text-sm font-medium">
                         View Details
                       </Link>
-                      <Link to={`/product/${productId}/review`} className="flex-1 text-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium">
+                      <Link href={productSlug ? `/products/${productSlug}/review` : "/products"} className="flex-1 text-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm font-medium">
                         Write Review
                       </Link>
                     </div>

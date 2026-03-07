@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
-import api from '../api/axios';
+import api, { getUploadBaseURL } from '../api/axios';
 import { 
   PageHeader, 
   AlertMessage, 
@@ -36,6 +36,10 @@ const CouponManager = () => {
     expiryDate: "",
     endTime: "",
     isActive: false,
+    // Offer type: cart, product_base, bank_offer
+    offerType: "cart",
+    applicableProductIds: [],
+    bankName: "",
     // Bulk coupon generation fields
     numberOfCodes: "",
     codeLength: "",
@@ -47,6 +51,14 @@ const CouponManager = () => {
   };
 
   const [formData, setFormData] = useState(initialFormData);
+  const [categories, setCategories] = useState([]);
+  const [subcategories, setSubcategories] = useState([]);
+  const [productsForSelection, setProductsForSelection] = useState([]);
+  const [applicableCategoryId, setApplicableCategoryId] = useState("");
+  const [applicableSubcategoryId, setApplicableSubcategoryId] = useState("");
+  const [productsLoading, setProductsLoading] = useState(false);
+  const [subcategoriesLoading, setSubcategoriesLoading] = useState(false);
+  const [selectedProductDetails, setSelectedProductDetails] = useState({}); // { [productId]: { name, imageUrl } } for selected IDs not in current list
   const [searchQuery, setSearchQuery] = useState(""); // Search query state
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'inactive', 'deleted'
   
@@ -172,7 +184,10 @@ const CouponManager = () => {
         minPurchase: formData.minPurchase ? Number(formData.minPurchase) : 0,
         startDate: startDateValue,
         expiryDate: expiryDateValue,
-        isActive: formData.isActive
+        isActive: formData.isActive,
+        offerType: formData.offerType || "cart",
+        applicableProductIds: formData.offerType === "product_base" && Array.isArray(formData.applicableProductIds) ? formData.applicableProductIds : [],
+        bankName: formData.offerType === "bank_offer" && formData.bankName ? String(formData.bankName).trim() : null
       };
 
       // Add single coupon specific fields
@@ -338,6 +353,9 @@ const CouponManager = () => {
       expiryDate: formatDateForInput(coupon.expiryDate),
       endTime: coupon.expiryDate ? formatTimeForInput(coupon.expiryDate) : "",
       isActive: coupon.isActive !== undefined ? coupon.isActive : false,
+      offerType: coupon.offerType || "cart",
+      applicableProductIds: Array.isArray(coupon.applicableProductIds) ? coupon.applicableProductIds.map(id => (typeof id === 'object' && id?._id ? id._id : id)) : [],
+      bankName: coupon.bankName || "",
       // Bulk coupon fields
       numberOfCodes: coupon.numberOfCodes?.toString() || "",
       codeLength: coupon.codeLength?.toString() || "",
@@ -508,6 +526,9 @@ const CouponManager = () => {
         expiryDate: coupon.expiryDate,
         isActive: true,
         deleted: false,
+        offerType: coupon.offerType || "cart",
+        applicableProductIds: coupon.applicableProductIds || [],
+        bankName: coupon.bankName || null,
         // Bulk coupon fields
         numberOfCodes: coupon.numberOfCodes || null,
         codeLength: coupon.codeLength || null,
@@ -563,6 +584,145 @@ const CouponManager = () => {
     fetchCoupons();
   }, []);
 
+  // Fetch categories when product_base is selected
+  const fetchCategories = useCallback(async () => {
+    try {
+      const response = await api.get('/categories');
+      setCategories(Array.isArray(response.data) ? response.data : []);
+    } catch (err) {
+      console.error('Error fetching categories for coupon:', err);
+      setCategories([]);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (formData.offerType === 'product_base') {
+      fetchCategories();
+    } else {
+      setCategories([]);
+      setSubcategories([]);
+      setProductsForSelection([]);
+      setApplicableCategoryId('');
+      setApplicableSubcategoryId('');
+      setSelectedProductDetails({});
+    }
+  }, [formData.offerType, fetchCategories]);
+
+  useEffect(() => {
+    if (formData.offerType !== "product_base") {
+      setSelectedProductDetails({});
+      return;
+    }
+    const ids = formData.applicableProductIds || [];
+    if (ids.length === 0) {
+      setSelectedProductDetails({});
+      return;
+    }
+    setSelectedProductDetails((prev) => {
+      const set = new Set(ids.map(String));
+      return Object.fromEntries(Object.entries(prev).filter(([k]) => set.has(k)));
+    });
+  }, [formData.offerType, formData.applicableProductIds]);
+
+  // Fetch subcategories when category is selected
+  useEffect(() => {
+    if (formData.offerType !== 'product_base' || !applicableCategoryId) {
+      setSubcategories([]);
+      setApplicableSubcategoryId('');
+      setProductsForSelection([]);
+      return;
+    }
+    let cancelled = false;
+    setSubcategoriesLoading(true);
+    setSubcategories([]);
+    setApplicableSubcategoryId('');
+    setProductsForSelection([]);
+    api.get(`/subcategories?categoryId=${applicableCategoryId}&showInactive=true&includeDeleted=false&_t=${Date.now()}`)
+      .then((res) => {
+        if (!cancelled) setSubcategories(Array.isArray(res.data) ? res.data : []);
+      })
+      .catch(() => { if (!cancelled) setSubcategories([]); })
+      .finally(() => { if (!cancelled) setSubcategoriesLoading(false); });
+    return () => { cancelled = true; };
+  }, [formData.offerType, applicableCategoryId]);
+
+  // Fetch products when subcategory is selected
+  useEffect(() => {
+    if (formData.offerType !== 'product_base' || !applicableSubcategoryId) {
+      setProductsForSelection([]);
+      return;
+    }
+    let cancelled = false;
+    setProductsLoading(true);
+    api.get(`/products?subCategoryId=${applicableSubcategoryId}&showInactive=true&includeDeleted=false&limit=500&_t=${Date.now()}`)
+      .then((res) => {
+        const list = res.data?.products ?? (Array.isArray(res.data) ? res.data : res.data?.data ?? []);
+        if (!cancelled) setProductsForSelection(Array.isArray(list) ? list : []);
+      })
+      .catch(() => { if (!cancelled) setProductsForSelection([]); })
+      .finally(() => { if (!cancelled) setProductsLoading(false); });
+    return () => { cancelled = true; };
+  }, [formData.offerType, applicableSubcategoryId]);
+
+  const handleApplicableProductToggle = useCallback((productId, checked) => {
+    setFormData((prev) => {
+      const ids = Array.isArray(prev.applicableProductIds) ? [...prev.applicableProductIds] : [];
+      const set = new Set(ids.map(String));
+      if (checked) set.add(String(productId));
+      else set.delete(String(productId));
+      return { ...prev, applicableProductIds: Array.from(set) };
+    });
+  }, []);
+
+  const handleRemoveApplicableProduct = useCallback((productId) => {
+    setFormData((prev) => {
+      const ids = (prev.applicableProductIds || []).filter((id) => String(id) !== String(productId));
+      return { ...prev, applicableProductIds: ids };
+    });
+  }, []);
+
+  const getProductImageUrl = (p) => {
+    const url = p.mainImage || (p.images && p.images[0]) || null;
+    if (!url) return null;
+    if (typeof url === "string" && url.startsWith("http")) return url;
+    const base = getUploadBaseURL();
+    return url.startsWith("/") ? base + url : base + "/" + url;
+  };
+
+  // Resolve name and image for a product id (from current list or fetched cache)
+  const getSelectedProductDisplay = useCallback((productId) => {
+    const idStr = String(productId);
+    const fromList = productsForSelection.find((p) => String(p._id) === idStr);
+    if (fromList) return { name: fromList.name || fromList.title || idStr, imageUrl: getProductImageUrl(fromList) };
+    const cached = selectedProductDetails[idStr];
+    if (cached) return { name: cached.name, imageUrl: cached.imageUrl };
+    return { name: null, imageUrl: null }; // loading or unknown
+  }, [productsForSelection, selectedProductDetails]);
+
+  // Fetch product details for selected IDs we don't have (e.g. from other subcategories or edit mode)
+  useEffect(() => {
+    const ids = formData.offerType !== "product_base" ? [] : (formData.applicableProductIds || []);
+    const idSet = new Set(ids.map(String));
+    const inCurrentList = new Set(productsForSelection.map((p) => String(p._id)));
+    const missing = ids.filter((id) => !inCurrentList.has(String(id)) && !selectedProductDetails[String(id)]);
+    if (missing.length === 0) return;
+    let cancelled = false;
+    const fetchOne = async (id) => {
+      try {
+        const res = await api.get(`/products/${id}?_t=${Date.now()}`);
+        const p = res.data;
+        if (!p || cancelled) return;
+        const name = p.name || p.title || id;
+        const imageUrl = getProductImageUrl(p);
+        setSelectedProductDetails((prev) => ({ ...prev, [String(id)]: { name, imageUrl } }));
+      } catch {
+        if (!cancelled) setSelectedProductDetails((prev) => ({ ...prev, [String(id)]: { name: id, imageUrl: null } }));
+      }
+    };
+    missing.forEach(fetchOne);
+    return () => { cancelled = true; };
+  }, [formData.offerType, formData.applicableProductIds, productsForSelection, selectedProductDetails]);
+
   // Filter coupons based on search query and status
   const filteredCoupons = useMemo(() => {
     let filtered = coupons;
@@ -573,7 +733,9 @@ const CouponManager = () => {
       filtered = filtered.filter(coupon => 
         coupon.code.toLowerCase().includes(query) ||
         coupon.discountType.toLowerCase().includes(query) ||
-        coupon.discountValue.toString().includes(query)
+        coupon.discountValue.toString().includes(query) ||
+        (coupon.offerType && coupon.offerType.toLowerCase().includes(query)) ||
+        (coupon.bankName && coupon.bankName.toLowerCase().includes(query))
       );
     }
     
@@ -837,6 +999,156 @@ const CouponManager = () => {
               />
             </div>
           </div>
+
+          <div className="makeFlex row gap10">
+            <div className="fullWidth">
+              <FormField
+                type="select"
+                name="offerType"
+                label="Offer Type"
+                value={formData.offerType}
+                onChange={handleChange}
+                required={true}
+                options={[
+                  { value: "cart", label: "Cart (entire order)" },
+                  { value: "product_base", label: "Product base" },
+                  { value: "bank_offer", label: "Bank offer" },
+                ]}
+                info="Cart: applies to entire order. Product base: applies to selected products only. Bank offer: tied to a bank promotion."
+              />
+            </div>
+          </div>
+
+          {formData.offerType === "product_base" && (
+            <>
+              <div className="makeFlex row gap10 appendBottom16">
+                <div className="fullWidth">
+                  <FormField
+                    type="select"
+                    label="Category"
+                    name="applicableCategoryId"
+                    value={applicableCategoryId}
+                    onChange={(e) => setApplicableCategoryId(e.target.value)}
+                    options={[
+                      { value: "", label: "Select category" },
+                      ...categories.filter(c => c.isActive !== false && !c.deleted).map((c) => ({ value: c._id, label: c.name || c._id }))
+                    ]}
+                  />
+                </div>
+                <div className="fullWidth">
+                  <FormField
+                    type="select"
+                    label="Subcategory"
+                    name="applicableSubcategoryId"
+                    value={applicableSubcategoryId}
+                    onChange={(e) => setApplicableSubcategoryId(e.target.value)}
+                    disabled={!applicableCategoryId || subcategoriesLoading}
+                    options={[
+                      { value: "", label: applicableCategoryId ? (subcategoriesLoading ? "Loading..." : "Select subcategory") : "Select category first" },
+                      ...subcategories.filter(s => s.isActive !== false && !s.deleted).map((s) => ({ value: s._id, label: s.name || s._id }))
+                    ]}
+                  />
+                </div>
+              </div>
+              <div className="makeFlex row gap10 appendBottom16">
+                <div className="fullWidth">
+                  <label className="formLabel appendBottom8 block">Applicable Products</label>
+                  {!applicableSubcategoryId ? (
+                    <p className="grayText font14 appendBottom8">Select category and subcategory to see products.</p>
+                  ) : productsLoading ? (
+                    <p className="grayText font14 appendBottom8">Loading products...</p>
+                  ) : productsForSelection.length === 0 ? (
+                    <p className="grayText font14 appendBottom8">No products in this subcategory.</p>
+                  ) : (
+                    <div className="makeFlex column gap8 paddingAll12 appendBottom8" style={{ maxHeight: 220, overflowY: "auto", border: "1px solid #ddd", borderRadius: 6 }}>
+                      {productsForSelection.map((p) => {
+                        const id = p._id;
+                        const isSelected = (formData.applicableProductIds || []).some(pid => String(pid) === String(id));
+                        const imgUrl = getProductImageUrl(p);
+                        return (
+                          <label key={id} className="makeFlex gap10 alignCenter cursorPointer font14">
+                            <input
+                              type="checkbox"
+                              checked={!!isSelected}
+                              onChange={(e) => handleApplicableProductToggle(id, e.target.checked)}
+                            />
+                            {imgUrl ? (
+                              <img src={imgUrl} alt="" className="borderRadius4" style={{ width: 32, height: 32, objectFit: "cover" }} />
+                            ) : (
+                              <span className="makeFlex alignCenter justifyCenter borderRadius4 grayText font12" style={{ width: 32, height: 32, backgroundColor: "#eee" }}>—</span>
+                            )}
+                            <span>{p.name || p.title || id}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                  <p className="grayText font14" style={{ marginTop: 4 }}>
+                    Select products above; you can change subcategory to add more.
+                    {(formData.applicableProductIds || []).length > 0 && (
+                      <span className="appendLeft8 fontSemiBold">{(formData.applicableProductIds || []).length} product(s) selected.</span>
+                    )}
+                  </p>
+                </div>
+              </div>
+              {(formData.applicableProductIds || []).length > 0 && (
+                <div className="makeFlex row gap10 appendBottom16">
+                  <div className="fullWidth">
+                    <div className="makeFlex spaceBetween alignCenter appendBottom8">
+                      <span className="formLabel">Selected products</span>
+                      <button
+                        type="button"
+                        className="btnSecondary font14"
+                        onClick={() => setFormData((prev) => ({ ...prev, applicableProductIds: [] }))}
+                      >
+                        Clear all
+                      </button>
+                    </div>
+                    <div className="makeFlex wrap gap8">
+                      {(formData.applicableProductIds || []).map((productId) => {
+                        const { name, imageUrl } = getSelectedProductDisplay(productId);
+                        return (
+                          <span
+                            key={productId}
+                            className="makeFlex alignCenter gap6 padding6 borderRadius4 cursorPointer"
+                            style={{ backgroundColor: "#f0f0f0" }}
+                            onClick={() => handleRemoveApplicableProduct(productId)}
+                            title="Click to remove"
+                            onKeyDown={(e) => e.key === "Enter" && handleRemoveApplicableProduct(productId)}
+                            role="button"
+                            tabIndex={0}
+                          >
+                            {imageUrl ? (
+                              <img src={imageUrl} alt="" className="borderRadius4" style={{ width: 28, height: 28, objectFit: "cover" }} />
+                            ) : (
+                              <span className="makeFlex alignCenter justifyCenter borderRadius4 grayText font12" style={{ width: 28, height: 28, backgroundColor: "#e0e0e0" }}>—</span>
+                            )}
+                            <span className="font14">{name ?? productId}</span>
+                            <span className="redText font14">×</span>
+                          </span>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+
+          {formData.offerType === "bank_offer" && (
+            <div className="makeFlex row gap10">
+              <div className="fullWidth">
+                <FormField
+                  type="text"
+                  name="bankName"
+                  label="Bank / Offer Name"
+                  value={formData.bankName}
+                  onChange={handleChange}
+                  placeholder="e.g. HDFC Bank 10% off, SBI Card offer"
+                />
+              </div>
+            </div>
+          )}
           
           <div className="makeFlex row gap10">
             <div className="fullWidth">
@@ -1074,6 +1386,13 @@ const CouponManager = () => {
                             <span className="detailValue font14 blackText appendLeft6 fontBold">{coupon.code}</span>
                           </div>
                           <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
+                            <span className="detailLabel font14 fontSemiBold grayText textUppercase">Offer Type:</span>
+                            <span className="detailValue font14 blackText appendLeft6">
+                              {coupon.offerType === 'product_base' ? 'Product base' : coupon.offerType === 'bank_offer' ? 'Bank offer' : 'Cart'}
+                              {coupon.offerType === 'bank_offer' && coupon.bankName ? ` (${coupon.bankName})` : ''}
+                            </span>
+                          </div>
+                          <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
                             <span className="detailLabel font14 fontSemiBold grayText textUppercase">Discount:</span>
                             <span className="detailValue font14 fontBold redText appendLeft6">
                               {coupon.discountType === 'percentage' 
@@ -1153,6 +1472,7 @@ const CouponManager = () => {
         <thead>
           <tr>
                         <th className="tableHeader">Code</th>
+                        <th className="tableHeader">Offer Type</th>
                         <th className="tableHeader">Discount</th>
                         <th className="tableHeader">Min Purchase</th>
                         <th className="tableHeader">Expiry Date</th>
@@ -1169,6 +1489,11 @@ const CouponManager = () => {
                           <tr key={coupon._id || coupon.id} className="tableRow">
                             <td className="tableCell">
                               <span className="brandNameText fontBold">{coupon.code}</span>
+                            </td>
+                            <td className="tableCell">
+                              <span className="addressText">
+                                {coupon.offerType === 'product_base' ? 'Product base' : coupon.offerType === 'bank_offer' ? (coupon.bankName ? `Bank (${coupon.bankName})` : 'Bank offer') : 'Cart'}
+                              </span>
                             </td>
                             <td className="tableCell">
                               <span className="brandNameText">

@@ -117,7 +117,7 @@ export const createVariationSetting = async (req, res) => {
       return res.status(400).json({ msg: "Website context is required" })
     }
 
-    const { category, subcategory, enabled } = req.body
+    const { category, subcategory, enabled, variationBasis, displayBasis } = req.body
 
     // Validate that at least one of category or subcategory is provided
     if (!category && !subcategory) {
@@ -159,6 +159,8 @@ export const createVariationSetting = async (req, res) => {
     if (existingSetting) {
       // Update existing setting
       existingSetting.enabled = enabled !== undefined ? enabled : true
+      if (variationBasis !== undefined) existingSetting.variationBasis = variationBasis
+      if (displayBasis !== undefined) existingSetting.displayBasis = displayBasis
       await existingSetting.save()
 
       const populated = await VariationSetting.findById(existingSetting._id)
@@ -176,6 +178,8 @@ export const createVariationSetting = async (req, res) => {
       category: category || null,
       subcategory: subcategory || null,
       enabled: enabled !== undefined ? enabled : true,
+      variationBasis: variationBasis || "size_and_color",
+      displayBasis: displayBasis || "color_first",
       website: req.websiteId
     })
 
@@ -213,7 +217,7 @@ export const updateVariationSetting = async (req, res) => {
       return res.status(400).json({ msg: "Website context is required" })
     }
 
-    const { enabled } = req.body
+    const { enabled, variationBasis, displayBasis } = req.body
 
     const setting = await VariationSetting.findOne({
       _id: req.params.id,
@@ -225,9 +229,9 @@ export const updateVariationSetting = async (req, res) => {
       return res.status(404).json({ msg: "Variation setting not found" })
     }
 
-    if (enabled !== undefined) {
-      setting.enabled = enabled
-    }
+    if (enabled !== undefined) setting.enabled = enabled
+    if (variationBasis !== undefined) setting.variationBasis = variationBasis
+    if (displayBasis !== undefined) setting.displayBasis = displayBasis
 
     await setting.save()
 
@@ -285,7 +289,7 @@ export const bulkUpdateVariationSettings = async (req, res) => {
       return res.status(400).json({ msg: "Website context is required" })
     }
 
-    const { settings } = req.body // Array of { category, subcategory, enabled }
+    const { settings } = req.body // Array of { category, subcategory, enabled, variationBasis, displayBasis }
 
     if (!Array.isArray(settings)) {
       return res.status(400).json({ msg: "Settings must be an array" })
@@ -296,7 +300,7 @@ export const bulkUpdateVariationSettings = async (req, res) => {
 
     for (const item of settings) {
       try {
-        const { category, subcategory, enabled } = item
+        const { category, subcategory, enabled, variationBasis, displayBasis } = item
 
         if (!category && !subcategory) {
           errors.push({ item, error: "Either category or subcategory must be provided" })
@@ -313,6 +317,8 @@ export const bulkUpdateVariationSettings = async (req, res) => {
 
         if (existingSetting) {
           existingSetting.enabled = enabled !== undefined ? enabled : true
+          if (variationBasis !== undefined) existingSetting.variationBasis = variationBasis
+          if (displayBasis !== undefined) existingSetting.displayBasis = displayBasis
           await existingSetting.save()
           results.push({ setting: existingSetting, action: "updated" })
         } else {
@@ -320,6 +326,8 @@ export const bulkUpdateVariationSettings = async (req, res) => {
             category: category || null,
             subcategory: subcategory || null,
             enabled: enabled !== undefined ? enabled : true,
+            variationBasis: variationBasis || "size_and_color",
+            displayBasis: displayBasis || "color_first",
             website: req.websiteId
           })
           await newSetting.save()

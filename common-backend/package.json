@@ -5,7 +5,8 @@
   "type": "module",
   "main": "index.js",
   "scripts": {
-    "dev": "nodemon backend/index.js"
+    "dev": "nodemon backend/index.js",
+    "migrate:carousel": "node backend/scripts/migrate-carousel-keys.js"
   },
   "keywords": [
     "Photuprint",
@@ -30,9 +31,10 @@
     "jsdom": "^27.4.0",
     "jsonwebtoken": "^9.0.2",
     "mongoose": "^8.16.4",
-    "mongosh": "^2.5.8",
     "morgan": "^1.10.1",
     "multer": "^2.0.2",
+    "nodemailer": "^8.0.1",
+    "razorpay": "^2.9.6",
     "sanitize-html": "^2.17.0",
     "socket.io": "^4.8.3",
     "stripe": "^18.4.0"

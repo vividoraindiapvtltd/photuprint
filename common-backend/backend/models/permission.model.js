@@ -78,8 +78,7 @@ const permissionSchema = new mongoose.Schema(
   }
 )
 
-// Indexes
-permissionSchema.index({ key: 1 }, { unique: true })
+// Indexes (key: unique true on field above creates { key: 1 }; no duplicate)
 permissionSchema.index({ module: 1, action: 1 })
 permissionSchema.index({ isActive: 1, sortOrder: 1 })
 

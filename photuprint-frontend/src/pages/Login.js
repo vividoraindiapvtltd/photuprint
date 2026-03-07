@@ -1,27 +1,27 @@
 import React, { useState, useEffect } from "react"
 import { useGoogleLogin } from "@react-oauth/google"
+import Link from "next/link"
+import { useRouter } from "next/router"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
-import { useNavigate, useLocation, Link } from "react-router-dom"
 
 export default function Login() {
   const { login, isAuthenticated } = useAuth()
+  const router = useRouter()
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
-  const location = useLocation()
 
-  // Get the page user was trying to access before login
-  const from = location.state?.from?.pathname || "/"
+  // Get the page user was trying to access before login (from query or default "/")
+  const from = (typeof router.query.from === "string" ? router.query.from : null) || "/"
 
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(from, { replace: true })
+      router.replace(from)
     }
-  }, [isAuthenticated, navigate, from])
+  }, [isAuthenticated, router, from])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -40,11 +40,8 @@ export default function Login() {
       // Store user data (both admin and regular users can login)
       login(res.data)
 
-      console.log("Login successful, redirecting to:", from)
-      console.log("Location state:", location.state)
-
       // Redirect to the page they were trying to access, or home
-      navigate(from, { replace: true })
+      router.replace(from)
     } catch (err) {
       console.error("Login error:", err)
       const errorMessage = err.response?.data?.msg || err.message || "Login failed. Please check your credentials."
@@ -80,10 +77,9 @@ export default function Login() {
           return
         }
 
-        // Store user data and redirect to product listing page
+        // Store user data and redirect to home
         login(res.data)
-        console.log("Google login successful, redirecting to product listing page")
-        navigate("/", { replace: true })
+        router.replace("/")
       } catch (err) {
         console.error("Google login error:", err)
         const errorMessage = err.response?.data?.msg || err.message || "Google sign-in failed. Please try again."
@@ -98,8 +94,8 @@ export default function Login() {
     },
   })
 
-  // Show success message if redirected from registration
-  const successMessage = location.state?.message
+  // Show success message if redirected from registration (?message=...)
+  const successMessage = typeof router.query.message === "string" ? router.query.message : null
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -108,7 +104,7 @@ export default function Login() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Sign in to your account</h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Don't have an account?{" "}
-            <Link to="/register" state={location.state} className="font-medium text-blue-600 hover:text-blue-500">
+            <Link href="/Register" className="font-medium text-blue-600 hover:text-blue-500">
               Create account
             </Link>
           </p>

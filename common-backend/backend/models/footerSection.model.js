@@ -14,6 +14,7 @@ const footerLinkSchema = new mongoose.Schema(
   {
     label: { type: String, required: true, trim: true },
     url: { type: String, required: true, trim: true },
+    iconUrl: { type: String, trim: true },
     openInNewTab: { type: Boolean, default: false },
     displayOrder: { type: Number, default: 0 },
   },
@@ -60,7 +61,8 @@ const footerSectionSchema = new mongoose.Schema(
         "contact",     // Address, phone, email
         "newsletter",  // Email signup form
         "social",      // Social media icons
-        "about",       // About us text + logo
+        "about",       // About us text
+        "logo",        // Logo (upload or URL)
         "payment",     // Payment method icons
         "copyright",   // Copyright text
         "custom",      // Custom HTML
@@ -79,6 +81,16 @@ const footerSectionSchema = new mongoose.Schema(
       default: 0,
     },
 
+    // When theme.footerColumns is 2 or 3: which column (0-based) this section sits in. displayOrder = order within that column.
+    columnIndex: { type: Number, default: 0 },
+
+    // How this section is displayed in the footer grid when footerColumns is 4 (default): fullWidth, 4 columns, 3 columns, 2 columns, 1 column
+    displayLayout: {
+      type: String,
+      enum: ["fullWidth", "cols4", "cols3", "cols2"],
+      default: "cols4",
+    },
+
     isActive: {
       type: Boolean,
       default: true,
@@ -92,6 +104,9 @@ const footerSectionSchema = new mongoose.Schema(
       email: { type: String, trim: true },
       description: { type: String, trim: true },
       logoUrl: { type: String, trim: true },
+      logoLinkUrl: { type: String, trim: true },
+      logoAlt: { type: String, trim: true },
+      logoTitle: { type: String, trim: true },
       placeholder: { type: String, trim: true },
       buttonText: { type: String, trim: true },
       successMessage: { type: String, trim: true },

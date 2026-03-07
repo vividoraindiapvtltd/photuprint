@@ -20,7 +20,7 @@ const SIDEBAR_GROUPS = [
   },
   {
     label: "Homepage Setting",
-    links: ["/dashboard/homepage-sections", "/dashboard/footer-sections", "/dashboard/testimonialmanager"],
+    links: ["/dashboard/homepage-sections", "/dashboard/frontend", "/dashboard/footer-sections", "/dashboard/footer-settings", "/dashboard/testimonialmanager"],
   },
   {
     label: "Content & marketing",

@@ -17,22 +17,22 @@ function App() {
     <GoogleOAuthProvider clientId={GOOGLE_CLIENT_ID}>
       <AuthProvider>
         <Router>
-        <Routes>
-          {/* Auth Routes */}
-          <Route path="/login" element={<Login />} />
-          <Route path="/register" element={<Register />} />
+          <Routes>
+            {/* Auth Routes */}
+            <Route path="/login" element={<Login />} />
+            <Route path="/register" element={<Register />} />
 
-          {/* Product Details Page */}
-          <Route path="/product/:productId" element={<ProductDetails />} />
+            {/* Product Details Page */}
+            <Route path="/products/:productId" element={<ProductDetails />} />
 
-          {/* Review Submission Routes */}
-          <Route path="/product/:productId/review" element={<ReviewForm />} />
-          <Route path="/review" element={<ReviewForm />} />
+            {/* Review Submission Routes */}
+            <Route path="/products/:productId/review" element={<ReviewForm />} />
+            <Route path="/review" element={<ReviewForm />} />
 
-          {/* Home/Default Route - Products List (Post-Login Landing Page) */}
-          <Route path="/" element={<ProductsList />} />
-        </Routes>
-      </Router>
+            {/* Home/Default Route - Products List (Post-Login Landing Page) */}
+            <Route path="/" element={<ProductsList />} />
+          </Routes>
+        </Router>
       </AuthProvider>
     </GoogleOAuthProvider>
   )

@@ -1,5 +1,5 @@
 import Testimonial from "../models/testimonial.model.js"
-import cloudinary from "../utils/cloudinary.js"
+import cloudinary, { isCloudinaryConfigured } from "../utils/cloudinary.js"
 import { removeLocalFile } from "../utils/fileCleanup.js"
 
 /**
@@ -11,21 +11,7 @@ export const getTestimonials = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const isAdmin = req.user && (req.user.role === "admin" || req.user.role === "super_admin")
 
-    const {
-      status,
-      category,
-      rating,
-      source,
-      isFeatured,
-      tags,
-      search,
-      showInactive = "true",
-      includeDeleted = "false",
-      sortBy = "createdAt",
-      sortOrder = "desc",
-      page = 1,
-      limit = 20,
-    } = req.query
+    const { status, category, rating, source, isFeatured, tags, search, showInactive = "true", includeDeleted = "false", sortBy = "createdAt", sortOrder = "desc", page = 1, limit = 20 } = req.query
 
     // Build query
     let query = {}
@@ -73,13 +59,7 @@ export const getTestimonials = async (req, res) => {
 
     // Text search
     if (search) {
-      query.$or = [
-        { name: { $regex: search, $options: "i" } },
-        { testimonial: { $regex: search, $options: "i" } },
-        { company: { $regex: search, $options: "i" } },
-        { email: { $regex: search, $options: "i" } },
-        { tags: { $regex: search, $options: "i" } },
-      ]
+      query.$or = [{ name: { $regex: search, $options: "i" } }, { testimonial: { $regex: search, $options: "i" } }, { company: { $regex: search, $options: "i" } }, { email: { $regex: search, $options: "i" } }, { tags: { $regex: search, $options: "i" } }]
     }
 
     // Pagination
@@ -92,11 +72,7 @@ export const getTestimonials = async (req, res) => {
     sortOptions[sortBy] = sortOrder === "asc" ? 1 : -1
 
     // Execute query
-    const testimonials = await Testimonial.find(query)
-      .populate("productId", "name images")
-      .sort(sortOptions)
-      .skip(skip)
-      .limit(limitNum)
+    const testimonials = await Testimonial.find(query).populate("productId", "name images").sort(sortOptions).skip(skip).limit(limitNum)
 
     const total = await Testimonial.countDocuments(query)
 
@@ -155,22 +131,7 @@ export const createTestimonial = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const isAdmin = req.user && (req.user.role === "admin" || req.user.role === "super_admin")
 
-    const {
-      name,
-      email,
-      role,
-      company,
-      testimonial,
-      rating,
-      source,
-      sourceUrl,
-      tags,
-      category,
-      productId,
-      productName,
-      isFeatured,
-      isActive,
-    } = req.body
+    const { name, email, role, company, testimonial, rating, source, sourceUrl, tags, category, productId, productName, isFeatured, isActive } = req.body
 
     // Validate required fields
     if (!name || !testimonial) {
@@ -183,18 +144,21 @@ export const createTestimonial = async (req, res) => {
       return res.status(400).json({ msg: "Rating must be between 1 and 5" })
     }
 
-    // Handle photo upload
+    // Handle photo upload (Cloudinary when configured, else local)
     let photoUrl = null
     if (req.files && req.files.photo && req.files.photo[0]) {
-      try {
-        const result = await cloudinary.uploader.upload(req.files.photo[0].path, {
-          folder: "photuprint/testimonials",
-        })
-        photoUrl = result.secure_url
-        removeLocalFile(req.files.photo[0].path)
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError)
-        // Fallback to local storage
+      if (isCloudinaryConfigured()) {
+        try {
+          const result = await cloudinary.uploader.upload(req.files.photo[0].path, {
+            folder: "photuprint/testimonials",
+          })
+          photoUrl = result.secure_url
+          removeLocalFile(req.files.photo[0].path)
+        } catch (uploadError) {
+          console.error("Cloudinary upload failed:", uploadError)
+          photoUrl = `/uploads/${req.files.photo[0].filename}`
+        }
+      } else {
         photoUrl = `/uploads/${req.files.photo[0].filename}`
       }
     }
@@ -203,7 +167,10 @@ export const createTestimonial = async (req, res) => {
     let parsedTags = []
     if (tags) {
       if (typeof tags === "string") {
-        parsedTags = tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+        parsedTags = tags
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean)
       } else if (Array.isArray(tags)) {
         parsedTags = tags.map((t) => t.trim().toLowerCase()).filter(Boolean)
       }
@@ -225,7 +192,7 @@ export const createTestimonial = async (req, res) => {
       productName,
       // Admin-created testimonials are auto-approved
       status: isAdmin ? "approved" : "pending",
-      isFeatured: isAdmin ? (isFeatured === "true" || isFeatured === true) : false,
+      isFeatured: isAdmin ? isFeatured === "true" || isFeatured === true : false,
       isActive: isActive === "true" || isActive === true || isActive === undefined, // Default to true
       website: websiteId,
     }
@@ -259,24 +226,7 @@ export const updateTestimonial = async (req, res) => {
       return res.status(404).json({ msg: "Testimonial not found" })
     }
 
-    const {
-      name,
-      email,
-      role,
-      company,
-      testimonial: testimonialText,
-      rating,
-      source,
-      sourceUrl,
-      tags,
-      category,
-      productId,
-      productName,
-      isFeatured,
-      isActive,
-      status,
-      rejectionReason,
-    } = req.body
+    const { name, email, role, company, testimonial: testimonialText, rating, source, sourceUrl, tags, category, productId, productName, isFeatured, isActive, status, rejectionReason } = req.body
 
     // Handle photo upload/removal
     if (req.body.photo === "" || req.body.photo === null) {
@@ -291,7 +241,7 @@ export const updateTestimonial = async (req, res) => {
       }
       testimonial.photo = null
     } else if (req.files && req.files.photo && req.files.photo[0]) {
-      // Upload new photo
+      // Upload new photo (Cloudinary when configured, else local)
       if (testimonial.photo && testimonial.photo.includes("cloudinary")) {
         const publicId = testimonial.photo.split("/").slice(-2).join("/").split(".")[0]
         try {
@@ -300,14 +250,18 @@ export const updateTestimonial = async (req, res) => {
           console.error("Error deleting old photo:", e)
         }
       }
-      try {
-        const result = await cloudinary.uploader.upload(req.files.photo[0].path, {
-          folder: "photuprint/testimonials",
-        })
-        testimonial.photo = result.secure_url
-        removeLocalFile(req.files.photo[0].path)
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError)
+      if (isCloudinaryConfigured()) {
+        try {
+          const result = await cloudinary.uploader.upload(req.files.photo[0].path, {
+            folder: "photuprint/testimonials",
+          })
+          testimonial.photo = result.secure_url
+          removeLocalFile(req.files.photo[0].path)
+        } catch (uploadError) {
+          console.error("Cloudinary upload failed:", uploadError)
+          testimonial.photo = `/uploads/${req.files.photo[0].filename}`
+        }
+      } else {
         testimonial.photo = `/uploads/${req.files.photo[0].filename}`
       }
     }
@@ -333,7 +287,10 @@ export const updateTestimonial = async (req, res) => {
     // Parse and update tags
     if (tags !== undefined) {
       if (typeof tags === "string") {
-        testimonial.tags = tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+        testimonial.tags = tags
+          .split(",")
+          .map((t) => t.trim().toLowerCase())
+          .filter(Boolean)
       } else if (Array.isArray(tags)) {
         testimonial.tags = tags.map((t) => t.trim().toLowerCase()).filter(Boolean)
       } else {
@@ -477,7 +434,10 @@ export const importTestimonials = async (req, res) => {
         let parsedTags = []
         if (item.tags) {
           if (typeof item.tags === "string") {
-            parsedTags = item.tags.split(",").map((t) => t.trim().toLowerCase()).filter(Boolean)
+            parsedTags = item.tags
+              .split(",")
+              .map((t) => t.trim().toLowerCase())
+              .filter(Boolean)
           } else if (Array.isArray(item.tags)) {
             parsedTags = item.tags.map((t) => t.trim().toLowerCase()).filter(Boolean)
           }

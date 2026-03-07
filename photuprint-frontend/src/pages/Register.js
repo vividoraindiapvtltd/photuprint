@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react"
 import { useGoogleLogin } from "@react-oauth/google"
+import Link from "next/link"
+import { useRouter } from "next/router"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
-import { useNavigate, useLocation, Link } from "react-router-dom"
 
 export default function Register() {
   const { login, isAuthenticated } = useAuth()
+  const router = useRouter()
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -14,18 +16,16 @@ export default function Register() {
   })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const navigate = useNavigate()
-  const location = useLocation()
 
-  // Get the page user was trying to access before login
-  const from = location.state?.from?.pathname || "/"
+  // Get the page user was trying to access before login (from query or default "/")
+  const from = (typeof router.query.from === "string" ? router.query.from : null) || "/"
 
   // Redirect if already logged in
   useEffect(() => {
     if (isAuthenticated) {
-      navigate(from, { replace: true })
+      router.replace(from)
     }
-  }, [isAuthenticated, navigate, from])
+  }, [isAuthenticated, router, from])
 
   const handleChange = (e) => {
     setFormData({
@@ -82,15 +82,10 @@ export default function Register() {
         console.log("Auto-login successful, redirecting to:", from)
 
         // Redirect to the page they were trying to access, or home
-        navigate(from, { replace: true })
+        router.replace(from)
       } else {
-        // If auto-login data not provided, redirect to login page
-        navigate("/login", {
-          state: {
-            message: "Registration successful! Please login.",
-            from: location.state?.from,
-          },
-        })
+        // If auto-login data not provided, redirect to login page with message
+        router.replace(`/Login?message=${encodeURIComponent("Registration successful! Please login.")}`)
       }
     } catch (err) {
       console.error("Registration error:", err)
@@ -127,10 +122,9 @@ export default function Register() {
           return
         }
 
-        // Store user data and redirect to product listing page
+        // Store user data and redirect to home
         login(res.data)
-        console.log("Google registration/login successful, redirecting to product listing page")
-        navigate("/", { replace: true })
+        router.replace("/")
       } catch (err) {
         console.error("Google sign-up error:", err)
         const errorMessage = err.response?.data?.msg || err.message || "Google sign-up failed. Please try again."
@@ -152,7 +146,7 @@ export default function Register() {
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">Create your account</h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             Already have an account?{" "}
-            <Link to="/login" state={location.state} className="font-medium text-blue-600 hover:text-blue-500">
+            <Link href="/Login" className="font-medium text-blue-600 hover:text-blue-500">
               Sign in
             </Link>
           </p>

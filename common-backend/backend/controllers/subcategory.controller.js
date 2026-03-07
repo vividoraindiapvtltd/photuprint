@@ -70,6 +70,8 @@ export const getSubCategories = async (req, res) => {
     
     const subcategories = await Subcategory.find(query)
       .sort({ createdAt: -1 });
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.set("Pragma", "no-cache");
     res.json(subcategories);
   } catch (error) {
     console.error('Error fetching subcategories:', error);

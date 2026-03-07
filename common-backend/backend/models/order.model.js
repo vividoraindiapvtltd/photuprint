@@ -75,6 +75,7 @@ const orderSchema = new mongoose.Schema(
     shippingAddress: {
       name: { type: String, required: true },
       phone: { type: String },
+      email: { type: String },
       street: { type: String, required: true },
       city: { type: String, required: true },
       state: { type: String, required: true },
@@ -84,6 +85,7 @@ const orderSchema = new mongoose.Schema(
     billingAddress: {
       name: { type: String },
       phone: { type: String },
+      email: { type: String },
       street: { type: String },
       city: { type: String },
       state: { type: String },
@@ -97,14 +99,19 @@ const orderSchema = new mongoose.Schema(
     },
     paymentStatus: { 
       type: String, 
-      enum: ["pending", "processing", "paid", "failed", "refunded", "cancelled"],
+      enum: ["pending", "processing", "paid", "failed", "refunded", "cancelled", "advance_paid"],
       default: "pending" 
     },
     orderStatus: {
       type: String,
-      enum: ["pending", "confirmed", "processing", "shipped", "delivered", "cancelled", "returned"],
+      enum: ["pending", "advance_paid", "confirmed", "processing", "shipped", "delivered", "cod_pending", "cancelled", "returned"],
       default: "pending"
     },
+    razorpayOrderId: { type: String, default: null },
+    razorpayPaymentId: { type: String, default: null },
+    razorpaySignature: { type: String, default: null },
+    advanceAmount: { type: Number, default: null },
+    codAmount: { type: Number, default: null },
     // Courier Tracking Details
     courierName: {
       type: String,

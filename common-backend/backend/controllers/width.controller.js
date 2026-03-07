@@ -32,6 +32,8 @@ export const getWidths = async (req, res) => {
     }
 
     const widths = await Width.find(query).sort({ createdAt: -1 })
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.set("Pragma", "no-cache");
     res.json(widths)
   } catch (error) {
     console.error("Error fetching widths:", error)

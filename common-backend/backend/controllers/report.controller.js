@@ -459,8 +459,8 @@ export const getInventoryStockReport = async (req, res) => {
       name: p.name,
       sku: p.sku,
       currentStock: p.stock ?? 0,
-      lowStock: (p.stock ?? 0) <= reorderLevel,
-      reorderAlert: (p.stock ?? 0) <= reorderLevel,
+      lowStock: p.stock !== -1 && (p.stock ?? 0) > 0 && (p.stock ?? 0) <= reorderLevel,
+      reorderAlert: p.stock !== -1 && (p.stock ?? 0) > 0 && (p.stock ?? 0) <= reorderLevel,
       reorderLevel,
     }));
 

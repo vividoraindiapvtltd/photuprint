@@ -42,6 +42,8 @@ import { MdContacts } from "react-icons/md";
 import { MdSecurity } from "react-icons/md";
 import { MdAdminPanelSettings } from "react-icons/md";
 import { MdVerticalAlignBottom } from "react-icons/md";
+import { MdPalette } from "react-icons/md";
+import { MdViewCarousel } from "react-icons/md";
 
 const iconMap = {
     FcGoogle,
@@ -85,7 +87,9 @@ const iconMap = {
     MdContacts,
     MdSecurity,
     MdAdminPanelSettings,
-    MdVerticalAlignBottom
+    MdVerticalAlignBottom,
+    MdPalette,
+    MdViewCarousel
   };
   
   export default function IconMap({ name, size = 30 }) {

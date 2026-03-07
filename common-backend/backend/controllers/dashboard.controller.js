@@ -174,11 +174,11 @@ export const getDashboardStats = async (req, res) => {
       }),
       lowStock: await Product.countDocuments({
         ...baseQuery,
-        stock: { $lte: 10, $gte: 0 }
+        stock: { $lte: 10, $gt: 0, $ne: -1 } // Exclude unlimited stock (-1) and out of stock (0)
       }),
       outOfStock: await Product.countDocuments({
         ...baseQuery,
-        stock: { $lte: 0 }
+        stock: 0 // Only count products with exactly 0 stock (exclude unlimited -1)
       })
     };
 

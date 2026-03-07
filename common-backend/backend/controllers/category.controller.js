@@ -27,7 +27,7 @@ export const getCategories = async (req, res) => {
       query.name = { $regex: search, $options: 'i' };
     }
     
-    const categories = await Category.find(query).sort({ createdAt: -1 });
+    const categories = await Category.find(query).sort({ order: 1, createdAt: -1 });
     
     // Ensure all categories have a categoryId (migration for existing records)
     console.log('Starting category ID migration...');
@@ -106,7 +106,7 @@ export const createCategory = async (req, res) => {
     console.log('Create category request body:', req.body);
     console.log('Uploaded file:', req.file);
     
-    const { name, description } = req.body;
+    const { name, description, order } = req.body;
     let { isActive = true } = req.body;
     
     // Convert string "true"/"false" to boolean (for FormData)
@@ -175,6 +175,7 @@ export const createCategory = async (req, res) => {
       slug,
       description: description?.trim() || null,
       image: imageUrl,
+      order: order !== undefined && order !== '' ? parseInt(order, 10) : 0,
       isActive,
       website: req.websiteId // Multi-tenant: Set website
     });
@@ -197,7 +198,7 @@ export const updateCategory = async (req, res) => {
 
     console.log('Update category request body:', req.body);
     
-    const { name, description } = req.body;
+    const { name, description, order } = req.body;
     let { isActive } = req.body;
     
     // Convert string "true"/"false" to boolean (for FormData)
@@ -268,7 +269,11 @@ export const updateCategory = async (req, res) => {
       category.isActive = isActive;
     }
 
-    // Handle deleted field update (for reverting deleted categories)
+    if (order !== undefined && order !== '') {
+      category.order = parseInt(order, 10);
+    }
+
+    // Handle deleted field update
     if (req.body.deleted !== undefined) {
       category.deleted = req.body.deleted;
     }

@@ -6,6 +6,17 @@ const productSchema = new mongoose.Schema(
     name: { type: String, required: true },
     slug: { type: String }, // Unique constraint handled by compound index with website
     description: String,
+    shortDescription: { type: String, default: "" },
+    tags: { type: String, default: "" },
+    material: { type: mongoose.Schema.Types.ObjectId, ref: "Material", default: null },
+    weight: { type: String, default: null },
+    shippingClass: { type: String, default: "" },
+    processingTime: { type: String, default: "" },
+    dimensions: {
+      length: { type: mongoose.Schema.Types.ObjectId, ref: "Length", default: null },
+      width: { type: mongoose.Schema.Types.ObjectId, ref: "Width", default: null },
+      height: { type: mongoose.Schema.Types.ObjectId, ref: "Height", default: null },
+    },
     price: { type: Number, required: true },
     discountedPrice: { type: Number, default: null },
     discountPercentage: { type: Number, default: null },
@@ -21,9 +32,24 @@ const productSchema = new mongoose.Schema(
     category: { type: mongoose.Schema.Types.ObjectId, ref: "Category" },
     subcategory: { type: mongoose.Schema.Types.ObjectId, ref: "Subcategory" },
     brand: { type: mongoose.Schema.Types.ObjectId, ref: "Brand" },
+    collarStyle: { type: mongoose.Schema.Types.ObjectId, ref: "CollarStyle", default: null },
+    pattern: { type: mongoose.Schema.Types.ObjectId, ref: "Pattern", default: null },
+    fitType: { type: mongoose.Schema.Types.ObjectId, ref: "FitType", default: null },
     sleeveType: { type: mongoose.Schema.Types.ObjectId, ref: "SleeveType", default: null },
     printingType: { type: mongoose.Schema.Types.ObjectId, ref: "PrintingType", default: null },
     countryOfOrigin: { type: mongoose.Schema.Types.ObjectId, ref: "Country", default: null },
+    taxClass: { type: mongoose.Schema.Types.ObjectId, ref: "GstSlab", default: null },
+    // Additional product attributes (text)
+    includedComponents: { type: String, default: null },
+    productCareInstructions: { type: String, default: null },
+    recommendedUsesForProduct: { type: String, default: null },
+    reusability: { type: String, default: null },
+    shape: { type: String, default: null },
+    specialFeature: { type: String, default: null },
+    specificUsesForProduct: { type: String, default: null },
+    style: { type: String, default: null },
+    design: { type: String, default: null },
+    occasion: { type: String, default: null },
     stock: Number,
     noOfPcsIncluded: { type: Number, default: null },
     isActive: { type: Boolean, default: true },
@@ -41,12 +67,11 @@ const productSchema = new mongoose.Schema(
       canonicalLink: { type: String, default: "" },
       jsonLd: { type: String, default: "" },
     },
-    // Multi-tenant: Website/Tenant reference
+    // Multi-tenant: Website/Tenant reference (indexed via compound schema.index below)
     website: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Website',
       required: true,
-      index: true
     },
     
     // Product Variations Support

@@ -1,5 +1,5 @@
 import express from "express"
-import { register, login, googleAuth } from "../controllers/auth.controller.js"
+import { register, login, googleAuth, verifyEmail, resendVerification, sendOtp, verifyOtp } from "../controllers/auth.controller.js"
 import User from "../models/user.model.js"
 import Permission from "../models/permission.model.js"
 
@@ -8,6 +8,10 @@ const router = express.Router()
 router.post("/register", register)
 router.post("/login", login)
 router.post("/google", googleAuth)
+router.post("/verify-email", verifyEmail)
+router.post("/resend-verification", resendVerification)
+router.post("/send-otp", sendOtp)
+router.post("/verify-otp", verifyOtp)
 
 /**
  * One-time endpoint to CREATE or FIX super admin (with password)
@@ -37,8 +41,9 @@ router.post("/create-super-admin", async (req, res) => {
     if (user) {
       // Update existing user: set password (will be hashed by pre-save), role, isActive
       user.password = password
-      user.role = 'super_admin'
+      user.role = "super_admin"
       user.isActive = true
+      user.emailVerified = true
       user.deleted = false
       user.permissions = []
       user.failedLoginAttempts = 0
@@ -51,13 +56,14 @@ router.post("/create-super-admin", async (req, res) => {
       })
     }
 
-    // Create new user
+    // Create new user (super admin bypasses email verification)
     user = await User.create({
       name: name || "Super Admin",
       email: emailLower,
       password,
-      role: 'super_admin',
+      role: "super_admin",
       isActive: true,
+      emailVerified: true,
       permissions: [],
     })
 
@@ -142,30 +148,30 @@ router.post("/create-default-website", async (req, res) => {
 router.post("/setup-super-admin", async (req, res) => {
   try {
     const { email, secretKey } = req.body
-    
+
     // Simple security check - require a secret key
     if (secretKey !== "setup-photuprint-2024") {
       return res.status(403).json({ msg: "Invalid setup key" })
     }
-    
+
     if (!email) {
       return res.status(400).json({ msg: "Email is required" })
     }
-    
+
     // Find the user
     const user = await User.findOne({ email: email.toLowerCase() })
-    
+
     if (!user) {
       return res.status(404).json({ msg: `User with email ${email} not found` })
     }
-    
+
     // Update to super_admin
-    const wasAlreadySuperAdmin = user.role === 'super_admin'
-    user.role = 'super_admin'
+    const wasAlreadySuperAdmin = user.role === "super_admin"
+    user.role = "super_admin"
     user.isActive = true
     user.permissions = [] // Super admin doesn't need specific permissions
     await user.save()
-    
+
     // Seed default permissions
     let permissionsSeeded = 0
     try {
@@ -178,18 +184,16 @@ router.post("/setup-super-admin", async (req, res) => {
     } catch (permError) {
       console.error("Error seeding permissions:", permError)
     }
-    
+
     res.json({
-      msg: wasAlreadySuperAdmin 
-        ? "User was already a Super Admin" 
-        : "User successfully set as Super Admin",
+      msg: wasAlreadySuperAdmin ? "User was already a Super Admin" : "User successfully set as Super Admin",
       user: {
         id: user._id,
         name: user.name,
         email: user.email,
-        role: user.role
+        role: user.role,
       },
-      permissionsCount: permissionsSeeded
+      permissionsCount: permissionsSeeded,
     })
   } catch (error) {
     console.error("Setup super admin error:", error)

@@ -79,10 +79,6 @@ export const createSize = async (req, res) => {
       return res.status(400).json({ msg: "Size name is required" })
     }
 
-    if (!initial || !initial.trim()) {
-      return res.status(400).json({ msg: "Size initial is required" })
-    }
-
     // Check if size with same name already exists within the same website
     const existingSizeByName = await Size.findOne({
       name: { $regex: new RegExp(`^${name.trim()}$`, "i") },
@@ -94,15 +90,17 @@ export const createSize = async (req, res) => {
       return res.status(400).json({ msg: "Size name already exists" })
     }
 
-    // Check if size with same initial already exists within the same website
-    const existingSizeByInitial = await Size.findOne({
-      initial: { $regex: new RegExp(`^${initial.trim()}$`, "i") },
-      website: req.websiteId,
-      deleted: { $ne: true }
-    })
-
-    if (existingSizeByInitial) {
-      return res.status(400).json({ msg: "Size initial already exists" })
+    // Check if size with same initial already exists (only when initial is provided)
+    const initialTrimmed = (initial && typeof initial === "string" && initial.trim()) ? initial.trim() : null
+    if (initialTrimmed) {
+      const existingSizeByInitial = await Size.findOne({
+        initial: { $regex: new RegExp(`^${initialTrimmed}$`, "i") },
+        website: req.websiteId,
+        deleted: { $ne: true }
+      })
+      if (existingSizeByInitial) {
+        return res.status(400).json({ msg: "Size initial already exists" })
+      }
     }
 
     // Handle image upload
@@ -126,7 +124,7 @@ export const createSize = async (req, res) => {
 
     const size = new Size({
       name: name.trim(),
-      initial: initial.trim(),
+      initial: initialTrimmed,
       dimensions: dimensions?.trim() || null,
       description: description?.trim() || null,
       image: imageUrl,

@@ -33,6 +33,8 @@ export const getHeights = async (req, res) => {
     }
 
     const heights = await Height.find(query).sort({ createdAt: -1 })
+    res.set("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.set("Pragma", "no-cache");
     res.json(heights)
   } catch (error) {
     console.error("Error fetching heights:", error)

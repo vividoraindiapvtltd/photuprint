@@ -265,13 +265,14 @@ const RichTextEditor = ({ value, onChange, name, label, placeholder, required, d
       )}
       <div
         style={{
+          width: "100%",
           border: "1px solid #ddd",
           borderRadius: "4px",
           backgroundColor: "white",
           minHeight: "200px",
         }}
       >
-        <div ref={editorRef} style={{ minHeight: "200px" }} />
+        <div ref={editorRef} style={{ minHeight: "200px", width: "100%" }} />
       </div>
     </div>
   )

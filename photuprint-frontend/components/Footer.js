@@ -2,6 +2,19 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import DOMPurify from "isomorphic-dompurify"
+import api from "@/utils/api"
+
+const ALLOWED_TAGS = ["p", "br", "strong", "em", "u", "ul", "ol", "li", "a", "h2", "h3", "h4"]
+
+function sanitizeHtml(html, opts = {}) {
+  if (!html || typeof html !== "string") return ""
+  const tags = opts.ALLOWED_TAGS || ALLOWED_TAGS
+  const purifier = DOMPurify?.default ?? DOMPurify
+  const sanitizer = purifier?.sanitize ?? (typeof DOMPurify === "function" ? DOMPurify : null)
+  if (typeof sanitizer === "function") return sanitizer.call(purifier, html, { ALLOWED_TAGS: tags })
+  return html.replace(/<[^>]+>/g, " ")
+}
 
 const SOCIAL_ICONS = {
   facebook: (
@@ -53,45 +66,83 @@ const SOCIAL_ICONS = {
   ),
 }
 
-function SectionLinks({ section }) {
-  const links = (section.config?.links || []).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
-  if (!links.length) return null
+// Resolve image URL for icons/logos (used by SectionLinks and SectionLogo)
+function resolveImageUrl(url) {
+  if (!url) return ""
+  if (url.startsWith("http://") || url.startsWith("https://")) return url
+  const base = typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "") : ""
+  return base + (url.startsWith("/") ? url : "/" + url)
+}
+
+function SectionLinks({ section, theme = {} }) {
+  const rawLinks = Array.isArray(section.config?.links) ? section.config.links : []
+  const links = [...rawLinks].sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
+  const linkStyle = { fontSize: theme.linkFontSize || undefined, color: theme.linkColor || undefined }
+  const linkHoverColor = theme.linkHoverColor
   return (
     <div>
-      {section.title && <h4 className="text-sm font-semibold text-white mb-3">{section.title}</h4>}
-      <ul className="space-y-2">
-        {links.map((link, i) => (
-          <li key={i}>
-            <Link
-              href={link.url || "#"}
-              target={link.openInNewTab ? "_blank" : undefined}
-              rel={link.openInNewTab ? "noopener noreferrer" : undefined}
-              className="text-gray-400 hover:text-white text-sm transition-colors"
-            >
-              {link.label}
-            </Link>
-          </li>
-        ))}
-      </ul>
+      {section.title && (
+        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
+      )}
+      {links.length > 0 ? (
+        <ul className="space-y-2">
+          {links.map((link, i) => {
+            const iconUrl = link.iconUrl ? resolveImageUrl(link.iconUrl) : ""
+            const showIcon = !!iconUrl
+            const showLabel = !!link.label
+            return (
+              <li key={i}>
+                <Link
+                  href={link.url || "#"}
+                  target={link.openInNewTab ? "_blank" : undefined}
+                  rel={link.openInNewTab ? "noopener noreferrer" : undefined}
+                  className="transition-colors inline-flex items-center gap-2 block w-full hover:opacity-90"
+                  style={linkStyle}
+                  onMouseEnter={(e) => {
+                    if (linkHoverColor) e.currentTarget.style.color = linkHoverColor
+                  }}
+                  onMouseLeave={(e) => {
+                    if (linkHoverColor) e.currentTarget.style.color = theme.linkColor || ""
+                  }}
+                >
+                  {showIcon && <img src={iconUrl} alt="" className="w-5 h-5 object-contain flex-shrink-0" />}
+                  {showLabel ? link.label : showIcon ? null : "Link"}
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      ) : (
+        <p className="text-sm text-gray-500">No links yet.</p>
+      )}
     </div>
   )
 }
 
-function SectionContact({ section }) {
+function SectionContact({ section, theme = {} }) {
   const { address, phone, email } = section.config || {}
   if (!address && !phone && !email) return null
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
+  const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
   return (
     <div>
-      {section.title && <h4 className="text-sm font-semibold text-white mb-3">{section.title}</h4>}
-      <div className="space-y-2 text-sm text-gray-400">
+      {section.title && (
+        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
+      )}
+      <div className="space-y-2" style={bodyStyle}>
         {address && <p className="whitespace-pre-line">{address}</p>}
         {phone && (
-          <a href={`tel:${phone}`} className="block hover:text-white transition-colors">
+          <a href={`tel:${phone}`} className="block hover:opacity-90 transition-colors" style={{ color: theme.linkColor || undefined }}>
             {phone}
           </a>
         )}
         {email && (
-          <a href={`mailto:${email}`} className="block hover:text-white transition-colors">
+          <a href={`mailto:${email}`} className="block hover:opacity-90 transition-colors" style={{ color: theme.linkColor || undefined }}>
             {email}
           </a>
         )}
@@ -100,25 +151,55 @@ function SectionContact({ section }) {
   )
 }
 
-function SectionNewsletter({ section }) {
+function SectionNewsletter({ section, theme = {} }) {
   const placeholder = section.config?.placeholder || "Enter your email"
   const buttonText = section.config?.buttonText || "Subscribe"
   const [email, setEmail] = useState("")
   const [status, setStatus] = useState("idle")
+  const [successMessage, setSuccessMessage] = useState("")
+  const [errorMessage, setErrorMessage] = useState("")
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
+  const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
+  const inputStyle = {
+    backgroundColor: theme.inputBackgroundColor || undefined,
+    color: theme.inputTextColor || undefined,
+    borderColor: theme.inputBorderColor || undefined,
+    borderRadius: theme.inputBorderRadius || undefined,
+  }
+  const subscribeButtonStyle = {
+    backgroundColor: theme.subscribeButtonBackgroundColor || undefined,
+    color: theme.subscribeButtonTextColor || undefined,
+    borderColor: theme.subscribeButtonBorderColor || undefined,
+    borderRadius: theme.subscribeButtonBorderRadius || undefined,
+    borderWidth: theme.subscribeButtonBorderColor ? 1 : 0,
+    borderStyle: "solid",
+  }
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
     setStatus("loading")
-    // Placeholder - integrate with your newsletter API
-    setTimeout(() => {
+    setErrorMessage("")
+    setSuccessMessage("")
+    try {
+      const { data } = await api.post("/newsletter/subscribe", { email }, { skipAuth: true })
       setStatus("success")
       setEmail("")
-    }, 800)
+      const msg = data?.msg ?? data?.message
+      setSuccessMessage(msg || section.config?.successMessage || "Thank you for subscribing!")
+    } catch (err) {
+      setStatus("error")
+      const msg = err.response?.data?.msg ?? err.response?.data?.message ?? err.response?.data?.error
+      setErrorMessage(msg || "Something went wrong. Please try again.")
+    }
   }
 
   return (
     <div>
-      {section.title && <h4 className="text-sm font-semibold text-white mb-3">{section.title}</h4>}
+      {section.title && (
+        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
+      )}
       <form onSubmit={handleSubmit} className="flex gap-2">
         <input
           type="email"
@@ -126,39 +207,47 @@ function SectionNewsletter({ section }) {
           onChange={(e) => setEmail(e.target.value)}
           placeholder={placeholder}
           required
-          className="flex-1 border border-gray-600 bg-gray-800 text-white placeholder-gray-500 rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="flex-1 border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          style={{
+            ...inputStyle,
+            borderWidth: inputStyle.borderColor ? 1 : 0,
+            borderStyle: "solid",
+          }}
         />
-        <button
-          type="submit"
-          disabled={status === "loading"}
-          className="px-4 py-2 bg-white text-gray-900 text-sm font-medium rounded hover:bg-gray-100 disabled:opacity-50"
-        >
+        <button type="submit" disabled={status === "loading"} className="px-4 py-2 text-sm font-medium rounded hover:opacity-90 disabled:opacity-50" style={subscribeButtonStyle}>
           {status === "loading" ? "..." : buttonText}
         </button>
       </form>
-      {status === "success" && (
-        <p className="mt-2 text-sm text-green-400">{section.config?.successMessage || "Thank you for subscribing!"}</p>
+      {status === "success" && successMessage && (
+        <p className="mt-2 text-sm text-green-400" style={bodyStyle}>
+          {successMessage}
+        </p>
+      )}
+      {status === "error" && errorMessage && (
+        <p className="mt-2 text-sm text-red-400" style={bodyStyle}>
+          {errorMessage}
+        </p>
       )}
     </div>
   )
 }
 
-function SectionSocial({ section }) {
+function SectionSocial({ section, theme = {} }) {
   const platforms = (section.config?.platforms || []).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
   if (!platforms.length) return null
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
+  const iconColor = theme.socialIconColor || theme.linkColor
+  const linkStyle = { color: iconColor || undefined }
   return (
     <div>
-      {section.title && <h4 className="text-sm font-semibold text-white mb-3">{section.title}</h4>}
+      {section.title && (
+        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
+      )}
       <div className="flex gap-3">
         {platforms.map((p, i) => (
-          <a
-            key={i}
-            href={p.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-gray-400 hover:text-white transition-colors"
-            aria-label={p.platform}
-          >
+          <a key={i} href={p.url} target="_blank" rel="noopener noreferrer" className="hover:opacity-90 transition-colors" style={linkStyle} aria-label={p.platform}>
             {SOCIAL_ICONS[p.platform] || SOCIAL_ICONS.other}
           </a>
         ))}
@@ -167,25 +256,34 @@ function SectionSocial({ section }) {
   )
 }
 
-function SectionAbout({ section }) {
-  const { description, logoUrl } = section.config || {}
+function SectionAbout({ section, theme = {} }) {
+  const { description } = section.config || {}
+  const sanitizedDescription = description ? sanitizeHtml(description, { ALLOWED_TAGS: ["p", "br", "strong", "em", "u", "ul", "ol", "li", "a", "h2", "h3", "h4"] }) : ""
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
+  const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
   return (
     <div>
-      {logoUrl && (
-        <img src={logoUrl} alt="" className="h-10 mb-3 object-contain" />
+      {section.title && (
+        <h4 className="mb-2 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
       )}
-      {section.title && <h4 className="text-sm font-semibold text-white mb-2">{section.title}</h4>}
-      {description && <p className="text-sm text-gray-400">{description}</p>}
+      {sanitizedDescription && <div className="footer-about-description [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1" style={bodyStyle} dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />}
     </div>
   )
 }
 
-function SectionPayment({ section }) {
+function SectionPayment({ section, theme = {} }) {
   const icons = (section.config?.icons || []).sort((a, b) => (a.displayOrder || 0) - (b.displayOrder || 0))
   if (!icons.length) return null
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
   return (
     <div>
-      {section.title && <h4 className="text-sm font-semibold text-white mb-3">{section.title}</h4>}
+      {section.title && (
+        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
+      )}
       <div className="flex flex-wrap gap-3 items-center">
         {icons.map((icon, i) =>
           icon.iconUrl ? (
@@ -194,69 +292,135 @@ function SectionPayment({ section }) {
             <span key={i} className="text-xs text-gray-500 border border-gray-600 rounded px-2 py-1">
               {icon.name}
             </span>
-          )
+          ),
         )}
       </div>
     </div>
   )
 }
 
-function SectionCopyright({ section }) {
-  const text = section.config?.text || "© {year} All rights reserved."
-  const year = new Date().getFullYear()
-  return <div className="text-sm text-gray-500">{text.replace("{year}", year)}</div>
-}
-
-function SectionCustom({ section }) {
-  const html = section.config?.html
-  if (!html) return null
+function SectionLogo({ section, theme = {} }) {
+  const { logoUrl, logoLinkUrl, logoAlt, logoTitle } = section.config || {}
+  if (!logoUrl) return null
+  const src = resolveImageUrl(logoUrl)
+  const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
+  const img = <img src={src} alt={logoAlt || section.title || "Logo"} title={logoTitle || undefined} className="h-10 object-contain max-w-full" />
   return (
-    <div
-      className="footer-custom-html text-sm text-gray-400 [&_a]:text-gray-400 [&_a:hover]:text-white"
-      dangerouslySetInnerHTML={{ __html: html }}
-    />
+    <div>
+      {section.title && (
+        <h4 className="mb-2 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+          {section.title}
+        </h4>
+      )}
+      {logoLinkUrl ? (
+        <a href={logoLinkUrl} target="_blank" rel="noopener noreferrer" className="inline-block">
+          {img}
+        </a>
+      ) : (
+        img
+      )}
+    </div>
   )
 }
 
-function renderSection(section) {
+function SectionCopyright({ section, theme = {} }) {
+  const text = section.config?.text || "© {year} All rights reserved."
+  const year = new Date().getFullYear()
+  const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
+  return <div style={bodyStyle}>{text.replace("{year}", year)}</div>
+}
+
+function SectionCustom({ section, theme = {} }) {
+  const html = section.config?.html
+  if (!html) return null
+  const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
+  return <div className="footer-custom-html [&_a]:underline [&_a:hover]:opacity-90" style={bodyStyle} dangerouslySetInnerHTML={{ __html: html }} />
+}
+
+function renderSection(section, theme = {}) {
+  const common = { section, theme }
   switch (section.type) {
     case "links":
-      return <SectionLinks section={section} />
+      return <SectionLinks {...common} />
     case "contact":
-      return <SectionContact section={section} />
+      return <SectionContact {...common} />
     case "newsletter":
-      return <SectionNewsletter section={section} />
+      return <SectionNewsletter {...common} />
     case "social":
-      return <SectionSocial section={section} />
+      return <SectionSocial {...common} />
     case "about":
-      return <SectionAbout section={section} />
+      return <SectionAbout {...common} />
+    case "logo":
+      return <SectionLogo {...common} />
     case "payment":
-      return <SectionPayment section={section} />
+      return <SectionPayment {...common} />
     case "copyright":
-      return <SectionCopyright section={section} />
+      return <SectionCopyright {...common} />
     case "custom":
-      return <SectionCustom section={section} />
+      return <SectionCustom {...common} />
     default:
       return null
   }
 }
 
-export default function Footer() {
-  const [sections, setSections] = useState([])
-  const [loading, setLoading] = useState(true)
+const defaultTheme = {
+  backgroundColor: "#111827",
+  titleFontSize: "14px",
+  titleColor: "#ffffff",
+  linkFontSize: "14px",
+  linkColor: "#9ca3af",
+  linkHoverColor: "#ffffff",
+  bodyTextSize: "14px",
+  bodyTextColor: "#9ca3af",
+  inputBackgroundColor: "#1f2937",
+  inputTextColor: "#ffffff",
+  inputBorderColor: "#4b5563",
+  inputBorderRadius: "6px",
+  subscribeButtonBackgroundColor: "#ffffff",
+  subscribeButtonTextColor: "#111827",
+  subscribeButtonBorderColor: "#e5e7eb",
+  subscribeButtonBorderRadius: "6px",
+  socialIconColor: "#9ca3af",
+  dividerColor: "#374151",
+  dividerThickness: "1px",
+}
+
+export default function Footer({ initialSections = [], initialTheme = {} } = {}) {
+  const hasInitialData = Array.isArray(initialSections) && initialSections.length > 0
+  const [sections, setSections] = useState(initialSections)
+  const [theme, setTheme] = useState(initialTheme && typeof initialTheme === "object" ? initialTheme : {})
+  const [loading, setLoading] = useState(!hasInitialData)
 
   useEffect(() => {
+    if (hasInitialData) return
     fetch("/api/footer-sections", { cache: "no-store" })
-      .then((res) => res.ok ? res.json() : { sections: [] })
-      .then((data) => setSections(data.sections || []))
-      .catch(() => setSections([]))
+      .then((res) => (res.ok ? res.json() : { sections: [], theme: {} }))
+      .then((data) => {
+        setSections(data.sections || [])
+        setTheme(data.theme || {})
+      })
+      .catch(() => {
+        setSections([])
+        setTheme({})
+      })
       .finally(() => setLoading(false))
-  }, [])
+  }, [hasInitialData])
+
+  useEffect(() => {
+    if (Array.isArray(initialSections) && initialSections.length) {
+      setSections(initialSections)
+      setLoading(false)
+    }
+    if (initialTheme && typeof initialTheme === "object" && Object.keys(initialTheme).length) {
+      setTheme(initialTheme)
+      setLoading(false)
+    }
+  }, [initialSections, initialTheme])
 
   if (loading) {
     return (
       <footer className="bg-gray-900 text-white py-8">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
           <div className="animate-pulse h-32 bg-gray-800 rounded" />
         </div>
       </footer>
@@ -266,29 +430,102 @@ export default function Footer() {
   if (sections.length === 0) {
     return (
       <footer className="bg-gray-900 text-white py-8 border-t border-gray-200">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm">
-          © {new Date().getFullYear()} All rights reserved.
-        </div>
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm">© {new Date().getFullYear()} All rights reserved.</div>
       </footer>
     )
   }
 
   const mainSections = sections.filter((s) => s.type !== "copyright")
   const copyrightSection = sections.find((s) => s.type === "copyright")
+  const mergedTheme = { ...defaultTheme, ...theme }
+
+  // Sort main sections by order (displayOrder or order)
+  const sortedMain = [...mainSections].sort((a, b) => (a.displayOrder ?? a.order ?? 0) - (b.displayOrder ?? b.order ?? 0))
+
+  const getSectionSpan = (displayLayout) => {
+    const layout = displayLayout || "cols4"
+    const span =
+      {
+        fullWidth: "col-span-12",
+        cols4: "col-span-12 sm:col-span-6 lg:col-span-3",
+        cols3: "col-span-12 sm:col-span-6 lg:col-span-4",
+        cols2: "col-span-12 sm:col-span-6",
+        cols1: "col-span-12",
+        cols1rows2: "col-span-12",
+      }[layout] || "col-span-12 sm:col-span-6 lg:col-span-3"
+    return span
+  }
+
+  const isFullWidth = (section) => (section.displayLayout || "").toLowerCase() === "fullwidth"
+
+  // Build rows: fullWidth sections each get their own row; consecutive column sections share one row.
+  // Within a row, group sections by columnIndex/column so one grid cell can contain multiple sections (ordered by displayOrder).
+  const rows = []
+  let i = 0
+  while (i < sortedMain.length) {
+    const section = sortedMain[i]
+    if (isFullWidth(section)) {
+      rows.push({ type: "fullWidth", sections: [section] })
+      i += 1
+    } else {
+      const columnSections = []
+      while (i < sortedMain.length && !isFullWidth(sortedMain[i])) {
+        columnSections.push(sortedMain[i])
+        i += 1
+      }
+      if (columnSections.length > 0) {
+        // Group by column (columnIndex or column); same column = same grid cell, sections stacked by order
+        const columnMap = new Map()
+        columnSections.forEach((s, idx) => {
+          const colKey = s.columnIndex ?? s.column ?? idx
+          if (!columnMap.has(colKey)) columnMap.set(colKey, [])
+          columnMap.get(colKey).push(s)
+        })
+        // Sort columns by key, keep sections within column already in displayOrder (sortedMain order)
+        const columns = Array.from(columnMap.entries())
+          .sort((a, b) => Number(a[0]) - Number(b[0]))
+          .map(([, secs]) => secs)
+        rows.push({ type: "columns", columns })
+      }
+    }
+  }
+
+  const footerStyle = { backgroundColor: mergedTheme.backgroundColor || defaultTheme.backgroundColor }
+  const dividerThickness = mergedTheme.dividerThickness || defaultTheme.dividerThickness
+  const dividerStyle = {
+    borderBottomColor: mergedTheme.dividerColor || defaultTheme.dividerColor,
+    borderBottomWidth: dividerThickness,
+    borderBottomStyle: "solid",
+  }
+  const dividerStyleTop = {
+    borderTopColor: mergedTheme.dividerColor || defaultTheme.dividerColor,
+    borderTopWidth: dividerThickness,
+    borderTopStyle: "solid",
+  }
 
   return (
-    <footer className="bg-gray-900 text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-8 text-gray-400">
-          {mainSections.map((section) => (
-            <div key={section._id} className="min-w-0">
-              {renderSection(section)}
-            </div>
-          ))}
-        </div>
+    <footer className="text-white" style={footerStyle}>
+      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-12">
+        {rows.map((row, rowIndex) => (
+          <div key={rowIndex} className={`grid grid-cols-12 gap-8 ${rowIndex < rows.length - 1 ? "mt-4 mb-4 pb-8 border-b" : ""}`} style={{ color: mergedTheme.bodyTextColor, ...(rowIndex < rows.length - 1 ? dividerStyle : {}) }}>
+            {row.type === "fullWidth" ? (
+              <div className="min-w-0 col-span-12">{renderSection(row.sections[0], mergedTheme)}</div>
+            ) : (
+              row.columns.map((columnSections, colIdx) => (
+                <div key={colIdx} className={`min-w-0 ${getSectionSpan(columnSections[0]?.displayLayout)}`}>
+                  {columnSections.map((section, sectionIdx) => (
+                    <div key={section._id} className={sectionIdx > 0 ? "mt-6" : ""}>
+                      {renderSection(section, mergedTheme)}
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+        ))}
         {copyrightSection && (
-          <div className="mt-8 pt-8 border-t border-gray-800">
-            {renderSection(copyrightSection)}
+          <div className="mt-8 pt-8 border-t" style={dividerStyleTop}>
+            {renderSection(copyrightSection, mergedTheme)}
           </div>
         )}
       </div>

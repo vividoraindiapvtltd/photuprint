@@ -95,6 +95,15 @@ connectDB()
       throw error // Don't start server if routes fail
     }
 
+    // Start review email scheduler (polls for pending review emails)
+    try {
+      const { startReviewEmailScheduler } = await import("./utils/reviewEmailScheduler.js")
+      startReviewEmailScheduler()
+      console.log("✅ Review email scheduler started")
+    } catch (err) {
+      console.error("⚠️  Review email scheduler failed to start:", err.message)
+    }
+
     // Start server
     httpServer.listen(PORT, () => {
       console.log(`🚀 Server running on http://localhost:${PORT}`)

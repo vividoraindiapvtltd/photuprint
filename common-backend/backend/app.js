@@ -71,6 +71,8 @@ export const setupRoutes = async () => {
     const sleeveTypeRoutes = (await import("./routes/sleeveType.routes.js")).default
     const couponRoutes = (await import("./routes/coupon.routes.js")).default
     const orderRoutes = (await import("./routes/order.routes.js")).default
+    const paymentRoutes = (await import("./routes/payment.routes.js")).default
+    const checkoutRoutes = (await import("./routes/checkout.routes.js")).default
     const shippingRoutes = (await import("./routes/shipping.routes.js")).default
     const gstSlabRoutes = (await import("./routes/gstSlab.routes.js")).default
     const companyRoutes = (await import("./routes/company.routes.js")).default
@@ -88,9 +90,13 @@ export const setupRoutes = async () => {
     const testimonialRoutes = (await import("./routes/testimonial.routes.js")).default
     const homepageSectionRoutes = (await import("./routes/homepageSection.routes.js")).default
     const footerSectionRoutes = (await import("./routes/footerSection.routes.js")).default
+    const newsletterRoutes = (await import("./routes/newsletter.routes.js")).default
+    const carouselRoutes = (await import("./routes/carousel.routes.js")).default
     const clientRoutes = (await import("./routes/client.routes.js")).default
     const interactionRoutes = (await import("./routes/interaction.routes.js")).default
     const userAccessRoutes = (await import("./routes/userAccess.routes.js")).default
+    const recentlyViewedProductRoutes = (await import("./routes/recentlyViewedProduct.routes.js")).default
+    const wishlistRoutes = (await import("./routes/wishlist.routes.js")).default
 
     // Register auth routes first (before any tenant middleware)
     app.use("/api/auth", authRoutes)
@@ -117,6 +123,8 @@ export const setupRoutes = async () => {
     
     app.use("/api/users", userRoutes)
     app.use("/api/orders", orderRoutes)
+    app.use("/api", checkoutRoutes)
+    app.use("/api/payments", paymentRoutes)
     app.use("/api/shipping", shippingRoutes)
     app.use("/api/products", productRoutes)
     app.use("/api/categories", categoryRoutes)
@@ -158,8 +166,12 @@ export const setupRoutes = async () => {
     app.use("/api/shipping-cost", shippingCostRoutes)
     app.use("/api/homepage-sections", homepageSectionRoutes)
     app.use("/api/footer-sections", footerSectionRoutes)
+    app.use("/api/newsletter", newsletterRoutes)
+    app.use("/api/carousel", carouselRoutes)
     app.use("/api/clients", clientRoutes)
     app.use("/api/interactions", interactionRoutes)
+    app.use("/api/recently-viewed-products", recentlyViewedProductRoutes)
+    app.use("/api/wishlist", wishlistRoutes)
     app.use("/api", productVariantRoutes)
     app.use("/api", variationSettingRoutes)
     // user-access routes moved to earlier in the file (before /api routes with router.use tenant middleware)
@@ -171,7 +183,7 @@ export const setupRoutes = async () => {
     try {
       const Template = (await import("./models/template.model.js")).default
       const collection = Template.collection
-      const indexes = await collection.indexes()
+      const indexes = await collection.indexes() 
       
       // Drop unique_category_template index if it exists
       const uniqueIndex = indexes.find((idx) => idx.name === "unique_category_template")
@@ -202,6 +214,20 @@ export const setupRoutes = async () => {
       console.log("✅ All unique category indexes dropped (multiple templates per category now allowed)")
     } catch (err) {
       console.log("ℹ️  Index cleanup:", err.message)
+    }
+
+    // Drop old unique index on FooterTheme.website so multiple themes per website are allowed
+    try {
+      const FooterTheme = (await import("./models/footerTheme.model.js")).default
+      const collection = FooterTheme.collection
+      const indexes = await collection.indexes()
+      const websiteUnique = indexes.find((idx) => idx.key?.website === 1 && idx.unique)
+      if (websiteUnique) {
+        await collection.dropIndex(websiteUnique.name).catch(() => {})
+        console.log("✅ Dropped FooterTheme website unique index (multiple themes per website now allowed)")
+      }
+    } catch (err) {
+      console.log("ℹ️  FooterTheme index cleanup:", err.message)
     }
 
     // Debug: List all registered routes

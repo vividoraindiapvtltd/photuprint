@@ -1,14 +1,16 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { Suspense, useState, useEffect } from "react"
 import { useGoogleLogin } from "@react-oauth/google"
 import { useAuth } from "../../src/context/AuthContext"
 import api from "../../src/utils/api"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
 
-export default function Register() {
+function RegisterContent() {
   const { login, isAuthenticated } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const [formData, setFormData] = useState({
     name: "",
     email: "",
@@ -18,8 +20,10 @@ export default function Register() {
   })
   const [error, setError] = useState("")
   const [loading, setLoading] = useState(false)
-  const router = useRouter()
-  const searchParams = useSearchParams()
+  const [verificationSent, setVerificationSent] = useState(false)
+  const [verificationEmail, setVerificationEmail] = useState("")
+  const [resendLoading, setResendLoading] = useState(false)
+  const [resendMsg, setResendMsg] = useState("")
 
   // Get the redirect URL from query params
   const from = searchParams.get("from") || "/"
@@ -87,15 +91,19 @@ export default function Register() {
         password: formData.password,
       })
 
-      console.log("Registration successful:", registerResponse.data)
+      const data = registerResponse.data || {}
 
-      // Automatically log in the user after successful registration
-      if (registerResponse.data && registerResponse.data.user && registerResponse.data.token) {
+      // Backend sends verification email and returns msg/email (no user+token) when verification required
+      const hasVerificationResponse = !data.user && !data.token && (data.email || data.msg)
+
+      if (hasVerificationResponse) {
+        setVerificationSent(true)
+        setVerificationEmail(data.email || formData.email)
+      } else if (data.user && data.token) {
+        // Auto-login when no verification required
         login(registerResponse.data)
-        console.log("Auto-login successful, redirecting to:", from)
         router.push(from)
       } else {
-        // If auto-login data not provided, redirect to login page
         router.push(`/login?message=${encodeURIComponent("Registration successful! Please login.")}`)
       }
     } catch (err) {
@@ -150,6 +158,54 @@ export default function Register() {
       setLoading(false)
     },
   })
+
+  const handleResendVerification = async () => {
+    if (!verificationEmail) return
+    setResendLoading(true)
+    setResendMsg("")
+    try {
+      await api.post("/auth/resend-verification", { email: verificationEmail })
+      setResendMsg("Verification email sent. Please check your inbox.")
+    } catch (err) {
+      setResendMsg(err.response?.data?.msg || err.message || "Failed to resend. Please try again.")
+    } finally {
+      setResendLoading(false)
+    }
+  }
+
+  // Verification email sent success screen
+  if (verificationSent) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-md w-full">
+          <div className="rounded-xl bg-white shadow-lg border border-gray-200 p-8 text-center">
+            <div className="mx-auto w-16 h-16 rounded-full bg-green-100 flex items-center justify-center mb-6">
+              <svg className="w-8 h-8 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+              </svg>
+            </div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">Check your email</h2>
+            <p className="text-gray-600 mb-4">
+              We&apos;ve sent a verification link to <span className="font-medium text-gray-900">{verificationEmail}</span>. Click the link in the email to verify your account and sign in.
+            </p>
+            <p className="text-sm text-gray-500 mb-4">Didn&apos;t receive the email? Check your spam folder or click below to resend.</p>
+            {resendMsg && <p className={`text-sm mb-4 ${resendMsg.includes("Failed") ? "text-red-600" : "text-green-600"}`}>{resendMsg}</p>}
+            <button type="button" onClick={handleResendVerification} disabled={resendLoading} className="w-full py-2 px-4 rounded-lg text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50 disabled:opacity-60 mb-4">
+              {resendLoading ? "Sending..." : "Resend verification email"}
+            </button>
+            <div className="space-y-3">
+              <Link href="/login" className="block w-full py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700">
+                Go to Sign in
+              </Link>
+              <Link href="/register" className="block w-full py-2 px-4 rounded-lg text-sm font-medium text-gray-700 border border-gray-300 hover:bg-gray-50">
+                Back to Register
+              </Link>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -259,5 +315,13 @@ export default function Register() {
         <div className="text-xs text-center text-gray-500 mt-4">By creating an account, you can submit product reviews and track your submissions.</div>
       </div>
     </div>
+  )
+}
+
+export default function Register() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center bg-gray-50">Loading...</div>}>
+      <RegisterContent />
+    </Suspense>
   )
 }
