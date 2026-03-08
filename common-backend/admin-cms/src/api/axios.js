@@ -3,15 +3,29 @@ import axios from "axios"
 // Get the current hostname and port for flexible API configuration
 const getBaseURL = () => {
   if (typeof window === "undefined") return "/api"
-  return process.env.REACT_APP_API_BASE_URL || "/api"
+
+  const hostname = window.location.hostname
+  // const port = "8080" // Backend port
+
+  // If accessing from localhost, use localhost for API
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:8080/api"
+  }
+
+  // If accessing from IP address, use the same IP for API
+  return "/api"
 }
 
 // Base URL for static uploads (same host as API, no /api suffix)
 export const getUploadBaseURL = () => {
   if (typeof window === "undefined") return ""
-  
-  // Assuming environment base URL is like http://domain.com/api
-  // We want to just use relative paths for uploads
+
+  const hostname = window.location.hostname
+
+  if (hostname === "localhost" || hostname === "127.0.0.1") {
+    return "http://localhost:8080"
+  }
+
   return ""
 }
 

@@ -24,7 +24,10 @@ class NoopLayoutManager extends fabric.LayoutManager {
 }
 
 const getBaseUploadUrl = () => {
-  return ""
+  const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost"
+  const port = "8080"
+  if (hostname === "localhost" || hostname === "127.0.0.1") return `http://localhost:${port}`
+  return `http://${hostname}:${port}`
 }
 
 function normalizePreviewUrl(url) {

@@ -477,7 +477,12 @@ const UserManager = () => {
       
       // Get base URL and auth token
       const getBaseURL = () => {
-        return process.env.REACT_APP_API_BASE_URL || "/api";
+        const hostname = window.location.hostname;
+        const port = "8080";
+        if (hostname === "localhost" || hostname === "127.0.0.1") {
+          return `http://localhost:${port}/api`;
+        }
+        return `http://${hostname}:${port}/api`;
       };
       
       let authToken = '';
