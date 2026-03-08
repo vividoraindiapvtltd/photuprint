@@ -26,7 +26,7 @@ export async function getHomepageData() {
   try {
     const res = await fetch(`${backendUrl}/homepage-sections`, {
       headers,
-      cache: "no-store",
+      // cache: "no-store",
       next: { revalidate: 60 },
     })
 
