@@ -127,8 +127,8 @@ const VariationImagesDisplay = ({ productId, fetchVariations, openMediaPopup, va
   const normalizeImageUrl = (url) => {
     if (!url) return null
     if (url.startsWith("http")) return url
-    if (url.startsWith("/uploads/")) return `http://localhost:8080${url}`
-    return `http://localhost:8080${url}`
+    if (url.startsWith("/uploads/")) return `${url}`
+    return `${url}`
   }
 
   if (loading) {
@@ -666,7 +666,7 @@ export default function Products() {
         let mainImageUrl = product.mainImage
         if (mainImageUrl && !mainImageUrl.startsWith('http')) {
           if (mainImageUrl.startsWith('/uploads/')) {
-            mainImageUrl = `http://localhost:8080${mainImageUrl}`
+            mainImageUrl = `${mainImageUrl}`
           }
         }
         // Append cache-buster for main image
@@ -675,7 +675,7 @@ export default function Products() {
         const processedImages = (product.images || []).map(img => {
           if (img && !img.startsWith('http')) {
             if (img.startsWith('/uploads/')) {
-              img = `http://localhost:8080${img}`
+              img = `${img}`
             }
           }
           // Append cache-buster for gallery images
@@ -1564,7 +1564,7 @@ export default function Products() {
         let processedImage = variantImage
         if (variantImage && !variantImage.startsWith('http')) {
           if (variantImage.startsWith('/uploads/')) {
-            processedImage = `http://localhost:8080${variantImage}`
+            processedImage = `${variantImage}`
           }
         }
         // Append cache-buster for the primary image
@@ -1573,7 +1573,7 @@ export default function Products() {
         const processedImages = (variant.images || []).map(img => {
           if (img && !img.startsWith('http')) {
             if (img.startsWith('/uploads/')) {
-              img = `http://localhost:8080${img}`
+              img = `${img}`
             }
           }
           // Append cache-buster for gallery images
@@ -2329,9 +2329,9 @@ export default function Products() {
                         if (!url) return null
                         if (url.startsWith("http")) return url
                         if (url.startsWith("/uploads/") || url.startsWith("/")) {
-                          return `http://localhost:8080${url}`
+                          return `${url}`
                         }
-                        return `http://localhost:8080/uploads/${url}`
+                        return `/uploads/${url}`
                       }
                       
                       return (
@@ -2381,7 +2381,7 @@ export default function Products() {
                           const templateId = typeof firstTemplate === "object" ? (firstTemplate.templateId || firstTemplate._id) : firstTemplate
                           const templateImage = typeof firstTemplate === "object" ? (firstTemplate.previewImage || firstTemplate.image) : null
                           const templateImageUrl = templateImage 
-                            ? (templateImage.startsWith("http") ? templateImage : `http://localhost:8080${templateImage.startsWith("/") ? templateImage : "/" + templateImage}`)
+                            ? (templateImage.startsWith("http") ? templateImage : `${templateImage.startsWith("/") ? templateImage : "/" + templateImage}`)
                             : null
                           return (
                             <>
@@ -2455,7 +2455,7 @@ export default function Products() {
                             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                               {(expandedImages.gallery[product._id] ? product.images : product.images.slice(0, 6)).map((imgUrl, index) => {
                                 const isVideo = typeof imgUrl === "string" && (imgUrl.includes(".mp4") || imgUrl.includes(".webm") || imgUrl.includes(".mov") || imgUrl.includes("video"))
-                                const fullUrl = imgUrl.startsWith("http") ? imgUrl : `http://localhost:8080${imgUrl}`
+                                const fullUrl = imgUrl.startsWith("http") ? imgUrl : `${imgUrl}`
                                 
                                 return (
                                   <div key={`gallery-${index}`} style={{ position: 'relative', width: '50px', height: '50px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', border: '1px solid #e5e7eb' }}>
@@ -2595,12 +2595,12 @@ export default function Products() {
                             <div className="tableLogo">
                               {product.mainImage ? (
                                 <img
-                                  src={product.mainImage.startsWith("http") ? product.mainImage : `http://localhost:8080${product.mainImage}`}
+                                  src={product.mainImage.startsWith("http") ? product.mainImage : `${product.mainImage}`}
                                   alt={product.name}
                                   className="tableLogoImage"
                                   style={{ cursor: 'pointer' }}
                                   onClick={() => {
-                                    const mainImageUrl = product.mainImage.startsWith("http") ? product.mainImage : `http://localhost:8080${product.mainImage}`
+                                    const mainImageUrl = product.mainImage.startsWith("http") ? product.mainImage : `${product.mainImage}`
                                     openMediaPopup(mainImageUrl, isVideoUrl(mainImageUrl))
                                   }}
                                 />

@@ -10,7 +10,7 @@ const ProductTemplatesTab = ({
   const getPreviewImageUrl = (template) => {
     if (!template?.previewImage) return null
     if (template.previewImage.startsWith("http")) return template.previewImage
-    const base = `${window.location.protocol}//${window.location.hostname}:8080`
+    const base = ""
     return template.previewImage.startsWith("/") ? base + template.previewImage : `${base}/${template.previewImage}`
   }
 

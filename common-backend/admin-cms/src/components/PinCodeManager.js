@@ -438,7 +438,7 @@ const PinCodeManager = () => {
         if (imageUrl && !imageUrl.startsWith("http")) {
           // Check if it's a local upload path
           if (imageUrl.startsWith("/uploads/")) {
-            imageUrl = `http://localhost:8080${imageUrl}`
+            imageUrl = `${imageUrl}`
           }
         }
 

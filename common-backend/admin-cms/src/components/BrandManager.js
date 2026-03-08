@@ -98,7 +98,7 @@ const BrandManager = () => {
         // If logo is a relative path, construct full URL
         if (logoUrl && !logoUrl.startsWith('http')) {
           if (logoUrl.startsWith('/uploads/')) {
-            logoUrl = `http://localhost:8080${logoUrl}`;
+            logoUrl = `${logoUrl}`;
           }
         }
         

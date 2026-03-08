@@ -112,7 +112,7 @@ const SleeveTypeManager = () => {
       if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
         // Extract filename from system path
         const filename = imageUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
+        return `/uploads/${filename}`;
       }
       // Otherwise it's a valid Cloudinary URL, return as is
       return imageUrl;
@@ -122,16 +122,16 @@ const SleeveTypeManager = () => {
     if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
       // Extract filename from system path
       const filename = imageUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
+      return `/uploads/${filename}`;
     }
     
     // Handle relative paths
     if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('/')) {
-      return `http://localhost:8080${imageUrl}`;
+      return `${imageUrl}`;
     }
     
     // Relative path without leading slash
-    return `http://localhost:8080/uploads/${imageUrl}`;
+    return `/uploads/${imageUrl}`;
   };
 
   const handleChange = async (e) => {
@@ -490,7 +490,7 @@ const SleeveTypeManager = () => {
             if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
               // Extract filename from system path
               const filename = imageUrl.split('/').pop();
-              imageUrl = `http://localhost:8080/uploads/${filename}`;
+              imageUrl = `/uploads/${filename}`;
             }
             // Otherwise it's a Cloudinary URL, use as is
           } else if (!imageUrl.startsWith('http')) {
@@ -498,13 +498,13 @@ const SleeveTypeManager = () => {
             if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
               // Extract filename from system path
               const filename = imageUrl.split('/').pop();
-              imageUrl = `http://localhost:8080/uploads/${filename}`;
+              imageUrl = `/uploads/${filename}`;
             } else if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('/')) {
               // Local upload path
-              imageUrl = `http://localhost:8080${imageUrl}`;
+              imageUrl = `${imageUrl}`;
             } else {
               // Relative path without leading slash
-              imageUrl = `http://localhost:8080/uploads/${imageUrl}`;
+              imageUrl = `/uploads/${imageUrl}`;
             }
           }
         }

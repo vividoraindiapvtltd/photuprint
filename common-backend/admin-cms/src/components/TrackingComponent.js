@@ -40,7 +40,7 @@ const TrackingComponent = ({ orderId, onClose }) => {
     }
 
     // Initialize Socket.io connection
-    const socketUrl = process.env.REACT_APP_SOCKET_URL || 'http://localhost:8080';
+    const socketUrl = process.env.REACT_APP_SOCKET_URL || '';
     const newSocket = io(socketUrl, {
       auth: {
         token: token

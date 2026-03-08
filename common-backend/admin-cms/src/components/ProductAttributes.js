@@ -7,7 +7,7 @@ const DEFAULT_SLEEVE_TYPES = ["Full Sleeve", "Half Sleeve", "Short Sleeve", "Sle
 const DEFAULT_COLLAR_STYLES = ["Mandarin", "Spread", "Button Down", "Band Collar"]
 
 const ProductAttributeManager = () => {
-  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || "http://localhost:8080"
+  const API_BASE_URL = process.env.REACT_APP_API_BASE_URL || ""
 
   const [attributes, setAttributes] = useState([])
   const [loading, setLoading] = useState(true)

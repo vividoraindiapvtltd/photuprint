@@ -12,21 +12,21 @@ const ShippingLabelPopup = ({ isVisible, order, onClose, onPrint }) => {
     if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
       if (logoUrl.includes('/backend/uploads/') || logoUrl.includes('/Users/')) {
         const filename = logoUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
+        return `/uploads/${filename}`;
       }
       return logoUrl;
     }
     
     if (logoUrl.includes('/backend/uploads/') || logoUrl.includes('/Users/')) {
       const filename = logoUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
+      return `/uploads/${filename}`;
     }
     
     if (logoUrl.startsWith('/uploads/') || logoUrl.startsWith('/')) {
-      return `http://localhost:8080${logoUrl}`;
+      return `${logoUrl}`;
     }
     
-    return `http://localhost:8080/uploads/${logoUrl}`;
+    return `/uploads/${logoUrl}`;
   };
 
   useEffect(() => {

@@ -244,7 +244,7 @@ const CategoryManager = () => {
       if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
         // Extract filename from system path
         const filename = imageUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
+        return `/uploads/${filename}`;
       }
       // Otherwise it's a valid Cloudinary URL, return as is
       return imageUrl;
@@ -254,16 +254,16 @@ const CategoryManager = () => {
     if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
       // Extract filename from system path
       const filename = imageUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
+      return `/uploads/${filename}`;
     }
     
     // Handle relative paths
     if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('/')) {
-      return `http://localhost:8080${imageUrl}`;
+      return `${imageUrl}`;
     }
     
     // Relative path without leading slash
-    return `http://localhost:8080/uploads/${imageUrl}`;
+    return `/uploads/${imageUrl}`;
   };
 
   const resetForm = () => {
@@ -534,7 +534,7 @@ const CategoryManager = () => {
         if (imageUrl && !imageUrl.startsWith("http")) {
           // Check if it's a local upload path
           if (imageUrl.startsWith("/uploads/")) {
-            imageUrl = `http://localhost:8080${imageUrl}`
+            imageUrl = `${imageUrl}`
           }
         }
 

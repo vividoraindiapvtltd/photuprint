@@ -50,10 +50,10 @@ const ProductMediaTab = ({
               <p style={{ fontSize: "14px", color: "#666", marginBottom: "10px" }}>Current Featured Image:</p>
               <div style={{ position: "relative", display: "inline-block" }}>
                 <img
-                  src={formData.existingFeaturedImage.startsWith("http") ? formData.existingFeaturedImage : `http://localhost:8080${formData.existingFeaturedImage}`}
+                  src={formData.existingFeaturedImage.startsWith("http") ? formData.existingFeaturedImage : `${formData.existingFeaturedImage}`}
                   alt="Featured"
                   style={{ width: "200px", height: "200px", objectFit: "cover", borderRadius: "4px", border: "2px solid #007bff", cursor: "pointer" }}
-                  onClick={() => openMediaPopup(formData.existingFeaturedImage.startsWith("http") ? formData.existingFeaturedImage : `http://localhost:8080${formData.existingFeaturedImage}`, false)}
+                  onClick={() => openMediaPopup(formData.existingFeaturedImage.startsWith("http") ? formData.existingFeaturedImage : `${formData.existingFeaturedImage}`, false)}
                 />
                 <button
                   type="button"
@@ -123,7 +123,7 @@ const ProductMediaTab = ({
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: "10px" }}>
               {formData.existingGalleryImages.map((mediaUrl, index) => {
                 const isVideo = typeof mediaUrl === "string" && (mediaUrl.includes(".mp4") || mediaUrl.includes(".webm") || mediaUrl.includes(".mov") || mediaUrl.includes("video"))
-                const fullUrl = mediaUrl.startsWith("http") ? mediaUrl : `http://localhost:8080${mediaUrl}`
+                const fullUrl = mediaUrl.startsWith("http") ? mediaUrl : `${mediaUrl}`
                 
                 return (
                   <div key={`existing-${index}`} style={{ position: "relative" }}>

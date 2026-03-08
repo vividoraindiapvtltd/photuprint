@@ -163,18 +163,18 @@ const TestimonialManager = () => {
     if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) {
       if (imageUrl.includes("/backend/uploads/") || imageUrl.includes("/Users/")) {
         const filename = imageUrl.split("/").pop()
-        return `http://localhost:8080/uploads/${filename}`
+        return `/uploads/${filename}`
       }
       return imageUrl
     }
     if (imageUrl.includes("/backend/uploads/") || imageUrl.includes("/Users/")) {
       const filename = imageUrl.split("/").pop()
-      return `http://localhost:8080/uploads/${filename}`
+      return `/uploads/${filename}`
     }
     if (imageUrl.startsWith("/uploads/") || imageUrl.startsWith("/")) {
-      return `http://localhost:8080${imageUrl}`
+      return `${imageUrl}`
     }
-    return `http://localhost:8080/uploads/${imageUrl}`
+    return `/uploads/${imageUrl}`
   }
 
   // Fetch testimonials

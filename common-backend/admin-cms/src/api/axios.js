@@ -2,29 +2,21 @@ import axios from "axios"
 
 // Get the current hostname and port for flexible API configuration
 const getBaseURL = () => {
-  const hostname = window.location.hostname
-  const port = "8080" // Backend port
-
-  // If accessing from localhost, use localhost for API
-  if (hostname === "localhost" || hostname === "127.0.0.1") {
-    return `http://localhost:${port}/api`
-  }
-
-  // If accessing from IP address, use the same IP for API
-  return `http://${hostname}:${port}/api`
+  if (typeof window === "undefined") return "/api"
+  return process.env.REACT_APP_API_BASE_URL || "/api"
 }
 
 // Base URL for static uploads (same host as API, no /api suffix)
 export const getUploadBaseURL = () => {
-  const base = getBaseURL()
-  if (typeof base === "string" && base) {
-    return base.replace(/\/api\/?$/, "") || `http://localhost:8080`
-  }
-  return "http://localhost:8080"
+  if (typeof window === "undefined") return ""
+  
+  // Assuming environment base URL is like http://domain.com/api
+  // We want to just use relative paths for uploads
+  return ""
 }
 
 const api = axios.create({
-  baseURL: getBaseURL(),
+  baseURL: getBaseURL()
 })
 
 // Add request interceptor for authentication and multi-tenancy
@@ -45,7 +37,7 @@ api.interceptors.request.use((config) => {
   } catch (error) {
     console.error("Error parsing adminUser from localStorage:", error)
   }
-  
+
   // Multi-tenant: Add X-Website-Id header for admin/CMS requests
   try {
     const selectedWebsiteStr = localStorage.getItem("selectedWebsite")
@@ -58,7 +50,7 @@ api.interceptors.request.use((config) => {
   } catch (error) {
     console.warn("Failed to get selected website for tenant context:", error)
   }
-  
+
   // Don't override Content-Type for FormData - let axios set it automatically with boundary
   if (config.data instanceof FormData) {
     delete config.headers['Content-Type']
@@ -73,7 +65,7 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     console.error("API Error:", error)
-    
+
     // Handle 401 errors - token expired or invalid
     if (error.response?.status === 401) {
       const errorMsg = error.response?.data?.msg || ""
@@ -83,7 +75,7 @@ api.interceptors.response.use(
         // Don't automatically log out here - let the component handle it
       }
     }
-    
+
     return Promise.reject(error)
   }
 )

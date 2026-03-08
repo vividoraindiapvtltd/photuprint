@@ -15,7 +15,7 @@ import {
 
 const getBaseUploadUrl = () => {
   const hostname = typeof window !== "undefined" ? window.location.hostname : "localhost"
-  return `http://${hostname}:8080`
+  return ``
 }
 
 const normalizeImageUrl = (url) => {

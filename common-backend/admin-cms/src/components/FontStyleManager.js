@@ -71,7 +71,7 @@ const FontStyleManager = () => {
   const getPreviewUrl = (url) => {
     if (!url) return null
     if (url.startsWith("http://") || url.startsWith("https://")) return url
-    if (url.startsWith("/uploads/")) return `http://localhost:8080${url}`
+    if (url.startsWith("/uploads/")) return `${url}`
     return url
   }
 

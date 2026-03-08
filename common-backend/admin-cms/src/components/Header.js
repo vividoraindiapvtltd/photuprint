@@ -23,11 +23,11 @@ const normalizeImageUrl = (imageUrl) => {
   
   // Handle relative paths
   if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('/')) {
-    return `http://localhost:8080${imageUrl}`;
+    return `${imageUrl}`;
   }
   
   // Relative path without leading slash
-  return `http://localhost:8080/uploads/${imageUrl}`;
+  return `/uploads/${imageUrl}`;
 };
 
 const Header = () => {

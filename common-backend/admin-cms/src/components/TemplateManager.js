@@ -526,7 +526,7 @@ const TemplateManager = () => {
                     const isMarkedForRemoval = backgroundImagesToRemove.includes(fileUrl)
                     return (
                       <div key={index} className={`relative border p-2 rounded-md cursor-pointer transition-all ${isMarkedForRemoval ? "opacity-50 border-red-500 bg-red-50" : "border-gray-300 hover:border-blue-400"}`} onClick={() => handleRemoveExistingBackgroundImage(fileUrl)} title={isMarkedForRemoval ? "Click to keep this file" : "Click to remove this file"}>
-                        {fileUrl.includes("cloudinary.com") || fileUrl.startsWith("http") ? <img src={fileUrl} alt={`Background ${index + 1}`} className="w-20 h-20 object-cover rounded" /> : <img src={`http://localhost:8080${fileUrl}`} alt={`Background ${index + 1}`} className="w-20 h-20 object-cover rounded" />}
+                        {fileUrl.includes("cloudinary.com") || fileUrl.startsWith("http") ? <img src={fileUrl} alt={`Background ${index + 1}`} className="w-20 h-20 object-cover rounded" /> : <img src={`${fileUrl}`} alt={`Background ${index + 1}`} className="w-20 h-20 object-cover rounded" />}
                         <div className={`absolute top-0 right-0 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold ${isMarkedForRemoval ? "bg-green-500 text-white" : "bg-red-500 text-white"}`}>{isMarkedForRemoval ? "✓" : "✕"}</div>
                         {isMarkedForRemoval && <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white text-xs text-center py-1 rounded-b">Will Remove</div>}
                       </div>
@@ -568,7 +568,7 @@ const TemplateManager = () => {
                     const isMarkedForRemoval = logoImagesToRemove.includes(fileUrl)
                     return (
                       <div key={index} className={`relative border p-2 rounded-md cursor-pointer transition-all ${isMarkedForRemoval ? "opacity-50 border-red-500 bg-red-50" : "border-gray-300 hover:border-blue-400"}`} onClick={() => handleRemoveExistingLogoImage(fileUrl)} title={isMarkedForRemoval ? "Click to keep this file" : "Click to remove this file"}>
-                        {fileUrl.includes("cloudinary.com") || fileUrl.startsWith("http") ? <img src={fileUrl} alt={`Logo ${index + 1}`} className="w-20 h-20 object-cover rounded" /> : <img src={`http://localhost:8080${fileUrl}`} alt={`Logo ${index + 1}`} className="w-20 h-20 object-cover rounded" />}
+                        {fileUrl.includes("cloudinary.com") || fileUrl.startsWith("http") ? <img src={fileUrl} alt={`Logo ${index + 1}`} className="w-20 h-20 object-cover rounded" /> : <img src={`${fileUrl}`} alt={`Logo ${index + 1}`} className="w-20 h-20 object-cover rounded" />}
                         <div className={`absolute top-0 right-0 rounded-full w-6 h-6 flex items-center justify-center text-xs font-bold ${isMarkedForRemoval ? "bg-green-500 text-white" : "bg-red-500 text-white"}`}>{isMarkedForRemoval ? "✓" : "✕"}</div>
                         {isMarkedForRemoval && <div className="absolute bottom-0 left-0 right-0 bg-red-500 text-white text-xs text-center py-1 rounded-b">Will Remove</div>}
                       </div>
@@ -615,7 +615,7 @@ const TemplateManager = () => {
           {editingId && existingPreviewImage && formData.previewImage === null && (
             <div className="currentImageDisplay" style={{ marginTop: "10px" }}>
               <p className="font14 fontBold appendBottom8">Current Preview Image:</p>
-              {existingPreviewImage.includes("cloudinary.com") || existingPreviewImage.startsWith("http") ? <img src={existingPreviewImage} alt="Current preview" className="w-40 h-40 object-cover rounded border border-gray-300" /> : <img src={`http://localhost:8080${existingPreviewImage}`} alt="Current preview" className="w-40 h-40 object-cover rounded border border-gray-300" />}
+              {existingPreviewImage.includes("cloudinary.com") || existingPreviewImage.startsWith("http") ? <img src={existingPreviewImage} alt="Current preview" className="w-40 h-40 object-cover rounded border border-gray-300" /> : <img src={`${existingPreviewImage}`} alt="Current preview" className="w-40 h-40 object-cover rounded border border-gray-300" />}
             </div>
           )}
           <div className="formRow">

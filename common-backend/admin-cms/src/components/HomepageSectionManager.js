@@ -914,7 +914,7 @@ const HomepageSectionManager = () => {
                       <span className="font14 grayText" style={{ width: '30px' }}>#{index + 1}</span>
                       {product.mainImage && (
                         <img
-                          src={product.mainImage.startsWith('http') ? product.mainImage : `http://localhost:8080${product.mainImage}`}
+                          src={product.mainImage.startsWith('http') ? product.mainImage : `${product.mainImage}`}
                           alt={product.name}
                           style={{ width: '40px', height: '40px', objectFit: 'cover', borderRadius: '4px' }}
                         />
@@ -1362,7 +1362,7 @@ const HomepageSectionManager = () => {
                         <div className="makeFlex gap12 alignCenter">
                           {product.mainImage && (
                             <img
-                              src={product.mainImage.startsWith('http') ? product.mainImage : `http://localhost:8080${product.mainImage}`}
+                              src={product.mainImage.startsWith('http') ? product.mainImage : `${product.mainImage}`}
                               alt={product.name}
                               style={{ width: '50px', height: '50px', objectFit: 'cover', borderRadius: '4px' }}
                             />
@@ -1521,7 +1521,7 @@ const HomepageSectionManager = () => {
                         <div style={{ aspectRatio: '1', backgroundColor: '#f0f0f0', position: 'relative' }}>
                           {item.product.mainImage ? (
                             <img
-                              src={item.product.mainImage.startsWith('http') ? item.product.mainImage : `http://localhost:8080${item.product.mainImage}`}
+                              src={item.product.mainImage.startsWith('http') ? item.product.mainImage : `${item.product.mainImage}`}
                               alt={item.product.name}
                               style={{ width: '100%', height: '100%', objectFit: 'cover' }}
                             />

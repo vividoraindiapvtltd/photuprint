@@ -138,21 +138,21 @@ const CompanyManager = () => {
     if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
       if (logoUrl.includes('/backend/uploads/') || logoUrl.includes('/Users/')) {
         const filename = logoUrl.split('/').pop();
-        return `http://localhost:8080/uploads/${filename}`;
+        return `/uploads/${filename}`;
       }
       return logoUrl;
     }
     
     if (logoUrl.includes('/backend/uploads/') || logoUrl.includes('/Users/')) {
       const filename = logoUrl.split('/').pop();
-      return `http://localhost:8080/uploads/${filename}`;
+      return `/uploads/${filename}`;
     }
     
     if (logoUrl.startsWith('/uploads/') || logoUrl.startsWith('/')) {
-      return `http://localhost:8080${logoUrl}`;
+      return `${logoUrl}`;
     }
     
-    return `http://localhost:8080/uploads/${logoUrl}`;
+    return `/uploads/${logoUrl}`;
   };
 
   // Fetch websites for dropdown
@@ -182,16 +182,16 @@ const CompanyManager = () => {
           if (logoUrl.startsWith('http://') || logoUrl.startsWith('https://')) {
             if (logoUrl.includes('/backend/uploads/') || logoUrl.includes('/Users/')) {
               const filename = logoUrl.split('/').pop();
-              logoUrl = `http://localhost:8080/uploads/${filename}`;
+              logoUrl = `/uploads/${filename}`;
             }
           } else if (!logoUrl.startsWith('http')) {
             if (logoUrl.includes('/backend/uploads/') || logoUrl.includes('/Users/')) {
               const filename = logoUrl.split('/').pop();
-              logoUrl = `http://localhost:8080/uploads/${filename}`;
+              logoUrl = `/uploads/${filename}`;
             } else if (logoUrl.startsWith('/uploads/') || logoUrl.startsWith('/')) {
-              logoUrl = `http://localhost:8080${logoUrl}`;
+              logoUrl = `${logoUrl}`;
             } else {
-              logoUrl = `http://localhost:8080/uploads/${logoUrl}`;
+              logoUrl = `/uploads/${logoUrl}`;
             }
           }
         }

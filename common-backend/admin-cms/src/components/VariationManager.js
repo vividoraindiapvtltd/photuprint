@@ -80,7 +80,7 @@ const VariationManager = () => {
     } catch (err) {
       console.error("Error fetching variation settings:", err)
       if (err.code === "ERR_NETWORK" || err.message === "Network Error") {
-        setError("❌ Cannot connect to server. Please ensure the backend server is running on port 8080.")
+        setError("❌ Cannot connect to server. Please ensure the backend server is running.")
       } else {
         const msg = err.response?.data?.msg || err.message || "Failed to load variation settings"
         setError(msg)
@@ -134,7 +134,7 @@ const VariationManager = () => {
       
       // Handle network errors specifically
       if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
-        setCategoriesError("❌ Cannot connect to server. Please ensure the backend server is running on port 8080.")
+        setCategoriesError("❌ Cannot connect to server. Please ensure the backend server is running.")
       } else {
         setCategoriesError("Failed to load categories. Please check the connection.")
       }
@@ -153,7 +153,7 @@ const VariationManager = () => {
       console.error("Error fetching subcategories:", err)
       // Don't set error here - categoriesError will handle it
       if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
-        setCategoriesError("❌ Cannot connect to server. Please ensure the backend server is running on port 8080.")
+        setCategoriesError("❌ Cannot connect to server. Please ensure the backend server is running.")
       }
     }
   }
