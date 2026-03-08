@@ -1,5 +1,7 @@
 import axios from "axios"
 
+
+
 // Get the current hostname and port for flexible API configuration
 const getBaseURL = () => {
   if (typeof window === "undefined") return "/api"
