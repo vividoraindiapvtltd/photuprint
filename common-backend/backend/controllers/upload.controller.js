@@ -1,4 +1,4 @@
-import cloudinary from '../utils/cloudinary.js';
+import cloudinary, { getCloudinaryForWebsite } from '../utils/cloudinary.js';
 import { removeLocalFile } from '../utils/fileCleanup.js';
 
 export const uploadImage = async (req, res) => {
@@ -7,7 +7,8 @@ export const uploadImage = async (req, res) => {
       return res.status(400).json({ msg: 'No file uploaded' });
     }
 
-    const result = await cloudinary.uploader.upload(req.file.path, {
+    const cl = await getCloudinaryForWebsite(req.websiteId);
+    const result = await cl.uploader.upload(req.file.path, {
       folder: 'photuprint',
     });
 

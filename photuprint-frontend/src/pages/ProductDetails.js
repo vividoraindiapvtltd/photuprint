@@ -1,6 +1,7 @@
 // frontend/src/pages/ProductDetails.jsx
 import React, { useEffect, useState } from "react"
-import { useParams, Link } from "react-router-dom"
+import Link from "next/link"
+import { useParams } from "next/navigation"
 import DOMPurify from "dompurify"
 import ColorSelector from "../components/product/ColorSelector"
 import ProductReviews from "../components/ProductReviews"
@@ -8,7 +9,8 @@ import TemplateRenderer from "../components/TemplateRenderer"
 import api from "../utils/api"
 
 export default function ProductDetails() {
-  const { productId } = useParams()
+  const params = useParams()
+  const productId = params?.productId ?? null
   const [product, setProduct] = useState(null)
   const [variants, setVariants] = useState([])
   const [selected, setSelected] = useState(null)
@@ -42,9 +44,22 @@ export default function ProductDetails() {
   useEffect(() => {
     if (productId) {
       fetchProductDetails()
+    } else {
+      setLoading(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [productId])
+
+  if (!productId) {
+    return (
+      <div className="max-w-6xl mx-auto p-4">
+        <div className="p-4 bg-amber-50 border border-amber-200 text-amber-800 rounded">
+          <p>Product ID is required. Open a product from the catalog (e.g. /products/[slug]).</p>
+          <Link href="/" className="mt-2 inline-block text-blue-600 hover:underline">Back to home</Link>
+        </div>
+      </div>
+    )
+  }
 
   if (loading) {
     return (
@@ -92,7 +107,7 @@ export default function ProductDetails() {
 
           {/* Submit Review Button */}
           <div className="mt-6">
-            <Link to={`/products/${productId}/review`} className="inline-block px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
+            <Link href={`/products/${productId}/review`} className="inline-block px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 transition-colors">
               Write a Review
             </Link>
           </div>

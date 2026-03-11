@@ -1,44 +1,22 @@
 import TopBar from "./TopBar"
 import NavigationBar from "./NavigationBar"
-import Carousel from "./Carousel"
-import PromotionalBanners from "./PromotionalBanners"
-import { FeaturedProductSections, HomepageCarouselSection, RecentlyViewedProducts } from "./FeaturedProductSection"
-import TestimonialsCarousel from "./TestimonialsCarousel"
-import CategoriesSection from "./CategoriesSection"
+import { FeaturedProductSections } from "./FeaturedProductSection"
 import Footer from "./Footer"
-import SubscribeOverlay from "./SubscribeOverlay"
+import HomeHeavySections from "./HomeHeavySections"
 
 export default function HomePage({ initialSections = [], fallbackProducts = [], initialFooterSections = [], initialFooterTheme = {} } = {}) {
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Subscribe overlay: shows once after homepage load (sessionStorage dismiss) */}
-      <SubscribeOverlay />
-      {/* Sticky Header: Top Bar + Navigation Bar */}
       <header className="sticky top-0 z-50 w-full">
         <TopBar />
         <NavigationBar />
       </header>
 
-      {/* Carousel (from backend: full width or 2/3/4 cards) */}
-      <Carousel />
+      <HomeHeavySections />
 
-      {/* Promotional Banners */}
-      {/* <PromotionalBanners /> */}
-
-      {/* Categories grid (fetched from backend) */}
-      <CategoriesSection />
-
-      {/* Product Sections (SSR data passed from server, or client fetch as fallback) */}
       <FeaturedProductSections initialSections={initialSections} fallbackProducts={fallbackProducts} />
 
-      {/* Testimonials carousel from /api/testimonials/admin/stats */}
-      <TestimonialsCarousel />
-
-      {/* Recently Viewed Products — guests: localStorage; logged-in: API */}
-      <RecentlyViewedProducts />
-
-      {/* Additional Sections can be added here */}
-      <div className="bg-white py-12 border-t border-gray-200">
+      <section className="bg-white py-12 border-t border-gray-200">
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center">
           <h2 className="text-2xl font-bold text-gray-900 mb-4">Why Choose PhotuPrint?</h2>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mt-8">
@@ -71,9 +49,8 @@ export default function HomePage({ initialSections = [], fallbackProducts = [], 
             </div>
           </div>
         </div>
-      </div>
+      </section>
 
-      {/* Footer (SSR data passed from server, or client fetch as fallback) */}
       <Footer initialSections={initialFooterSections} initialTheme={initialFooterTheme} />
     </div>
   )

@@ -2,7 +2,9 @@
 
 import { useEffect, useState, useRef } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import api from "../src/utils/api"
+import { getImageSrc } from "../src/utils/imageUrl"
 import { useAuth } from "../src/context/AuthContext"
 import { getGuestRecentlyViewed, GUEST_RECENTLY_VIEWED_UPDATED_EVENT } from "../src/utils/guestRecentlyViewed"
 import { getProductSlug } from "../src/utils/slugify"
@@ -14,7 +16,7 @@ export function ProductCard({ product }) {
   const productSlug = getProductSlug(product)
   const productId = product._id || product.id
   const imgRaw = product.mainImage || product.images?.[0]
-  const imageUrl = imgRaw ? (imgRaw.startsWith("http") ? imgRaw : `http://localhost:8080${imgRaw}`) : null
+  const imageUrl = getImageSrc(imgRaw)
 
   useEffect(() => {
     if (!isAuthenticated || !productId) return
@@ -42,7 +44,7 @@ export function ProductCard({ product }) {
     <Link href={productSlug ? `/products/${productSlug}` : "/products"} className="group block bg-white rounded-lg overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-200 h-full relative">
       <div className="relative aspect-square bg-gray-100 overflow-hidden">
         {imageUrl ? (
-          <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+          <Image src={imageUrl} alt={product.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover group-hover:scale-105 transition-transform duration-200" />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
             <span className="text-gray-400 text-xs">No Image</span>
@@ -285,12 +287,12 @@ function CarouselLayout({ products, columns = 4, showThumbs = false }) {
         <div className="flex justify-center gap-2 mt-4">
           {products.map((p, i) => {
             const imgRaw = p.mainImage || p.images?.[0]
-            const thumbUrl = imgRaw ? (imgRaw.startsWith("http") ? imgRaw : `http://localhost:8080${imgRaw}`) : null
+            const thumbUrl = getImageSrc(imgRaw)
             const isActive = i === activeIdx
             return (
-              <button key={p._id || p.id} onClick={() => scrollTo(i)} className={`w-10 h-10 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${isActive ? "border-blue-600 shadow-md scale-110" : "border-gray-200 opacity-60 hover:opacity-100 hover:border-gray-400"}`} aria-label={`Go to ${p.name || `product ${i + 1}`}`}>
+              <button key={p._id || p.id} onClick={() => scrollTo(i)} className={`relative w-10 h-10 rounded-lg overflow-hidden border-2 flex-shrink-0 transition-all ${isActive ? "border-blue-600 shadow-md scale-110" : "border-gray-200 opacity-60 hover:opacity-100 hover:border-gray-400"}`} aria-label={`Go to ${p.name || `product ${i + 1}`}`}>
                 {thumbUrl ? (
-                  <img src={thumbUrl} alt="" className="w-full h-full object-cover" />
+                  <Image src={thumbUrl} alt="" fill className="object-cover" sizes="40px" />
                 ) : (
                   <div className="w-full h-full bg-gray-200 flex items-center justify-center">
                     <span className="text-gray-400 text-[8px]">N/A</span>
@@ -321,13 +323,12 @@ function ListLayout({ products }) {
       {products.map((product) => {
         const productSlug = getProductSlug(product)
         const productId = product._id || product.id
-        const imgRaw = product.mainImage || product.images?.[0]
-        const imageUrl = imgRaw ? (imgRaw.startsWith("http") ? imgRaw : `http://localhost:8080${imgRaw}`) : null
+        const imageUrl = getImageSrc(product.mainImage || product.images?.[0])
         return (
           <Link key={productId} href={productSlug ? `/products/${productSlug}` : "/products"} className="group flex items-center bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-200">
             <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex-shrink-0 bg-gray-100 overflow-hidden">
               {imageUrl ? (
-                <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                <Image src={imageUrl} alt={product.name} fill sizes="144px" className="object-cover group-hover:scale-105 transition-transform duration-200" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
                   <span className="text-gray-400 text-xs">No Image</span>
@@ -359,13 +360,12 @@ function MasonryLayout({ products }) {
       {products.map((product, i) => {
         const productSlug = getProductSlug(product)
         const productId = product._id || product.id
-        const imgRaw = product.mainImage || product.images?.[0]
-        const imageUrl = imgRaw ? (imgRaw.startsWith("http") ? imgRaw : `http://localhost:8080${imgRaw}`) : null
+        const imageUrl = getImageSrc(product.mainImage || product.images?.[0])
         return (
           <Link key={productId} href={productSlug ? `/products/${productSlug}` : "/products"} className="group block bg-white rounded-lg overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-200 break-inside-avoid">
             <div className={`relative ${aspects[i % 5]} bg-gray-100 overflow-hidden`}>
               {imageUrl ? (
-                <img src={imageUrl} alt={product.name} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
+                <Image src={imageUrl} alt={product.name} fill sizes="(max-width: 768px) 50vw, 25vw" className="object-cover group-hover:scale-105 transition-transform duration-200" />
               ) : (
                 <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
                   <span className="text-gray-400 text-xs">No Image</span>

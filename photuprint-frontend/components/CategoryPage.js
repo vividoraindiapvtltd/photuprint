@@ -105,6 +105,9 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
   const [products, setProducts] = useState(initialProducts || [])
   const [loading, setLoading] = useState(!initialCategoryName)
   const [productsLoading, setProductsLoading] = useState(!initialProducts)
+  const [loadingMore, setLoadingMore] = useState(false)
+  const [hasMoreProducts, setHasMoreProducts] = useState((initialProducts?.length || 0) >= 24)
+  const PAGE_SIZE = 24
 
   // Filter state
   const [subcategorySearch, setSubcategorySearch] = useState("")
@@ -245,7 +248,7 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
     const params = new URLSearchParams()
     params.set("showInactive", "false")
     params.set("includeDeleted", "false")
-    params.set("limit", "100")
+    params.set("limit", String(PAGE_SIZE))
     if (categoryId) params.set("categoryId", categoryId)
     if (selectedSubcategories.length) params.set("subCategoryId", selectedSubcategories[0])
     selectedColors.forEach((c) => params.append("color", c))
@@ -320,10 +323,42 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
           })
         }
         setProducts(arr)
+        setHasMoreProducts(arr.length >= PAGE_SIZE)
       })
       .catch(() => setProducts([]))
       .finally(() => setProductsLoading(false))
   }, [categoryId, selectedSubcategories, selectedColors, selectedSizes, selectedThemes, selectedBrands, selectedTags, minPrice, maxPrice])
+
+  const loadMoreProducts = () => {
+    if (loadingMore || !hasMoreProducts) return
+    setLoadingMore(true)
+    const params = new URLSearchParams()
+    params.set("showInactive", "false")
+    params.set("includeDeleted", "false")
+    params.set("limit", String(PAGE_SIZE))
+    params.set("skip", String(products.length))
+    if (categoryId) params.set("categoryId", categoryId)
+    if (selectedSubcategories.length) params.set("subCategoryId", selectedSubcategories[0])
+    selectedColors.forEach((c) => params.append("color", c))
+    selectedSizes.forEach((s) => params.append("size", s))
+    selectedThemes.forEach((t) => params.append("theme", t))
+    selectedBrands.forEach((b) => params.append("brand", b))
+    selectedTags.forEach((t) => params.append("tag", t))
+    if (minPrice !== "") params.set("minPrice", minPrice)
+    if (maxPrice !== "") params.set("maxPrice", maxPrice)
+
+    api
+      .get(`/products?${params.toString()}`, { skipAuth: true })
+      .then((res) => {
+        const data = res?.data ?? res
+        const list = data?.products ?? data
+        const next = Array.isArray(list) ? list : []
+        setProducts((prev) => [...prev, ...next])
+        setHasMoreProducts(next.length >= PAGE_SIZE)
+      })
+      .catch(() => setHasMoreProducts(false))
+      .finally(() => setLoadingMore(false))
+  }
 
   const toggleSubcategory = (id) => {
     setSelectedSubcategories((prev) => (prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]))
@@ -535,7 +570,21 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
                 </Link>
               </div>
             ) : (
-              <GridLayout products={sortedProducts} columns={4} />
+              <>
+                <GridLayout products={sortedProducts} columns={4} />
+                {hasMoreProducts && (
+                  <div className="mt-8 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={loadMoreProducts}
+                      disabled={loadingMore}
+                      className="px-6 py-3 border-2 border-gray-900 text-gray-900 font-semibold rounded-lg hover:bg-gray-900 hover:text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      {loadingMore ? "Loading..." : "Load more"}
+                    </button>
+                  </div>
+                )}
+              </>
             )}
           </main>
         </div>

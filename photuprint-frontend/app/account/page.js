@@ -2,10 +2,12 @@
 
 import { useEffect, useState, useRef, Suspense } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
+import Image from "next/image"
 import { useAuth } from "../../src/context/AuthContext"
 import Header from "../../src/components/Header"
 import api from "../../src/utils/api"
 import { getProductSlug } from "../../src/utils/slugify"
+import { getImageSrc } from "../../src/utils/imageUrl"
 
 // Tab Components
 function ProfileTab({ profile, onUpdate, loading }) {
@@ -404,7 +406,7 @@ function OrdersTab({ isAuthenticated, token }) {
                     const src = img && (img.startsWith("http") ? img : `${getBaseUrl()}${img.startsWith("/") ? "" : "/"}${img}`)
                     return (
                       <div key={idx} className="flex items-center space-x-4 py-2">
-                        {src && <img src={src} alt={item.productName || item.product?.name} className="w-16 h-16 object-cover rounded" />}
+                        {src && <Image src={getImageSrc(src) || src} alt={(item.productName || item.product?.name) ?? ""} width={64} height={64} className="w-16 h-16 object-cover rounded" />}
                         <div className="flex-1">
                           <p className="font-medium text-gray-900">{item.productName || item.product?.name || "Product"}</p>
                           <p className="text-sm text-gray-500">
@@ -493,7 +495,7 @@ function WishlistTab() {
               <div key={pid} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group">
                 <div className="relative">
                   <a href={slug ? `/products/${slug}` : "/products"}>
-                    <img src={imgSrc || "/placeholder-product.png"} alt={product.name} className="w-full h-40 object-cover group-hover:scale-105 transition-transform" />
+                    <Image src={imgSrc ? getImageSrc(imgSrc) || imgSrc : "/placeholder-product.png"} alt={product.name} width={400} height={160} className="w-full h-40 object-cover group-hover:scale-105 transition-transform" />
                   </a>
                   <button onClick={() => removeFromWishlist(pid)} className="absolute top-2 right-2 p-2 bg-white rounded-full shadow-md text-red-500 hover:bg-red-50 transition-colors" title="Remove from wishlist">
                     <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -579,7 +581,7 @@ function RecentlyViewedTab() {
             const slug = item.product ? getProductSlug(item.product) : ""
             return (
               <a key={item._id} href={slug ? `/products/${slug}` : "/products"} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
-                <img src={item.product?.mainImage?.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product?.mainImage}`} alt={item.product?.name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
+                <Image src={getImageSrc(item.product?.mainImage) || item.product?.mainImage || ""} alt={item.product?.name ?? ""} width={400} height={128} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
                 <div className="p-3">
                   <p className="font-medium text-gray-900 text-sm line-clamp-2">{item.product?.name}</p>
                   <p className="text-blue-600 font-bold mt-1">₹{item.product?.discountedPrice || item.product?.price}</p>
@@ -647,7 +649,7 @@ function RecommendationsTab() {
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
           {recommendations.map((product) => (
             <a key={product._id} href={getProductSlug(product) ? `/products/${getProductSlug(product)}` : "/products"} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
-              <img src={product.mainImage?.startsWith("http") ? product.mainImage : `http://localhost:8080${product.mainImage}`} alt={product.name} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
+              <Image src={getImageSrc(product.mainImage) || product.mainImage || ""} alt={product.name} width={400} height={128} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
               <div className="p-3">
                 <p className="font-medium text-gray-900 text-sm line-clamp-2">{product.name}</p>
                 <div className="flex items-center space-x-2 mt-1">
@@ -730,7 +732,7 @@ function ReturnsTab({ isAuthenticated, token }) {
               <div className="p-4">
                 {order.products?.map((item, idx) => (
                   <div key={idx} className="flex items-center space-x-4 py-2">
-                    {item.product?.mainImage && <img src={item.product.mainImage.startsWith("http") ? item.product.mainImage : `http://localhost:8080${item.product.mainImage}`} alt={item.product.name} className="w-12 h-12 object-cover rounded" />}
+                    {item.product?.mainImage && <Image src={getImageSrc(item.product.mainImage) || item.product.mainImage} alt={item.product.name ?? ""} width={48} height={48} className="w-12 h-12 object-cover rounded" />}
                     <div className="flex-1">
                       <p className="font-medium text-gray-900 text-sm">{item.product?.name || "Product"}</p>
                       <p className="text-xs text-gray-500">Qty: {item.quantity}</p>
@@ -851,7 +853,7 @@ function AccountPageContent() {
               {/* User Info */}
               <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white">
                 <div className="flex items-center space-x-3">
-                  {user?.user?.picture ? <img src={user.user.picture} alt={user.user.name} className="w-12 h-12 rounded-full border-2 border-white/30" /> : <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-semibold">{user?.user?.name?.charAt(0).toUpperCase() || "U"}</div>}
+                  {user?.user?.picture ? <Image src={user.user.picture} alt={user.user.name ?? ""} width={48} height={48} className="w-12 h-12 rounded-full border-2 border-white/30 object-cover" /> : <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-semibold">{user?.user?.name?.charAt(0).toUpperCase() || "U"}</div>}
                   <div>
                     <p className="font-semibold">{user?.user?.name}</p>
                     <p className="text-xs text-white/80">{user?.user?.email}</p>

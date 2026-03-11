@@ -5,41 +5,38 @@ import User from "../models/user.model.js"
 import { sendOrderConfirmationEmail } from "../utils/emailVerification.js"
 import { sendOrderConfirmationSms } from "../utils/smsService.js"
 import { scheduleReviewEmail } from "../utils/reviewEmailScheduler.js"
-
-const RAZORPAY_KEY_ID = (process.env.RAZORPAY_KEY_ID || "").trim()
-const RAZORPAY_KEY_SECRET = (process.env.RAZORPAY_KEY_SECRET || "").trim()
+import { getWebsiteCredentials } from "../utils/websiteCredentials.js"
 
 const COD_ADVANCE_PERCENT = 40
 
-function getRazorpayInstance() {
-  if (!RAZORPAY_KEY_ID || !RAZORPAY_KEY_SECRET) {
-    throw new Error("Razorpay keys not configured. Set RAZORPAY_KEY_ID and RAZORPAY_KEY_SECRET in .env")
+function getRazorpayInstance(keyId, keySecret) {
+  if (!keyId || !keySecret) {
+    throw new Error("Razorpay keys not configured. Set RAZORPAY_KEY_ID / RAZORPAY_KEY_SECRET in .env or in the website settings.")
   }
-  return new Razorpay({ key_id: RAZORPAY_KEY_ID, key_secret: RAZORPAY_KEY_SECRET })
+  return new Razorpay({ key_id: keyId, key_secret: keySecret })
 }
 
-function verifyPaymentSignature(orderId, paymentId, signature) {
+function verifyPaymentSignature(orderId, paymentId, signature, keySecret) {
   const body = `${orderId}|${paymentId}`
-  const expected = crypto.createHmac("sha256", RAZORPAY_KEY_SECRET).update(body).digest("hex")
+  const expected = crypto.createHmac("sha256", keySecret).update(body).digest("hex")
   return expected === signature
 }
 
-/**
- * Convert amount to Razorpay subunits (paise for INR). Amount in rupees.
- */
 function toSubunits(amount) {
   return Math.round(Number(amount) * 100)
 }
 
 /**
- * Get Razorpay key ID for frontend (public key, safe to expose)
+ * Get Razorpay key ID for frontend (public key, safe to expose).
+ * Resolves per-website key if configured, otherwise falls back to env.
  */
 export const getRazorpayKey = async (req, res) => {
   try {
-    if (!RAZORPAY_KEY_ID) {
+    const creds = await getWebsiteCredentials(req.websiteId)
+    if (!creds.razorpayKeyId) {
       return res.status(503).json({ msg: "Payment gateway not configured", code: "PAYMENT_NOT_CONFIGURED" })
     }
-    res.json({ key: RAZORPAY_KEY_ID })
+    res.json({ key: creds.razorpayKeyId })
   } catch (err) {
     console.error("getRazorpayKey error:", err)
     res.status(500).json({ msg: err.message })
@@ -48,9 +45,6 @@ export const getRazorpayKey = async (req, res) => {
 
 /**
  * Create Razorpay order for online payment or COD advance.
- * Body: { amount, currency, receipt, isCodAdvance?, orderData? }
- * For COD advance: amount = 40% of total, orderData = full order payload for later creation
- * SECURITY: When orderData is provided, backend recalculates amount and validates - never trust frontend amount.
  */
 export const createRazorpayOrder = async (req, res) => {
   try {
@@ -62,6 +56,8 @@ export const createRazorpayOrder = async (req, res) => {
       return res.status(401).json({ msg: "Not authorized" })
     }
 
+    const creds = await getWebsiteCredentials(req.websiteId)
+
     const { amount, currency = "INR", receipt, isCodAdvance = false, orderData } = req.body
     const isCod = !!isCodAdvance
 
@@ -70,7 +66,6 @@ export const createRazorpayOrder = async (req, res) => {
       return res.status(400).json({ msg: "Valid amount is required" })
     }
 
-    // Amount validation: recalculate from orderData when provided (do not trust frontend)
     if (orderData?.products && Array.isArray(orderData.products) && orderData.products.length > 0) {
       const calculatedSubtotal = orderData.subtotal ?? orderData.products.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0)
       const tax = orderData.tax ?? 0
@@ -91,7 +86,7 @@ export const createRazorpayOrder = async (req, res) => {
       return res.status(400).json({ msg: "Minimum payment amount is ₹1" })
     }
 
-    const instance = getRazorpayInstance()
+    const instance = getRazorpayInstance(creds.razorpayKeyId, creds.razorpayKeySecret)
     const receiptId = receipt || `rcpt_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
 
     const order = await instance.orders.create({
@@ -109,7 +104,7 @@ export const createRazorpayOrder = async (req, res) => {
       orderId: order.id,
       amount: subunits,
       currency: order.currency,
-      key: RAZORPAY_KEY_ID,
+      key: creds.razorpayKeyId,
       isCodAdvance: !!isCodAdvance,
     })
   } catch (err) {
@@ -131,8 +126,6 @@ export const createRazorpayOrder = async (req, res) => {
 
 /**
  * Verify payment and create/update order.
- * Body: { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData }
- * orderData: full order payload (products, addresses, etc.)
  */
 export const verifyPaymentAndCreateOrder = async (req, res) => {
   try {
@@ -144,13 +137,15 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
       return res.status(401).json({ msg: "Not authorized" })
     }
 
+    const creds = await getWebsiteCredentials(req.websiteId)
+
     const { razorpay_order_id, razorpay_payment_id, razorpay_signature, orderData } = req.body
 
     if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature) {
       return res.status(400).json({ msg: "Payment verification data is required", code: "MISSING_PAYMENT_DATA" })
     }
 
-    const isValid = verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
+    const isValid = verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature, creds.razorpayKeySecret)
     if (!isValid) {
       console.warn("[verifyPayment] Invalid signature for order:", razorpay_order_id)
       return res.status(400).json({ msg: "Invalid payment signature", code: "INVALID_SIGNATURE" })
@@ -179,7 +174,6 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
       tssPoints,
     } = orderData
 
-    // Validate shipping address
     if (!shippingAddress || !shippingAddress.name || !shippingAddress.street || !shippingAddress.city || !shippingAddress.state || !shippingAddress.zipCode || !shippingAddress.country) {
       return res.status(400).json({ msg: "Complete shipping address is required" })
     }
@@ -235,14 +229,12 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
       .populate("products.product", "name images price")
       .populate("couponId", "code discountType discountValue")
 
-    // Send order confirmation email and SMS (non-blocking)
     const orderForNotify = populatedOrder?.toObject ? { ...populatedOrder.toObject(), user: populatedOrder.user } : { ...populatedOrder, user: populatedOrder?.user }
     Promise.all([
       sendOrderConfirmationEmail(orderForNotify),
       sendOrderConfirmationSms(orderForNotify),
     ]).catch((err) => console.error("[verifyPayment] Notification error:", err.message))
 
-    // Schedule product review email 1 day after order (non-blocking)
     scheduleReviewEmail(orderForNotify).catch((err) => console.error("[verifyPayment] Review email schedule error:", err.message))
 
     res.status(201).json(populatedOrder)
