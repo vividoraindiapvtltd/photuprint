@@ -22,11 +22,18 @@ const nextConfig = {
   },
 
   async rewrites() {
+    const backendOrigin = process.env.NEXT_PUBLIC_API_URL
+      ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "")
+      : "http://localhost:8080"
     return {
       afterFiles: [
         {
           source: "/api/:path*",
-          destination: "http://localhost:8080/api/:path*",
+          destination: `${backendOrigin}/api/:path*`,
+        },
+        {
+          source: "/uploads/:path*",
+          destination: `${backendOrigin}/uploads/:path*`,
         },
       ],
     }
