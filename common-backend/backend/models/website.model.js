@@ -29,6 +29,15 @@ const websiteSchema = new mongoose.Schema(
       type: Boolean, 
       default: false 
     },
+
+    // Per-website Razorpay credentials (falls back to env vars if empty)
+    razorpayKeyId: { type: String, default: null, trim: true },
+    razorpayKeySecret: { type: String, default: null, trim: true },
+
+    // Per-website Cloudinary credentials (falls back to env vars if empty)
+    cloudinaryCloudName: { type: String, default: null, trim: true },
+    cloudinaryApiKey: { type: String, default: null, trim: true },
+    cloudinaryApiSecret: { type: String, default: null, trim: true },
   },
   {
     timestamps: true,

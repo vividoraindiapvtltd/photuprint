@@ -20,7 +20,7 @@ export async function GET(request, context) {
         "Content-Type": "application/json",
         ...(process.env.NEXT_PUBLIC_WEBSITE_ID && { "x-website-id": process.env.NEXT_PUBLIC_WEBSITE_ID }),
       },
-      cache: "no-store",
+      next: { revalidate: 600 },
     })
     const data = await res.json().catch(() => ({}))
     if (!res.ok) {

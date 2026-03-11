@@ -2,8 +2,10 @@
 
 import { useEffect, useState } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import DOMPurify from "isomorphic-dompurify"
 import api from "@/utils/api"
+import { getImageSrc } from "@/utils/imageUrl"
 
 const ALLOWED_TAGS = ["p", "br", "strong", "em", "u", "ul", "ol", "li", "a", "h2", "h3", "h4"]
 
@@ -108,7 +110,7 @@ function SectionLinks({ section, theme = {} }) {
                     if (linkHoverColor) e.currentTarget.style.color = theme.linkColor || ""
                   }}
                 >
-                  {showIcon && <img src={iconUrl} alt="" className="w-5 h-5 object-contain flex-shrink-0" />}
+                  {showIcon && iconUrl && <Image src={getImageSrc(iconUrl) || iconUrl} alt="" width={20} height={20} className="w-5 h-5 object-contain flex-shrink-0" />}
                   {showLabel ? link.label : showIcon ? null : "Link"}
                 </Link>
               </li>
@@ -287,7 +289,7 @@ function SectionPayment({ section, theme = {} }) {
       <div className="flex flex-wrap gap-3 items-center">
         {icons.map((icon, i) =>
           icon.iconUrl ? (
-            <img key={i} src={icon.iconUrl} alt={icon.name} className="h-8 object-contain opacity-80" />
+            <Image key={i} src={getImageSrc(icon.iconUrl) || icon.iconUrl} alt={icon.name} width={32} height={32} className="h-8 w-auto object-contain opacity-80" />
           ) : (
             <span key={i} className="text-xs text-gray-500 border border-gray-600 rounded px-2 py-1">
               {icon.name}
@@ -302,9 +304,9 @@ function SectionPayment({ section, theme = {} }) {
 function SectionLogo({ section, theme = {} }) {
   const { logoUrl, logoLinkUrl, logoAlt, logoTitle } = section.config || {}
   if (!logoUrl) return null
-  const src = resolveImageUrl(logoUrl)
+  const src = getImageSrc(logoUrl)
   const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
-  const img = <img src={src} alt={logoAlt || section.title || "Logo"} title={logoTitle || undefined} className="h-10 object-contain max-w-full" />
+  const img = <Image src={src} alt={logoAlt || section.title || "Logo"} width={160} height={40} className="h-10 w-auto object-contain max-w-full" title={logoTitle || undefined} />
   return (
     <div>
       {section.title && (

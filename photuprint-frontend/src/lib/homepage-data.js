@@ -26,7 +26,6 @@ export async function getHomepageData() {
   try {
     const res = await fetch(`${backendUrl}/homepage-sections`, {
       headers,
-      // cache: "no-store",
       next: { revalidate: 60 },
     })
 
@@ -43,7 +42,7 @@ export async function getHomepageData() {
 
   if (sections.length === 0) {
     try {
-      const res = await fetch(`${backendUrl}/products?showInactive=false&includeDeleted=false&limit=12`, { headers, cache: "no-store" })
+      const res = await fetch(`${backendUrl}/products?showInactive=false&includeDeleted=false&limit=8`, { headers, next: { revalidate: 60 } })
       if (res.ok) {
         const data = await res.json()
         const list = data.products ?? data

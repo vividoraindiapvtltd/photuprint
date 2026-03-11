@@ -1,18 +1,13 @@
 "use client"
 
 import { useEffect, useState, useRef } from "react"
+import Image from "next/image"
+import { getImageSrc } from "../../utils/imageUrl"
 
 const THUMB_GAP = 8
 
-function getImageBase() {
-  const api = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
-  const base = api.replace(/\/api\/?$/, "") || "http://localhost:8080"
-  return base
-}
-
 function resolveUrl(url) {
-  if (!url) return ""
-  return url.startsWith("http") ? url : `${getImageBase()}${url}`
+  return getImageSrc(url) || ""
 }
 
 export default function ProductImageCarousel({ images = [], alt = "Product", badgeText, className = "" }) {
@@ -100,8 +95,8 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
             {list.map((src, idx) => {
               const isActive = idx === selectedIndex
               return (
-                <button key={`${idx}-${resolveUrl(src)}`} type="button" data-thumb-index={idx} onClick={() => setSelectedIndex(idx)} className={`flex-shrink-0 w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${isActive ? "border-gray-800 ring-2 ring-gray-400 shadow-md" : "border-gray-200 hover:border-gray-400"}`} aria-label={`View image ${idx + 1}`}>
-                  <img src={resolveUrl(src)} alt="" className="w-full h-full object-cover" loading={idx < 4 ? "eager" : "lazy"} />
+                <button key={`${idx}-${resolveUrl(src)}`} type="button" data-thumb-index={idx} onClick={() => setSelectedIndex(idx)} className={`relative flex-shrink-0 w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${isActive ? "border-gray-800 ring-2 ring-gray-400 shadow-md" : "border-gray-200 hover:border-gray-400"}`} aria-label={`View image ${idx + 1}`}>
+                  <Image src={resolveUrl(src)} alt="" fill sizes="100px" className="object-cover" loading={idx < 4 ? "eager" : "lazy"} />
                 </button>
               )
             })}
@@ -131,7 +126,7 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
             </button>
           </>
         )}
-        <img src={mainSrc} alt={alt} className="w-full h-full object-contain" data-main-image />
+        <Image src={mainSrc} alt={alt} fill className="object-contain" sizes="(max-width: 768px) 100vw, 50vw" priority={list.length > 0} data-main-image />
       </div>
     </div>
   )

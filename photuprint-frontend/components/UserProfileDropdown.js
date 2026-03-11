@@ -2,6 +2,7 @@
 
 import { useState, useRef, useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useAuth } from "../src/context/AuthContext"
 
@@ -53,7 +54,7 @@ export default function UserProfileDropdown() {
   return (
     <div className="relative" ref={dropdownRef}>
       <button onClick={() => setShowDropdown(!showDropdown)} className="flex items-center space-x-2 p-1 rounded-full hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500">
-        {user.user?.picture ? <img src={user.user.picture} alt={user.user.name} className="w-9 h-9 rounded-full object-cover border-2 border-gray-200" /> : <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">{getInitials(user.user?.name)}</div>}
+        {user.user?.picture ? <Image src={user.user.picture} alt={user.user.name ?? ""} width={36} height={36} className="w-9 h-9 rounded-full object-cover border-2 border-gray-200" /> : <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-semibold text-sm">{getInitials(user.user?.name)}</div>}
         <span className="text-sm font-medium text-gray-700 hidden lg:block max-w-[120px] truncate">{user.user?.name}</span>
         <svg className={`w-4 h-4 text-gray-500 transition-transform ${showDropdown ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />

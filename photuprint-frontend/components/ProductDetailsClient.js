@@ -1,12 +1,21 @@
 "use client"
 
 import { useEffect, useState, useRef, useCallback } from "react"
+import dynamic from "next/dynamic"
 import Link from "next/link"
-import DOMPurify from "dompurify"
+import Image from "next/image"
+import DOMPurify from "isomorphic-dompurify"
+import { getImageSrc } from "../src/utils/imageUrl"
+
+function sanitizeHtml(html) {
+  if (!html || typeof html !== "string") return ""
+  const purifier = DOMPurify?.default ?? DOMPurify
+  const sanitize = purifier?.sanitize ?? (typeof purifier === "function" ? purifier : null)
+  if (typeof sanitize === "function") return sanitize.call(purifier, html)
+  return html.replace(/<[^>]+>/g, " ")
+}
 import ColorSelector from "../src/components/product/ColorSelector"
 import ProductImageCarousel from "../src/components/product/ProductImageCarousel"
-import ProductReviews from "../src/components/ProductReviews"
-import TemplateEditor from "../src/components/TemplateEditor"
 import TopBar from "./TopBar"
 import NavigationBar from "./NavigationBar"
 import Footer from "./Footer"
@@ -16,7 +25,14 @@ import { useFlyToCart } from "../src/hooks/useFlyToCart"
 import api from "../src/utils/api"
 import { addGuestRecentlyViewed } from "../src/utils/guestRecentlyViewed"
 import { getProductSlug, slugify } from "../src/utils/slugify"
-import { RecentlyViewedProducts, GridLayout } from "./FeaturedProductSection"
+import { GridLayout } from "./FeaturedProductSection"
+
+const ProductReviews = dynamic(() => import("../src/components/ProductReviews"), { ssr: false })
+const TemplateEditor = dynamic(() => import("../src/components/TemplateEditor"), { ssr: false })
+const RecentlyViewedProducts = dynamic(
+  () => import("./FeaturedProductSection").then((m) => ({ default: m.RecentlyViewedProducts })),
+  { ssr: false },
+)
 
 export default function ProductDetailsClient({ initialProduct }) {
   const { isAuthenticated } = useAuth()
@@ -333,9 +349,9 @@ export default function ProductDetailsClient({ initialProduct }) {
                       <TemplateEditor key={activeTemplate._id || activeTemplate.id} template={activeTemplate} onSave={handleDesignSave} simplified={true} constrained={true} />
                     </div>
                   ) : showCustomizedView ? (
-                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50">
+                    <div className="absolute inset-0 flex items-center justify-center bg-gray-50 relative">
                       {backgroundImage ? (
-                        <img src={backgroundImage.startsWith("http") ? backgroundImage : `http://localhost:8080${backgroundImage}`} alt={product?.name} className="w-full h-full object-contain" data-main-image />
+                        <Image src={getImageSrc(backgroundImage) || backgroundImage} alt={product?.name ?? ""} fill className="object-contain" sizes="(max-width: 768px) 100vw, 50vw" data-main-image />
                       ) : (
                         <div className="text-gray-400 text-center">
                           <svg className="w-16 h-16 mx-auto mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -349,7 +365,11 @@ export default function ProductDetailsClient({ initialProduct }) {
                     <div className="absolute inset-0 flex flex-col bg-gray-50 transition-opacity duration-300 p-3" style={{ opacity: 1 }}>
                       {savedDesign && viewMode === "customized" ? (
                         <div className="relative w-full h-full">
-                          <img src={savedDesign.image} alt={`Customized ${product?.name}`} className="w-full h-full object-contain" data-main-image />
+                          {savedDesign.image?.startsWith("data:") || savedDesign.image?.startsWith("blob:") ? (
+                            <img src={savedDesign.image} alt={`Customized ${product?.name}`} className="w-full h-full object-contain" data-main-image />
+                          ) : (
+                            <Image src={getImageSrc(savedDesign.image) || savedDesign.image} alt={`Customized ${product?.name}`} fill className="object-contain" sizes="(max-width: 768px) 100vw, 50vw" data-main-image />
+                          )}
                           <div className="absolute top-2 left-2 bg-green-500 text-white text-xs px-2 py-1 rounded">Customized Design</div>
                         </div>
                       ) : productGalleryImages.length > 0 ? (
@@ -374,9 +394,9 @@ export default function ProductDetailsClient({ initialProduct }) {
                           const isSelected = selectedTemplate?._id === tmpl._id || selectedTemplate?.id === tmpl.id || (!selectedTemplate && templates[0]?._id === tmpl._id)
                           const previewImg = tmpl.previewImage || tmpl.backgroundImages?.[0]
                           return (
-                            <button key={tmpl._id || tmpl.id} onClick={() => handleTemplateSelect(tmpl)} className={`flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all duration-200 transform hover:scale-105 ${isSelected ? "border-blue-400 ring-2 ring-blue-300 shadow-lg scale-110" : "border-white/50 hover:border-white"}`} title={tmpl.name}>
+                            <button key={tmpl._id || tmpl.id} onClick={() => handleTemplateSelect(tmpl)} className={`relative flex-shrink-0 w-16 h-16 rounded-lg overflow-hidden border-2 transition-all duration-200 transform hover:scale-105 ${isSelected ? "border-blue-400 ring-2 ring-blue-300 shadow-lg scale-110" : "border-white/50 hover:border-white"}`} title={tmpl.name}>
                               {previewImg ? (
-                                <img src={previewImg.startsWith("http") ? previewImg : `http://localhost:8080${previewImg}`} alt={tmpl.name} className="w-full h-full object-cover" loading="eager" />
+                                <Image src={getImageSrc(previewImg) || previewImg} alt={tmpl.name} fill sizes="64px" className="object-cover" />
                               ) : (
                                 <div className="w-full h-full bg-gray-300 flex items-center justify-center">
                                   <span className="text-xs text-gray-600">{tmpl.name?.charAt(0)}</span>
@@ -411,8 +431,7 @@ export default function ProductDetailsClient({ initialProduct }) {
                 {product.discountPercentage && <span className="ml-2 text-sm text-green-600 font-medium">({product.discountPercentage}% off)</span>}
               </p>
             )}
-
-            {product?.description && <div className="text-gray-700 mb-6 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description) }} />}
+            {product?.description && <div className="text-gray-700 mb-6 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(product.description) }} />}
 
             <ColorSelector variants={variants} selectedId={selected?._id} onChange={(_, v) => setSelected(v)} />
 

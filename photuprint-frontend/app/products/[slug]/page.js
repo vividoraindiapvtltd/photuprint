@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation"
-import { getProductBySlug } from "../../../src/lib/product-data"
+import { getProductBySlug, getProductSlugs } from "../../../src/lib/product-data"
 import ProductDetailsClient from "../../../components/ProductDetailsClient"
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://photuprint.com"
@@ -15,6 +15,14 @@ function getImageUrl(product) {
   if (img.startsWith("http")) return img
   return `${SITE_URL}${img}`
 }
+
+/** Pre-render top product slugs at build; rest generated on demand with revalidate 600. */
+export async function generateStaticParams() {
+  const slugs = await getProductSlugs(50)
+  return slugs.map((slug) => ({ slug }))
+}
+
+export const revalidate = 600
 
 export async function generateMetadata({ params }) {
   const { slug } = await params

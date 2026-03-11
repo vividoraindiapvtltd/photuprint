@@ -2,15 +2,10 @@
 
 import { useState, useEffect } from "react"
 import Link from "next/link"
+import Image from "next/image"
 import api from "../src/utils/api"
+import { getImageSrc } from "../src/utils/imageUrl"
 import { slugify } from "../src/utils/slugify"
-
-function resolveImageUrl(url) {
-  if (!url) return ""
-  if (typeof url === "string" && (url.startsWith("http://") || url.startsWith("https://"))) return url
-  const base = typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "") : "http://localhost:8080"
-  return base + (url.startsWith("/") ? url : "/" + url)
-}
 
 function getCategorySlug(category) {
   if (category?.slug && String(category.slug).trim()) return String(category.slug).trim().toLowerCase()
@@ -38,10 +33,12 @@ function CategoryCard({ category }) {
     >
       <div className="relative aspect-[4/5] sm:aspect-square bg-gray-100 overflow-hidden">
         {imageUrl ? (
-          <img
-            src={resolveImageUrl(imageUrl)}
+          <Image
+            src={getImageSrc(imageUrl) || imageUrl}
             alt={name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
+            fill
+            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
+            className="object-cover group-hover:scale-105 transition-transform duration-200"
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">

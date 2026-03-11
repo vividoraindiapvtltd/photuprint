@@ -2,8 +2,11 @@
 
 import { useState, useEffect, useRef } from "react"
 import Link from "next/link"
+import Image from "next/image"
+import Script from "next/script"
 import { useRouter } from "next/navigation"
 import { useCart } from "../../src/context/CartContext"
+import { getImageSrc } from "../../src/utils/imageUrl"
 import { useAuth } from "../../src/context/AuthContext"
 import api from "../../src/utils/api"
 import { slugify } from "../../src/utils/slugify"
@@ -12,31 +15,6 @@ import NavigationBar from "../../components/NavigationBar"
 import Footer from "../../components/Footer"
 
 const RAZORPAY_SCRIPT_URL = "https://checkout.razorpay.com/v1/checkout.js"
-
-/** Load Razorpay script only when user is about to pay (avoids many v2-entry requests on cart load). */
-function loadRazorpayScript() {
-  if (typeof window === "undefined") return Promise.reject(new Error("Not in browser"))
-  if (window.Razorpay) return Promise.resolve()
-  if (window.__razorpayLoadPromise) return window.__razorpayLoadPromise
-  window.__razorpayLoadPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector(`script[src="${RAZORPAY_SCRIPT_URL}"]`)
-    if (existing) {
-      const check = () => (window.Razorpay ? resolve() : setTimeout(check, 50))
-      check()
-      return
-    }
-    const script = document.createElement("script")
-    script.src = RAZORPAY_SCRIPT_URL
-    script.async = true
-    script.onload = () => {
-      const check = () => (window.Razorpay ? resolve() : setTimeout(check, 50))
-      check()
-    }
-    script.onerror = () => reject(new Error("Failed to load payment script"))
-    document.body.appendChild(script)
-  })
-  return window.__razorpayLoadPromise
-}
 
 const getBaseUrl = () => {
   if (typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL) {
@@ -64,9 +42,22 @@ const CHECKOUT_STEPS = [
 ]
 
 const PAYMENT_OPTIONS = [
-  { id: "cod", label: "Cash on Delivery (COD) — 40% advance required" },
+  { id: "cod" }, // label built with pay-now / pay-on-delivery amounts in JSX
   { id: "online", label: "Online Payment (Card, UPI, Net Banking, Wallets)" },
 ]
+
+/** Flat shipping charge (₹) added to every order. Set to 0 for free shipping. */
+const SHIPPING_CHARGE = 99
+
+/** GST rate (%). Company is in Delhi: Delhi billing → CGST+SGST; other states → IGST. */
+const GST_RATE_PERCENT = 18
+
+/** Returns true if state is Delhi (company state – intrastate → CGST+SGST). */
+function isBillingStateDelhi(state) {
+  if (!state || typeof state !== "string") return false
+  const s = state.trim().toLowerCase()
+  return s === "delhi" || s.includes("national capital") || s.startsWith("nct")
+}
 
 const emptyAddress = {
   fullName: "",
@@ -231,6 +222,7 @@ export default function CartPage() {
   const [errors, setErrors] = useState({})
   const hasAutoOpenedPayment = useRef(false)
   const [checkoutStarted, setCheckoutStarted] = useState(false)
+  const [razorpayReady, setRazorpayReady] = useState(false)
 
   useEffect(() => {
     api
@@ -436,16 +428,33 @@ export default function CartPage() {
       const p = x.discountedPrice != null ? x.discountedPrice : x.price
       return sum + p * (x.quantity || 0)
     }, 0)
-    const tax = 0
-    const shippingCharges = 0
+    const shippingCharges = SHIPPING_CHARGE
     const discountRes = appliedCoupon ? validateAndComputeCoupon(appliedCoupon, subtotalAmount) : null
     const discount = discountRes?.valid ? discountRes.discount : 0
     const giftWrapChargeOrder = giftWrapChecked ? GIFT_WRAP_PRICE : 0
-    const totalAmount = Math.max(0, Math.round(subtotalAmount + tax + shippingCharges - discount + giftWrapChargeOrder))
+    const taxableValueOrder = Math.max(0, subtotalAmount - discount + giftWrapChargeOrder + shippingCharges)
+    const billingState = (sameAsBilling ? shippingAddress?.state : billingAddress?.state) || ""
+    const isDelhiOrder = isBillingStateDelhi(billingState)
+    let cgstOrder = 0,
+      sgstOrder = 0,
+      igstOrder = 0
+    if (taxableValueOrder > 0) {
+      if (isDelhiOrder) {
+        cgstOrder = Math.round((taxableValueOrder * (GST_RATE_PERCENT / 2)) / 100)
+        sgstOrder = Math.round((taxableValueOrder * (GST_RATE_PERCENT / 2)) / 100)
+      } else {
+        igstOrder = Math.round((taxableValueOrder * GST_RATE_PERCENT) / 100)
+      }
+    }
+    const tax = cgstOrder + sgstOrder + igstOrder
+    const totalAmount = Math.max(0, Math.round(taxableValueOrder + tax))
     return {
       products: orderProducts,
       subtotal: subtotalAmount,
       tax,
+      cgst: cgstOrder,
+      sgst: sgstOrder,
+      igst: igstOrder,
       shippingCharges,
       discount,
       giftWrap: giftWrapChecked,
@@ -514,13 +523,9 @@ export default function CartPage() {
     setPlacing(true)
     setErrors({})
     if (typeof window === "undefined" || !window.Razorpay) {
-      try {
-        await loadRazorpayScript()
-      } catch {
-        setErrors({ form: "Payment gateway failed to load. Please try again." })
-        setPlacing(false)
-        return
-      }
+      setErrors({ form: razorpayReady ? "Payment gateway failed to load. Please try again." : "Payment gateway is loading. Please try again in a moment." })
+      setPlacing(false)
+      return
     }
 
     try {
@@ -545,7 +550,7 @@ export default function CartPage() {
         amount,
         currency: "INR",
         name: "PhotuPrint",
-        description: isCod ? "40% Advance for COD Order" : "Order Payment",
+        description: isCod ? "COD advance payment" : "Order Payment",
         order_id: orderId,
         prefill: {
           name: shippingAddress?.fullName || billingAddress?.fullName || "",
@@ -611,7 +616,22 @@ export default function CartPage() {
   const discountResult = appliedCoupon ? validateAndComputeCoupon(appliedCoupon, subtotal) : null
   const discount = discountResult?.valid ? discountResult.discount : 0
   const giftWrapCharge = giftWrapChecked ? GIFT_WRAP_PRICE : 0
-  const totalAmount = Math.max(0, Math.round(subtotal - discount + giftWrapCharge))
+  const shippingCharge = SHIPPING_CHARGE
+  const taxableValue = Math.max(0, subtotal - discount + giftWrapCharge + shippingCharge)
+  const isDelhi = isBillingStateDelhi(billingAddress?.state)
+  let cgst = 0,
+    sgst = 0,
+    igst = 0
+  if (billingComplete && taxableValue > 0) {
+    if (isDelhi) {
+      cgst = Math.round((taxableValue * (GST_RATE_PERCENT / 2)) / 100)
+      sgst = Math.round((taxableValue * (GST_RATE_PERCENT / 2)) / 100)
+    } else {
+      igst = Math.round((taxableValue * GST_RATE_PERCENT) / 100)
+    }
+  }
+  const taxTotal = cgst + sgst + igst
+  const totalAmount = Math.max(0, Math.round(taxableValue + taxTotal))
 
   useEffect(() => {
     if (!appliedCoupon || subtotal <= 0) return
@@ -623,19 +643,21 @@ export default function CartPage() {
     }
   }, [subtotal, appliedCoupon])
 
-  // When billing & shipping are complete, open Payment accordion once so user can select method and activate Pay Now
+  // When user has started checkout and billing & shipping are complete, open Payment accordion once (don't run on initial load so My Bag stays default open)
   useEffect(() => {
-    if (billingComplete && shippingComplete && !hasAutoOpenedPayment.current) {
+    if (checkoutStarted && billingComplete && shippingComplete && !hasAutoOpenedPayment.current) {
       hasAutoOpenedPayment.current = true
       setOpenAccordion("payment")
     }
-  }, [billingComplete, shippingComplete])
+  }, [checkoutStarted, billingComplete, shippingComplete])
 
-  const advanceAmount = paymentMethod === "cod" ? Math.round(totalAmount * 0.4) : 0
+  const codAdvanceAmount = Math.round(totalAmount * 0.4)
+  const advanceAmount = paymentMethod === "cod" ? codAdvanceAmount : 0
   const codRemaining = paymentMethod === "cod" ? totalAmount - advanceAmount : 0
 
   return (
     <div className="min-h-screen bg-gray-50">
+      <Script src={RAZORPAY_SCRIPT_URL} strategy="lazyOnload" onLoad={() => setRazorpayReady(true)} />
       <header className="sticky top-0 z-50 w-full">
         <TopBar />
         <NavigationBar />
@@ -699,7 +721,7 @@ export default function CartPage() {
                     const lineTotal = price * (item.quantity || 0)
                     return (
                       <li key={item.lineId} className="flex gap-4 sm:gap-6 py-4 first:pt-0">
-                        <div className="flex-shrink-0 w-[151px] h-[202px] bg-gray-100 rounded-lg overflow-hidden">{src ? <img src={src} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No image</div>}</div>
+                        <div className="relative flex-shrink-0 w-[151px] h-[202px] bg-gray-100 rounded-lg overflow-hidden">{src ? <Image src={getImageSrc(src) || src} alt={item.name} width={151} height={202} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No image</div>}</div>
                         <div className="flex-1 min-w-0">
                           <Link href={item.slug ? `/products/${item.slug}` : "#"} className="font-semibold text-gray-900 hover:text-gray-600 line-clamp-2">
                             {item.name}
@@ -752,7 +774,7 @@ export default function CartPage() {
                       {PAYMENT_OPTIONS.map((opt) => (
                         <label key={opt.id} className="flex items-center gap-3 p-3 border border-gray-200 rounded-lg cursor-pointer hover:bg-gray-50">
                           <input type="radio" name="payment" value={opt.id} checked={paymentMethod === opt.id} onChange={() => setPaymentMethod(opt.id)} className="text-gray-900 focus:ring-gray-900" />
-                          <span className="text-sm font-medium text-gray-900">{opt.label}</span>
+                          <span className="text-sm font-medium text-gray-900">{opt.id === "cod" ? `Cash on Delivery (COD) — Pay ₹${codAdvanceAmount.toLocaleString("en-IN")} now, ₹${(totalAmount - codAdvanceAmount).toLocaleString("en-IN")} on delivery` : opt.label}</span>
                         </label>
                       ))}
                     </div>
@@ -760,7 +782,7 @@ export default function CartPage() {
                     {billingComplete && shippingComplete && !paymentMethod && <p className="mt-4 text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Select a payment method above to place your order.</p>}
                     {errors.form && <p className="mt-4 text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{errors.form}</p>}
                     <button type="button" onClick={handlePlaceOrder} disabled={!canPlaceOrder || placing} className={`w-full mt-4 px-6 py-3.5 font-semibold rounded-md uppercase tracking-wide text-sm transition-colors ${canPlaceOrder && !placing ? "bg-gray-900 text-white hover:bg-gray-800" : "bg-gray-200 text-gray-500 cursor-not-allowed"}`}>
-                      {placing ? "Opening payment..." : !paymentMethod ? "Select payment method" : paymentMethod === "cod" ? "Pay 40% Advance" : "Pay Now"}
+                      {placing ? "Opening payment..." : !paymentMethod ? "Select payment method" : paymentMethod === "cod" ? `Pay ₹${advanceAmount.toLocaleString("en-IN")}` : "Pay Now"}
                     </button>
                   </Accordion>
                 </>
@@ -779,7 +801,7 @@ export default function CartPage() {
                     const src = imgSrc ? resolveImageUrl(imgSrc) : null
                     return (
                       <li key={item.lineId} className="flex gap-3 py-3">
-                        <div className="w-14 h-14 bg-gray-100 rounded overflow-hidden flex-shrink-0">{src ? <img src={src} alt={item.name} className="w-full h-full object-cover" /> : <div className="w-full h-14 bg-gray-200" />}</div>
+                        <div className="relative w-14 h-14 bg-gray-100 rounded overflow-hidden flex-shrink-0">{src ? <Image src={getImageSrc(src) || src} alt={item.name} width={56} height={56} className="w-full h-full object-cover" /> : <div className="w-full h-14 bg-gray-200" />}</div>
                         <div className="flex-1 min-w-0">
                           <p className="text-sm font-medium text-gray-900 line-clamp-2">{item.name}</p>
                           <p className="text-xs text-gray-500">
@@ -958,7 +980,7 @@ export default function CartPage() {
                   )}
                 </div>
 
-                {/* Order breakdown: Subtotal → Discount → Total → COD 40% breakdown */}
+                {/* Order breakdown: Subtotal → Discount → Total → COD pay-now / on-delivery */}
                 <div className="space-y-2 mb-4 pt-4 border-t border-gray-200">
                   <div className="flex justify-between text-gray-600">
                     <span>Subtotal</span>
@@ -976,20 +998,47 @@ export default function CartPage() {
                       <span className="font-medium text-gray-900">₹{giftWrapCharge.toFixed(0)}</span>
                     </div>
                   )}
+                  {shippingCharge > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Shipping</span>
+                      <span className="font-medium text-gray-900">₹{shippingCharge.toFixed(0)}</span>
+                    </div>
+                  )}
+                  {taxTotal > 0 && (
+                    <>
+                      {isDelhi ? (
+                        <>
+                          <div className="flex justify-between text-gray-600">
+                            <span>CGST ({GST_RATE_PERCENT / 2}%)</span>
+                            <span className="font-medium text-gray-900">₹{cgst.toFixed(0)}</span>
+                          </div>
+                          <div className="flex justify-between text-gray-600">
+                            <span>SGST ({GST_RATE_PERCENT / 2}%)</span>
+                            <span className="font-medium text-gray-900">₹{sgst.toFixed(0)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between text-gray-600">
+                          <span>IGST ({GST_RATE_PERCENT}%)</span>
+                          <span className="font-medium text-gray-900">₹{igst.toFixed(0)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
                   <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-100">
                     <span>Total</span>
                     <span>₹{totalAmount.toFixed(0)}</span>
                   </div>
                   {paymentMethod === "cod" && checkoutStarted && (
                     <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
-                      <p className="text-xs font-semibold text-amber-800 uppercase">COD — 40% Advance Required</p>
+                      <p className="text-xs font-semibold text-amber-800 uppercase">Cash on Delivery</p>
                       <div className="flex justify-between text-sm text-amber-900">
-                        <span>40% Advance (Pay Now)</span>
-                        <span className="font-medium">₹{advanceAmount.toFixed(0)}</span>
+                        <span>Pay now</span>
+                        <span className="font-medium">₹{advanceAmount.toLocaleString("en-IN")}</span>
                       </div>
                       <div className="flex justify-between text-sm text-amber-900">
-                        <span>60% Remaining (Pay on Delivery)</span>
-                        <span className="font-medium">₹{codRemaining.toFixed(0)}</span>
+                        <span>Pay on delivery</span>
+                        <span className="font-medium">₹{codRemaining.toLocaleString("en-IN")}</span>
                       </div>
                     </div>
                   )}
@@ -1000,24 +1049,20 @@ export default function CartPage() {
                 {checkoutStarted ? <p className="text-xs text-gray-500 mb-4">Complete Billing &amp; Shipping above, then place your order.</p> : <p className="text-xs text-gray-500 mb-4">Click Proceed to Checkout to enter delivery details and payment.</p>}
 
                 <div className="space-y-3">
-                  {checkoutStarted && !canPlaceOrder && (
-                    <p className="text-xs text-amber-700">
-                      {!billingComplete || !shippingComplete ? "Fill Billing &amp; Shipping above." : "Select a payment method in the Payment section above."}
-                    </p>
-                  )}
+                  {checkoutStarted && !canPlaceOrder && <p className="text-xs text-amber-700">{!billingComplete || !shippingComplete ? "Fill Billing &amp; Shipping above." : "Select a payment method in the Payment section above."}</p>}
                   <div className="flex flex-col sm:flex-row gap-3">
                     <Link href="/" className="flex-1 text-center px-6 py-3 border-2 border-gray-900 text-gray-900 font-semibold rounded-md hover:bg-gray-50 transition-colors uppercase tracking-wide text-sm">
                       Continue Shopping
                     </Link>
                     {checkoutStarted ? (
                       <button type="button" onClick={handlePlaceOrder} disabled={!canPlaceOrder || placing} className={`flex-1 px-6 py-3 font-semibold rounded-md uppercase tracking-wide text-sm transition-colors ${canPlaceOrder && !placing ? "bg-gray-900 text-white hover:bg-gray-800" : "bg-gray-200 text-gray-500 cursor-not-allowed"}`}>
-                        {placing ? "Opening payment..." : !paymentMethod ? "Select payment method" : paymentMethod === "cod" ? "Pay 40% Advance" : "Pay Now"}
+                        {placing ? "Opening payment..." : !paymentMethod ? "Select payment method" : paymentMethod === "cod" ? `Pay ₹${advanceAmount.toLocaleString("en-IN")}` : "Pay Now"}
                       </button>
                     ) : (
-                    <button type="button" onClick={handleProceedToCheckout} className="flex-1 px-6 py-3 bg-gray-900 text-white font-semibold rounded-md hover:bg-gray-800 transition-colors uppercase tracking-wide text-sm">
-                      Proceed to Checkout
-                    </button>
-                  )}
+                      <button type="button" onClick={handleProceedToCheckout} className="flex-1 px-6 py-3 bg-gray-900 text-white font-semibold rounded-md hover:bg-gray-800 transition-colors uppercase tracking-wide text-sm">
+                        Proceed to Checkout
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>

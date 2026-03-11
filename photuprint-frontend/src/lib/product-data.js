@@ -23,7 +23,7 @@ export async function getProductBySlug(slugOrId) {
     ? `${backendUrl}/products/${slugOrId}`
     : `${backendUrl}/products/slug/${encodeURIComponent(slugOrId)}`
   try {
-    const res = await fetch(url, { headers, cache: "no-store" })
+    const res = await fetch(url, { headers, next: { revalidate: 600 } })
     if (!res.ok) return null
     return await res.json()
   } catch (e) {
@@ -41,16 +41,43 @@ export async function getProductsByCategory(categoryId) {
   const params = new URLSearchParams({
     showInactive: "false",
     includeDeleted: "false",
-    limit: "100",
+    limit: "24",
   })
   if (categoryId) params.set("categoryId", categoryId)
   try {
-    const res = await fetch(`${backendUrl}/products?${params}`, { headers, cache: "no-store" })
+    const res = await fetch(`${backendUrl}/products?${params}`, { headers, next: { revalidate: 300 } })
     if (!res.ok) return []
     const data = await res.json()
     return data?.products ?? (Array.isArray(data) ? data : [])
   } catch (e) {
     console.error("[product-data] Failed to fetch products:", e.message)
+    return []
+  }
+}
+
+/**
+ * Fetch product slugs for static generation (e.g. generateStaticParams).
+ * @param {number} limit
+ * @returns {Promise<string[]>}
+ */
+export async function getProductSlugs(limit = 50) {
+  const params = new URLSearchParams({
+    showInactive: "false",
+    includeDeleted: "false",
+    limit: String(limit),
+  })
+  try {
+    const res = await fetch(`${backendUrl}/products?${params}`, { headers, next: { revalidate: 600 } })
+    if (!res.ok) return []
+    const data = await res.json()
+    const list = data?.products ?? (Array.isArray(data) ? data : [])
+    return list
+      .map((p) => p.slug || p._id || p.id)
+      .filter(Boolean)
+      .map(String)
+      .slice(0, limit)
+  } catch (e) {
+    console.error("[product-data] Failed to fetch product slugs:", e.message)
     return []
   }
 }
@@ -63,7 +90,7 @@ export async function getCategories() {
   try {
     const res = await fetch(`${backendUrl}/categories?showInactive=false&includeDeleted=false`, {
       headers,
-      cache: "no-store",
+      next: { revalidate: 300 },
     })
     if (!res.ok) return []
     const data = await res.json()
@@ -84,7 +111,7 @@ export async function getSubcategories(categoryId) {
   try {
     const res = await fetch(
       `${backendUrl}/subcategories?category=${encodeURIComponent(categoryId)}&showInactive=false&includeDeleted=false`,
-      { headers, cache: "no-store" },
+      { headers, next: { revalidate: 300 } },
     )
     if (!res.ok) return []
     const data = await res.json()

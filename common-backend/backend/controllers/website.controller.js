@@ -1,4 +1,43 @@
 import Website from '../models/website.model.js';
+import { evictCredentialsCache } from '../utils/websiteCredentials.js';
+
+const CREDENTIAL_FIELDS = [
+  'razorpayKeyId',
+  'razorpayKeySecret',
+  'cloudinaryCloudName',
+  'cloudinaryApiKey',
+  'cloudinaryApiSecret',
+];
+
+// Mask a secret for safe display (show first 6 chars + asterisks)
+function maskSecret(val) {
+  if (!val || typeof val !== 'string') return null;
+  const trimmed = val.trim();
+  if (trimmed.length <= 6) return '******';
+  return trimmed.slice(0, 6) + '**********';
+}
+
+// Admin view: mask secrets, keep non-secret credential fields visible
+function sanitizeWebsiteForAdmin(doc) {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  obj.razorpayKeyId = obj.razorpayKeyId || null;
+  obj.razorpayKeySecret = maskSecret(obj.razorpayKeySecret);
+  obj.cloudinaryCloudName = obj.cloudinaryCloudName || null;
+  obj.cloudinaryApiKey = obj.cloudinaryApiKey || null;
+  obj.cloudinaryApiSecret = maskSecret(obj.cloudinaryApiSecret);
+  return obj;
+}
+
+// Public view: strip ALL credential fields entirely
+function sanitizeWebsiteForPublic(doc) {
+  if (!doc) return doc;
+  const obj = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
+  for (const field of CREDENTIAL_FIELDS) {
+    delete obj[field];
+  }
+  return obj;
+}
 
 // Get all websites
 export const getWebsites = async (req, res) => {
@@ -23,7 +62,8 @@ export const getWebsites = async (req, res) => {
     }
 
     const websites = await Website.find(query).sort({ name: 1 });
-    res.json(websites);
+    const isAdmin = req.user && ['super_admin', 'admin'].includes(req.user.role);
+    res.json(websites.map(isAdmin ? sanitizeWebsiteForAdmin : sanitizeWebsiteForPublic));
   } catch (error) {
     console.error('Error fetching websites:', error);
     res.status(500).json({ msg: 'Failed to fetch websites' });
@@ -37,7 +77,8 @@ export const getWebsiteById = async (req, res) => {
     if (!website) {
       return res.status(404).json({ msg: 'Website not found' });
     }
-    res.json(website);
+    const isAdmin = req.user && ['super_admin', 'admin'].includes(req.user.role);
+    res.json(isAdmin ? sanitizeWebsiteForAdmin(website) : sanitizeWebsiteForPublic(website));
   } catch (error) {
     console.error('Error fetching website:', error);
     res.status(500).json({ msg: 'Failed to fetch website' });
@@ -58,7 +99,7 @@ export const getWebsiteByDomain = async (req, res) => {
       return res.status(404).json({ msg: 'Website not found' });
     }
     
-    res.json(website);
+    res.json(sanitizeWebsiteForPublic(website));
   } catch (error) {
     console.error('Error fetching website by domain:', error);
     res.status(500).json({ msg: 'Failed to fetch website' });
@@ -68,7 +109,7 @@ export const getWebsiteByDomain = async (req, res) => {
 // Create new website
 export const createWebsite = async (req, res) => {
   try {
-    const { name, domain, description, isActive = true } = req.body;
+    const { name, domain, description, isActive = true, ...rest } = req.body;
 
     if (!name || !name.trim()) {
       return res.status(400).json({ msg: 'Website name is required' });
@@ -78,7 +119,6 @@ export const createWebsite = async (req, res) => {
       return res.status(400).json({ msg: 'Domain is required' });
     }
 
-    // Convert string "true"/"false" to boolean (for FormData)
     let isActiveValue = true;
     if (typeof isActive === 'string') {
       isActiveValue = isActive === 'true';
@@ -86,10 +126,8 @@ export const createWebsite = async (req, res) => {
       isActiveValue = Boolean(isActive);
     }
 
-    // Normalize domain (lowercase, trim)
     const normalizedDomain = domain.trim().toLowerCase();
 
-    // Check if domain already exists (non-deleted)
     const existingWebsite = await Website.findOne({ 
       domain: normalizedDomain,
       deleted: false
@@ -99,15 +137,22 @@ export const createWebsite = async (req, res) => {
       return res.status(400).json({ msg: 'Domain already exists' });
     }
 
-    const website = new Website({
+    const websiteData = {
       name: name.trim(),
       domain: normalizedDomain,
       description: description?.trim() || null,
       isActive: isActiveValue,
-    });
+    };
 
+    for (const field of CREDENTIAL_FIELDS) {
+      if (rest[field] !== undefined) {
+        websiteData[field] = typeof rest[field] === 'string' ? rest[field].trim() || null : null;
+      }
+    }
+
+    const website = new Website(websiteData);
     const savedWebsite = await website.save();
-    res.status(201).json(savedWebsite);
+    res.status(201).json(sanitizeWebsiteForAdmin(savedWebsite));
   } catch (error) {
     console.error('Error creating website:', error);
     if (error.code === 11000) {
@@ -126,14 +171,13 @@ export const createWebsite = async (req, res) => {
 // Update website
 export const updateWebsite = async (req, res) => {
   try {
-    const { name, domain, description, isActive, deleted } = req.body;
+    const { name, domain, description, isActive, deleted, ...rest } = req.body;
 
     const website = await Website.findById(req.params.id);
     if (!website) {
       return res.status(404).json({ msg: 'Website not found' });
     }
 
-    // Update fields
     if (name !== undefined && name.trim() !== website.name) {
       website.name = name.trim();
     }
@@ -141,7 +185,6 @@ export const updateWebsite = async (req, res) => {
     if (domain !== undefined && domain.trim().toLowerCase() !== website.domain) {
       const normalizedDomain = domain.trim().toLowerCase();
       
-      // Check if new domain already exists (excluding current website)
       const existingWebsite = await Website.findOne({ 
         _id: { $ne: req.params.id },
         domain: normalizedDomain,
@@ -175,8 +218,24 @@ export const updateWebsite = async (req, res) => {
       }
     }
 
+    let credentialsChanged = false;
+    for (const field of CREDENTIAL_FIELDS) {
+      if (rest[field] !== undefined) {
+        const newVal = typeof rest[field] === 'string' ? rest[field].trim() || null : null;
+        if (newVal !== website[field]) {
+          website[field] = newVal;
+          credentialsChanged = true;
+        }
+      }
+    }
+
     const updatedWebsite = await website.save();
-    res.json(updatedWebsite);
+
+    if (credentialsChanged) {
+      evictCredentialsCache(req.params.id);
+    }
+
+    res.json(sanitizeWebsiteForAdmin(updatedWebsite));
   } catch (error) {
     console.error('Error updating website:', error);
     if (error.code === 11000) {

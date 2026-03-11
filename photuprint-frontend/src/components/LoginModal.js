@@ -9,7 +9,7 @@ import api from "../utils/api"
 export default function LoginModal() {
   const pathname = usePathname()
   const router = useRouter()
-  const { login, loginModalOpen, loginReturnPath, closeLoginModal } = useAuth()
+  const { login, loginModalOpen, loginReturnPath, loginModalMessage, closeLoginModal } = useAuth()
   const [mode, setMode] = useState("signin")
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
@@ -235,6 +235,12 @@ export default function LoginModal() {
               </svg>
             </button>
           </div>
+          {loginModalMessage && (
+            <div className="mb-4 rounded-lg bg-blue-50 border border-blue-200 p-4 text-center">
+              <p className="text-sm font-semibold text-blue-900 uppercase tracking-wide">PLEASE LOG IN</p>
+              <p className="text-sm text-blue-800 mt-1">{loginModalMessage}</p>
+            </div>
+          )}
           {verificationSent ? (
             <div className="space-y-4">
               <div className="mx-auto w-14 h-14 rounded-full bg-green-100 flex items-center justify-center">

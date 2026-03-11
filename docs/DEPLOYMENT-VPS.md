@@ -257,7 +257,7 @@ This creates the `build/` directory.
 
 ### 3.2 Run Admin-CMS on port 3000 with PM2
 
-Serve the Admin-CMS build on **port 3000** using a static server (e.g. `serve`):
+Serve the Admin-CMS build on **port 3000** using a static server (e.g. `serve`)
 
 ```bash
 cd /var/www/pp-backend/admin-cms

@@ -3,8 +3,6 @@
 // Returns { sections: [] } on failure so the storefront footer degrades gracefully
 import { NextResponse } from "next/server"
 
-export const dynamic = "force-dynamic"
-
 const FETCH_TIMEOUT_MS = 8000
 
 export async function GET(request) {
@@ -26,7 +24,7 @@ export async function GET(request) {
   try {
     const response = await fetch(`${backendUrl}/footer-sections/public`, {
       headers,
-      cache: "no-store",
+      next: { revalidate: 60 },
       signal: controller.signal,
     })
     clearTimeout(timeoutId)

@@ -2,12 +2,11 @@
 
 import { useState, useEffect, useRef, useCallback } from "react"
 import Link from "next/link"
+import Image from "next/image"
+import { getImageSrc } from "../src/utils/imageUrl"
 
 function resolveImageUrl(url) {
-  if (!url) return ""
-  if (url.startsWith("http://") || url.startsWith("https://")) return url
-  const base = typeof process !== "undefined" && process.env.NEXT_PUBLIC_API_URL ? process.env.NEXT_PUBLIC_API_URL.replace(/\/api\/?$/, "") : ""
-  return base + (url.startsWith("/") ? url : "/" + url)
+  return getImageSrc(url) || ""
 }
 
 /** Shimmer for Ads Banner Carousel — same layout/size as carousel to avoid CLS */
@@ -142,8 +141,18 @@ export default function Carousel({ carouselKey = "hero" }) {
 
   const showCaption = (slide) => (showSlideTitle && slide.title) || (showSlideSubtitle && slide.subtitle)
   const transitionMs = Math.round(transitionDuration * 1000)
-  const imgFit = imageFit === "contain" ? "bg-contain" : "bg-cover"
+  const imgFit = imageFit === "contain" ? "object-contain" : "object-cover"
   const displayNameStyle = { fontSize: displayNameFontSize || "20px", color: displayNameColor || "#ffffff" }
+
+  const SlideImage = ({ slide, isFirst }) => {
+    const src = resolveImageUrl(slide?.imageUrl)
+    if (!src) return <div className="w-full rounded-xl bg-gray-800" style={{ height: "512px" }} />
+    return (
+      <div className="relative w-full rounded-xl overflow-hidden" style={{ height: "512px" }}>
+        <Image src={src} alt={slide?.title || ""} fill className={imgFit} sizes="100vw" priority={!!isFirst} />
+      </div>
+    )
+  }
   const captionTitleStyle = { fontSize: captionTitleFontSize || "18px", color: captionColor || "#ffffff" }
   const captionSubtitleStyle = { fontSize: captionSubtitleFontSize || "14px", color: captionSubtitleColor || "#e5e7eb" }
   const overlayBg = `linear-gradient(to top, rgba(0,0,0,${captionOverlayOpacity ?? 0.8}), transparent)`
@@ -193,16 +202,12 @@ export default function Carousel({ carouselKey = "hero" }) {
                     transform: `translateX(-${(pageIndex / slides.length) * 100}%)`,
                   }}
                 >
-                  {slides.map((slide) => (
+                  {slides.map((slide, idx) => (
                     <div key={slide._id} className="flex-shrink-0 relative" style={{ width: `${100 / slides.length}%` }}>
                       <SlideLink slide={slide} fullWidth>
-                        <div
-                          className={`w-full ${imgFit} bg-center rounded-xl`}
-                          style={{
-                            height: "512px",
-                            backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})`,
-                          }}
-                        />
+                        <div className="relative w-full rounded-xl overflow-hidden" style={{ height: "512px" }}>
+                          <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`object-${imageFit === "contain" ? "contain" : "cover"} rounded-xl`} sizes="100vw" priority={idx === 0} />
+                        </div>
                         <Caption slide={slide} fullWidth />
                       </SlideLink>
                     </div>
@@ -222,13 +227,9 @@ export default function Carousel({ carouselKey = "hero" }) {
                       }}
                     >
                       <SlideLink slide={slide} fullWidth>
-                        <div
-                          className={`w-full ${imgFit} bg-center rounded-xl`}
-                          style={{
-                            height: "512px",
-                            backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})`,
-                          }}
-                        />
+                        <div className="relative w-full rounded-xl overflow-hidden" style={{ height: "512px" }}>
+                          <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`object-${imageFit === "contain" ? "contain" : "cover"} rounded-xl`} sizes="100vw" priority={idx === 0} />
+                        </div>
                         <Caption slide={slide} fullWidth />
                       </SlideLink>
                     </div>
@@ -244,16 +245,12 @@ export default function Carousel({ carouselKey = "hero" }) {
                       transitionDuration: `${transitionMs}ms`,
                     }}
                   >
-                    {slides.map((slide) => (
+                    {slides.map((slide, idx) => (
                       <div key={slide._id} className="flex-shrink-0 relative" style={{ height: "512px" }}>
                         <SlideLink slide={slide} fullWidth>
-                          <div
-                            className={`w-full h-full ${imgFit} bg-center rounded-xl`}
-                            style={{
-                              height: "512px",
-                              backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})`,
-                            }}
-                          />
+                          <div className="relative w-full h-full rounded-xl overflow-hidden">
+                            <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`object-${imageFit === "contain" ? "contain" : "cover"} rounded-xl`} sizes="100vw" priority={idx === 0} />
+                          </div>
                           <Caption slide={slide} fullWidth />
                         </SlideLink>
                       </div>
@@ -275,13 +272,9 @@ export default function Carousel({ carouselKey = "hero" }) {
                       }}
                     >
                       <SlideLink slide={slide} fullWidth>
-                        <div
-                          className={`w-full ${imgFit} bg-center rounded-xl`}
-                          style={{
-                            height: "512px",
-                            backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})`,
-                          }}
-                        />
+                        <div className="relative w-full rounded-xl overflow-hidden" style={{ height: "512px" }}>
+                          <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`object-${imageFit === "contain" ? "contain" : "cover"} rounded-xl`} sizes="100vw" priority={idx === 0} />
+                        </div>
                         <Caption slide={slide} fullWidth />
                       </SlideLink>
                     </div>
@@ -300,13 +293,7 @@ export default function Carousel({ carouselKey = "hero" }) {
                       }}
                     >
                       <SlideLink slide={slide} fullWidth>
-                        <div
-                          className={`w-full ${imgFit} bg-center rounded-xl`}
-                          style={{
-                            height: "512px",
-                            backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})`,
-                          }}
-                        />
+                        <SlideImage slide={slide} isFirst={idx === 0} />
                         <Caption slide={slide} fullWidth />
                       </SlideLink>
                     </div>
@@ -319,12 +306,13 @@ export default function Carousel({ carouselKey = "hero" }) {
               {currentSlides.map((slide) => (
                 <SlideLink key={slide._id} slide={slide}>
                   <div className="relative block rounded-lg overflow-hidden bg-white/5">
-                    <div
-                      className={`w-full ${imgFit} bg-center rounded-t-lg aspect-[4/3]`}
-                      style={{
-                        backgroundImage: `url(${resolveImageUrl(slide.imageUrl)})`,
-                      }}
-                    />
+                    <div className="relative w-full aspect-[4/3] rounded-t-lg overflow-hidden">
+                      {resolveImageUrl(slide.imageUrl) ? (
+                        <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`${imgFit} rounded-t-lg`} sizes="(max-width: 768px) 100vw, 33vw" />
+                      ) : (
+                        <div className="w-full h-full bg-gray-800 rounded-t-lg" />
+                      )}
+                    </div>
                     <Caption slide={slide} fullWidth={false} />
                   </div>
                 </SlideLink>

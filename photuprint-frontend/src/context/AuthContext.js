@@ -1,4 +1,4 @@
-'use client'
+"use client"
 
 import React, { createContext, useContext, useState, useEffect } from "react"
 import { syncGuestRecentlyViewedToBackend } from "../utils/guestRecentlyViewed"
@@ -14,6 +14,7 @@ const defaultAuthValue = {
   logout: () => {},
   loginModalOpen: false,
   loginReturnPath: "/",
+  loginModalMessage: null,
   openLoginModal: () => {},
   closeLoginModal: () => {},
 }
@@ -25,6 +26,7 @@ export const AuthProvider = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(false)
   const [loginModalOpen, setLoginModalOpen] = useState(false)
   const [loginReturnPath, setLoginReturnPath] = useState("/")
+  const [loginModalMessage, setLoginModalMessage] = useState(null)
   const [logoutRedirectTo, setLogoutRedirectTo] = useState(null)
 
   // Initialize from localStorage on mount (client-side only)
@@ -76,14 +78,16 @@ export const AuthProvider = ({ children }) => {
     }
   }
 
-  const openLoginModal = (returnPath) => {
+  const openLoginModal = (returnPath, message) => {
     const path = returnPath ?? (typeof window !== "undefined" ? window.location.pathname + window.location.search : "/")
     setLoginReturnPath(path)
+    setLoginModalMessage(message ?? null)
     setLoginModalOpen(true)
   }
 
   const closeLoginModal = () => {
     setLoginModalOpen(false)
+    setLoginModalMessage(null)
   }
 
   return (
@@ -95,6 +99,7 @@ export const AuthProvider = ({ children }) => {
         isAuthenticated,
         loginModalOpen,
         loginReturnPath,
+        loginModalMessage,
         openLoginModal,
         closeLoginModal,
       }}

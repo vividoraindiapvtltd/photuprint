@@ -26,7 +26,6 @@ export async function getFooterData() {
   try {
     const res = await fetch(`${backendUrl}/footer-sections/public`, {
       headers,
-      // cache: "no-store",
       next: { revalidate: 60 },
     })
 
