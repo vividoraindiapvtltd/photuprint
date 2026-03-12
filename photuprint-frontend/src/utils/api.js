@@ -36,11 +36,10 @@ api.interceptors.request.use(
 )
 
 api.interceptors.request.use((config) => {
-  // For authentication-related routes (e.g., register, login, verify-email), the backend does not require
-  // a website context, because these actions are not tied to a specific website/tenant—they are global.
-  // Therefore, we intentionally do NOT send the X-Website-Id header for any /auth/ route, or if explicitly skipped.
-  const isAuthRoute = config.url?.includes("/auth/")
-  if (config.skipWebsiteId === true || isAuthRoute) {
+  // Skip website ID only when explicitly requested.
+  // Auth routes like /auth/google and /auth/register DO need website context
+  // so the backend can associate the user with the correct website.
+  if (config.skipWebsiteId === true) {
     delete config.skipWebsiteId
     return config
   }
