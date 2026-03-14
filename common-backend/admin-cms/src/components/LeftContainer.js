@@ -1,9 +1,8 @@
-import React, { useMemo, useState } from "react"
-import { NavLink } from "react-router-dom"
-import IconMap from "../common/IconMap"
-// import photuprintLogo from "../images/Photu-Print-Logo-1.jpg"
-import photuprintLogo from "../images/spacer.gif"
-import { usePermissions } from "../context/PermissionContext"
+import React, { useMemo, useState } from "react";
+import { NavLink } from "react-router-dom";
+import IconMap from "../common/IconMap";
+import photuprintLogo from "../images/spacer.gif";
+import { usePermissions } from "../context/PermissionContext";
 
 /**
  * Sidebar accordion groups: label + list of path suffixes (matched against item.link).
@@ -12,7 +11,7 @@ import { usePermissions } from "../context/PermissionContext"
 const SIDEBAR_GROUPS = [
   {
     label: "Catalog",
-    links: ["/dashboard/addbrand", "/dashboard/addcategory", "/dashboard/addsubcategory", "/dashboard/variationmanager", "/dashboard/addproducts"],
+    links: ["/dashboard/addbrand", "/dashboard/addcategory", "/dashboard/addsubcategory", "/dashboard/variationmanager", "/dashboard/addproducts", "/dashboard/aplus-content"],
   },
   {
     label: "Product attributes",
@@ -33,7 +32,6 @@ const SIDEBAR_GROUPS = [
   {
     label: "Reports",
     links: [
-      // "/dashboard/reports",
       "/dashboard/reports/sales-summary",
       "/dashboard/reports/order-wise-sales",
       "/dashboard/reports/product-wise-sales",
@@ -52,8 +50,12 @@ const SIDEBAR_GROUPS = [
     ],
   },
   {
+    label: "Lead Management",
+    links: ["/dashboard/clients", "/dashboard/adduser?role=editor", "/dashboard/leads-download", "/dashboard/incentives", "/dashboard/incentive-report"],
+  },
+  {
     label: "Users & access",
-    links: ["/dashboard/adduser", "/dashboard/clients", "/dashboard/user-access"],
+    links: ["/dashboard/adduser", "/dashboard/user-access"],
   },
   {
     label: "Settings",
@@ -63,7 +65,7 @@ const SIDEBAR_GROUPS = [
     label: "PixelCraft",
     links: ["/dashboard/pixelcraft", "/dashboard/pixelcraft/elements", "/dashboard/pixelcraft/element-images", "/dashboard/pixelcraft/dimensions", "/dashboard/pixelcraft/image-to-vector"],
   },
-]
+];
 
 /**
  * LeftContainer Component
@@ -73,114 +75,90 @@ const SIDEBAR_GROUPS = [
  * Super Admin sees all menu items.
  */
 const LeftContainer = ({ data }) => {
-  const { filterMenuItems, isSuperAdmin, loading } = usePermissions()
+  const { filterMenuItems, loading } = usePermissions();
   const [expandedGroups, setExpandedGroups] = useState(() =>
     SIDEBAR_GROUPS.reduce((acc, _, i) => ({ ...acc, [i]: true }), {})
-  )
+  );
 
   const filteredData = useMemo(() => {
-    if (loading) return []
-    return filterMenuItems(data)
-  }, [data, filterMenuItems, loading])
+    if (!data || !Array.isArray(data)) return [];
+    return filterMenuItems(data);
+  }, [data, filterMenuItems]);
 
   const linkToItem = useMemo(() => {
-    const map = {}
-    filteredData.forEach((item) => {
-      map[item.link] = item
-    })
-    return map
-  }, [filteredData])
-
-  const grouped = useMemo(() => {
-    const result = SIDEBAR_GROUPS.map((group) => ({
-      label: group.label,
-      items: group.links.map((link) => linkToItem[link]).filter(Boolean),
-    }))
-    const assignedLinks = new Set(SIDEBAR_GROUPS.flatMap((g) => g.links))
-    const other = filteredData.filter((item) => !assignedLinks.has(item.link))
-    if (other.length) result.push({ label: "Other", items: other })
-    return result
-  }, [filteredData, linkToItem])
+    const map = {};
+    (filteredData || []).forEach((item) => {
+      if (item && item.link) map[item.link] = item;
+    });
+    return map;
+  }, [filteredData]);
 
   const toggleGroup = (index) => {
-    setExpandedGroups((prev) => ({ ...prev, [index]: !prev[index] }))
+    setExpandedGroups((prev) => ({ ...prev, [index]: !prev[index] }));
+  };
+
+  if (loading) {
+    return (
+      <div className="sidebarContainer" style={{ width: 237 }}>
+        <div className="top">
+          <div className="logo">
+            <img src={photuprintLogo} alt="Logo" />
+          </div>
+        </div>
+        <div style={{ padding: "1rem", color: "#666" }}>Loading menu...</div>
+      </div>
+    );
   }
 
   return (
-    <aside className="sidebarContainer">
+    <div className="sidebarContainer" style={{ width: 237 }}>
       <div className="top">
         <div className="logo">
-          <img src={photuprintLogo} alt="PhotuPrint" className="logoStyle textLogo" />
+          <img src={photuprintLogo} alt="Logo" />
         </div>
-        <div className="close">✖</div>
       </div>
-
       <div className="sidebar">
-        {isSuperAdmin && (
-          <div className="superAdminBadge" style={{
-            padding: "8px 12px",
-            margin: "0 10px 10px",
-            background: "linear-gradient(135deg, #dc3545 0%, #c82333 100%)",
-            borderRadius: "6px",
-            color: "#fff",
-            fontSize: "11px",
-            fontWeight: "600",
-            textAlign: "center",
-            textTransform: "uppercase",
-            letterSpacing: "0.5px",
-          }}>
-            🔐 Super Admin
-          </div>
-        )}
-
-        {grouped.map((group, index) => {
-          const isExpanded = expandedGroups[index] !== false
+        {SIDEBAR_GROUPS.map((group, groupIndex) => {
+          const visibleLinks = group.links.filter((path) => linkToItem[path]);
+          if (visibleLinks.length === 0) return null;
+          const isExpanded = expandedGroups[groupIndex];
           return (
-            <div key={group.label} className="sidebarAccordion">
+            <div key={groupIndex} className="sidebarAccordion">
               <button
                 type="button"
                 className="sidebarAccordionHeader"
-                onClick={() => toggleGroup(index)}
+                onClick={() => toggleGroup(groupIndex)}
                 aria-expanded={isExpanded}
               >
                 <span className="sidebarAccordionLabel">{group.label}</span>
-                <span className="sidebarAccordionIcon" aria-hidden>{isExpanded ? "▼" : "▶"}</span>
+                <span className="sidebarAccordionIcon">{isExpanded ? "\u25B2" : "\u25BC"}</span>
               </button>
-              <div className="sidebarAccordionContent" data-expanded={isExpanded}>
-                {group.items.length === 0 ? (
-                  <div className="sidebarAccordionEmpty">No items yet</div>
-                ) : (
-                  group.items.map((item) => (
+              <div
+                className="sidebarAccordionContent"
+                data-expanded={isExpanded}
+              >
+                {visibleLinks.map((path) => {
+                  const item = linkToItem[path];
+                  if (!item) return null;
+                  return (
                     <NavLink
-                      key={`${item.id}-${item.link}`}
+                      key={item.id || path}
                       to={item.link}
-                      className={({ isActive }) => `navLink ${isActive ? "active" : ""}`}
+                      className={({ isActive }) => (isActive ? "active navLink" : "navLink")}
+                      end={item.link !== "/dashboard"}
                     >
                       <IconMap name={item.icon} size={22} />
                       <span>{item.title}</span>
                     </NavLink>
-                  ))
-                )}
+                  );
+                })}
               </div>
             </div>
-          )
+          );
         })}
-
-        {filteredData.length === 0 && !loading && (
-          <div className="noMenuItems" style={{
-            padding: "20px",
-            textAlign: "center",
-            color: "#6c757d",
-            fontSize: "13px",
-          }}>
-            No accessible menu items.
-            <br />
-            Contact your administrator.
-          </div>
-        )}
       </div>
-    </aside>
-  )
-}
+    </div>
+  );
+};
 
-export default LeftContainer
+export default LeftContainer;

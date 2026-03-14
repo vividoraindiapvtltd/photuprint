@@ -67,11 +67,12 @@ const productSchema = new mongoose.Schema(
       canonicalLink: { type: String, default: "" },
       jsonLd: { type: String, default: "" },
     },
-    // Multi-tenant: Website/Tenant reference (indexed via compound schema.index below)
+    // Multi-tenant: Website/Tenant reference
     website: {
       type: mongoose.Schema.Types.ObjectId,
       ref: 'Website',
       required: true,
+      index: true
     },
     
     // Product Variations Support

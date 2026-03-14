@@ -4,18 +4,14 @@ import { useEffect, useState, useRef, useCallback } from "react"
 import dynamic from "next/dynamic"
 import Link from "next/link"
 import Image from "next/image"
-import DOMPurify from "isomorphic-dompurify"
 import { getImageSrc } from "../src/utils/imageUrl"
 
 function sanitizeHtml(html) {
   if (!html || typeof html !== "string") return ""
-  const purifier = DOMPurify?.default ?? DOMPurify
-  const sanitize = purifier?.sanitize ?? (typeof purifier === "function" ? purifier : null)
-  if (typeof sanitize === "function") return sanitize.call(purifier, html)
-  return html.replace(/<[^>]+>/g, " ")
+  return String(html).replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "").replace(/<[^>]+>/g, " ")
 }
-import ColorSelector from "../src/components/product/ColorSelector"
-import ProductImageCarousel from "../src/components/product/ProductImageCarousel"
+const ColorSelector = dynamic(() => import("../src/components/product/ColorSelector"), { ssr: false })
+const ProductImageCarousel = dynamic(() => import("../src/components/product/ProductImageCarousel"), { ssr: false })
 import TopBar from "./TopBar"
 import NavigationBar from "./NavigationBar"
 import Footer from "./Footer"
@@ -25,9 +21,11 @@ import { useFlyToCart } from "../src/hooks/useFlyToCart"
 import api from "../src/utils/api"
 import { addGuestRecentlyViewed } from "../src/utils/guestRecentlyViewed"
 import { getProductSlug, slugify } from "../src/utils/slugify"
-import { GridLayout } from "./FeaturedProductSection"
-
 const ProductReviews = dynamic(() => import("../src/components/ProductReviews"), { ssr: false })
+const GridLayout = dynamic(
+  () => import("./FeaturedProductSection").then((m) => ({ default: m.GridLayout })),
+  { ssr: false },
+)
 const TemplateEditor = dynamic(() => import("../src/components/TemplateEditor"), { ssr: false })
 const RecentlyViewedProducts = dynamic(
   () => import("./FeaturedProductSection").then((m) => ({ default: m.RecentlyViewedProducts })),
@@ -40,13 +38,27 @@ export default function ProductDetailsClient({ initialProduct }) {
   const [isInWishlist, setIsInWishlist] = useState(false)
   const [addToCartSuccess, setAddToCartSuccess] = useState(false)
   const [product, setProduct] = useState(initialProduct || null)
+  // Normalize variants for consistent SSR/client shape (avoids hydration mismatch)
   const [variants, setVariants] = useState(() => {
-    const colors = initialProduct?.colors || []
-    return Array.isArray(colors) ? colors : []
+    const colors = initialProduct?.colors ?? initialProduct?.variants ?? []
+    const arr = Array.isArray(colors) ? colors : []
+    return arr.map((v) => {
+      if (!v || typeof v !== "object") return null
+      const img = v.image ?? v.primaryImage ?? v.images?.[0]
+      const imageUrl = img && String(img).trim() ? img : null
+      return { _id: v._id ?? v.id, name: v.name ?? "", code: v.code ?? "", image: imageUrl }
+    }).filter(Boolean)
   })
   const [selected, setSelected] = useState(() => {
-    const colors = initialProduct?.colors || []
-    return colors.length ? colors[0] : null
+    const colors = initialProduct?.colors ?? initialProduct?.variants ?? []
+    const arr = Array.isArray(colors) ? colors : []
+    const normalized = arr.map((v) => {
+      if (!v || typeof v !== "object") return null
+      const img = v.image ?? v.primaryImage ?? v.images?.[0]
+      const imageUrl = img && String(img).trim() ? img : null
+      return { _id: v._id ?? v.id, name: v.name ?? "", code: v.code ?? "", image: imageUrl }
+    }).filter(Boolean)
+    return normalized.length ? normalized[0] : null
   })
   const [loading, setLoading] = useState(!initialProduct)
   const [error, setError] = useState("")
@@ -67,6 +79,21 @@ export default function ProductDetailsClient({ initialProduct }) {
   const [relatedProducts, setRelatedProducts] = useState([])
   const productImageRef = useRef(null)
   const runFlyToCart = useFlyToCart()
+  const [quantity, setQuantity] = useState(1)
+  const [enquiryOpen, setEnquiryOpen] = useState(false)
+  const [enquirySubmitting, setEnquirySubmitting] = useState(false)
+  const [enquirySuccess, setEnquirySuccess] = useState(false)
+  const [enquiryError, setEnquiryError] = useState("")
+  const [enquiryForm, setEnquiryForm] = useState({
+    firstName: "",
+    lastName: "",
+    email: "",
+    phone: "",
+    company: "",
+    quantity: 1,
+    notes: "",
+  })
+  const [isMounted, setIsMounted] = useState(false)
 
   const categoryId = product?.category?._id || product?.categoryId?._id || product?.categoryId || product?.category
   const displayMode = product?.displayMode || "both"
@@ -79,7 +106,11 @@ export default function ProductDetailsClient({ initialProduct }) {
         resolve(true)
         return
       }
-      const img = new Image()
+      const img = typeof window !== "undefined" ? new window.Image() : null
+      if (!img) {
+        resolve(false)
+        return
+      }
       img.crossOrigin = "anonymous"
       img.onload = () => {
         preloadedImagesRef.current.add(url)
@@ -103,6 +134,10 @@ export default function ProductDetailsClient({ initialProduct }) {
   )
 
   useEffect(() => {
+    setIsMounted(true)
+  }, [])
+
+  useEffect(() => {
     const fetchTemplates = async () => {
       const fetchKey = `${categoryId}-${displayMode}-${viewMode}`
       if (templatesFetchedRef.current === fetchKey) return
@@ -119,9 +154,11 @@ export default function ProductDetailsClient({ initialProduct }) {
             const firstTemplate = fetchedTemplates[0]
             setSelectedTemplate(firstTemplate)
             const bgImages = firstTemplate.backgroundImages || []
-            if (bgImages.length > 0) {
-              await preloadImage(bgImages[0])
-              setBackgroundImage(bgImages[0])
+            const preview = firstTemplate.previewImage
+            const imgToUse = bgImages.length > 0 ? bgImages[0] : preview
+            if (imgToUse) {
+              await preloadImage(imgToUse)
+              setBackgroundImage(imgToUse)
             } else {
               setBackgroundImage(null)
             }
@@ -148,7 +185,8 @@ export default function ProductDetailsClient({ initialProduct }) {
       const activeTemplate = selectedTemplate || (templates.length > 0 ? templates[0] : null)
       if (activeTemplate) {
         const bgImages = activeTemplate.backgroundImages || []
-        setBackgroundImage(bgImages.length > 0 ? bgImages[0] : null)
+        const preview = activeTemplate.previewImage
+        setBackgroundImage(bgImages.length > 0 ? bgImages[0] : preview || null)
       } else {
         setBackgroundImage(null)
       }
@@ -328,7 +366,11 @@ export default function ProductDetailsClient({ initialProduct }) {
               <div className="bg-white rounded-lg border-2 border-gray-300 shadow-lg overflow-hidden">
                 <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
                   <h3 className="text-sm font-semibold text-gray-700">Product Preview</h3>
-                  {showCustomizedView && activeTemplate && <span className="text-xs text-gray-500">{activeTemplate.name}</span>}
+                  {showCustomizedView && activeTemplate && (
+                    <span className="text-xs font-medium text-blue-600 bg-blue-50 px-2 py-1 rounded">
+                      Editing: {activeTemplate.name}
+                    </span>
+                  )}
                 </div>
 
                 <div ref={productImageRef} className="relative bg-gray-100" style={{ aspectRatio: "5/5", minHeight: "500px", maxHeight: "700px" }}>
@@ -414,9 +456,9 @@ export default function ProductDetailsClient({ initialProduct }) {
             </div>
           </div>
 
-          <div className="lg:col-span-1">
+          <div className="lg:col-span-1" suppressHydrationWarning>
             <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">{product?.name}</h1>
-            {isAuthenticated && (
+            {isMounted && isAuthenticated && (
               <button onClick={toggleWishlist} className={`mb-3 p-2 rounded-full transition-all ${isInWishlist ? "bg-red-50 text-red-500" : "bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500"}`} title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}>
                 <svg className="w-6 h-6" fill={isInWishlist ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
@@ -431,7 +473,13 @@ export default function ProductDetailsClient({ initialProduct }) {
                 {product.discountPercentage && <span className="ml-2 text-sm text-green-600 font-medium">({product.discountPercentage}% off)</span>}
               </p>
             )}
-            {product?.description && <div className="text-gray-700 mb-6 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(product.description) }} />}
+            {product?.description && (
+              <div
+                className="text-gray-700 mb-6 prose prose-sm max-w-none"
+                dangerouslySetInnerHTML={{ __html: sanitizeHtml(product.description) }}
+                suppressHydrationWarning
+              />
+            )}
 
             <ColorSelector variants={variants} selectedId={selected?._id} onChange={(_, v) => setSelected(v)} />
 
@@ -443,7 +491,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                     type="button"
                     onClick={() => {
                       setViewMode(viewMode === "standard" ? "customized" : "standard")
-                      setSelectedTemplate(null)
                     }}
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 ${viewMode === "customized" ? "bg-blue-600" : "bg-gray-200"}`}
                     role="switch"
@@ -481,7 +528,44 @@ export default function ProductDetailsClient({ initialProduct }) {
               </div>
             )}
 
-            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+            <div className="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200 space-y-4">
+              <div className="flex items-center gap-4">
+                <span className="text-sm font-medium text-gray-700">Quantity</span>
+                <div className="inline-flex items-center border border-gray-300 rounded-md overflow-hidden bg-white">
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => Math.max(1, q - 1))}
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    aria-label="Decrease quantity"
+                  >
+                    −
+                  </button>
+                  <span className="px-4 py-2 min-w-[2.5rem] text-center font-medium text-gray-900" aria-live="polite">
+                    {quantity}
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setQuantity((q) => q + 1)}
+                    className="px-3 py-2 text-gray-600 hover:bg-gray-100 focus:outline-none focus:ring-1 focus:ring-gray-400"
+                    aria-label="Increase quantity"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setEnquiryForm((f) => ({ ...f, quantity }))
+                  setEnquiryOpen(true)
+                  setEnquirySuccess(false)
+                  setEnquiryError("")
+                }}
+                className="text-sm text-blue-600 hover:text-blue-800 underline"
+              >
+                Bulk product enquiry
+              </button>
+              <div className="flex flex-col sm:flex-row gap-3 pt-1">
               <button
                 type="button"
                 onClick={() => {
@@ -498,7 +582,7 @@ export default function ProductDetailsClient({ initialProduct }) {
                     name: product?.name,
                     price: product?.price,
                     discountedPrice: product?.discountedPrice,
-                    quantity: 1,
+                    quantity,
                     image,
                     variant: selected || null,
                     customDesign: savedDesign || null,
@@ -514,6 +598,210 @@ export default function ProductDetailsClient({ initialProduct }) {
                 Go to bag
               </Link>
             </div>
+            </div>
+
+            <div
+              className={`fixed inset-0 z-[100] bg-black/40 transition-opacity duration-300 ${
+                enquiryOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+              }`}
+              aria-hidden
+              onClick={() => {
+                if (!enquiryOpen) return
+                setEnquiryOpen(false)
+              }}
+            />
+            <div
+              className={`fixed top-0 right-0 bottom-0 z-[101] w-full max-w-md bg-white shadow-xl flex flex-col transform transition-transform duration-300 ease-out ${
+                enquiryOpen ? "translate-x-0" : "translate-x-full"
+              }`}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="enquiry-title"
+            >
+              <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-50">
+                <h2 id="enquiry-title" className="text-lg font-semibold text-gray-900">Bulk product enquiry</h2>
+                <button
+                  type="button"
+                  onClick={() => setEnquiryOpen(false)}
+                  className="p-2 text-gray-500 hover:text-gray-700 rounded-md hover:bg-gray-200"
+                  aria-label="Close"
+                >
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto p-4">
+                {enquirySuccess ? (
+                  <div className="py-6 text-center">
+                    <div className="w-12 h-12 rounded-full bg-green-100 flex items-center justify-center mx-auto mb-3">
+                      <svg className="w-6 h-6 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
+                      </svg>
+                    </div>
+                    <p className="text-gray-900 font-medium">Thank you!</p>
+                    <p className="text-sm text-gray-600 mt-1">We have received your enquiry and will get back to you soon.</p>
+                  </div>
+                ) : (
+                  <form
+                    onSubmit={async (e) => {
+                      e.preventDefault()
+                      const email = (enquiryForm.email || "").trim()
+                      const phone = (enquiryForm.phone || "").trim()
+                      if (!email && !phone) {
+                        setEnquiryError("Please enter your email or phone number.")
+                        return
+                      }
+                      setEnquiryError("")
+                      setEnquirySubmitting(true)
+                      try {
+                        await api.post(
+                          "/clients/lead",
+                          {
+                            firstName: (enquiryForm.firstName || "").trim() || "Enquiry",
+                            lastName: (enquiryForm.lastName || "").trim(),
+                            email: email || undefined,
+                            phone: phone || undefined,
+                            company: (enquiryForm.company || "").trim() || undefined,
+                            productName: product?.name || "",
+                            quantity: enquiryForm.quantity != null ? Number(enquiryForm.quantity) : quantity,
+                            notes: (enquiryForm.notes || "").trim() || undefined,
+                          },
+                          { skipAuth: true },
+                        )
+                        setEnquirySuccess(true)
+                      } catch (err) {
+                        const msg = err.response?.data?.msg || err.message || "Something went wrong. Please try again."
+                        setEnquiryError(msg)
+                      } finally {
+                        setEnquirySubmitting(false)
+                      }
+                    }}
+                    className="space-y-4"
+                  >
+                    <p className="text-sm text-gray-600">
+                      Product: <strong>{product?.name}</strong>
+                    </p>
+                    <div>
+                      <label htmlFor="enquiry-firstName" className="block text-sm font-medium text-gray-700 mb-1">
+                        First name *
+                      </label>
+                      <input
+                        id="enquiry-firstName"
+                        type="text"
+                        required
+                        value={enquiryForm.firstName}
+                        onChange={(e) => setEnquiryForm((f) => ({ ...f, firstName: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Your first name"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="enquiry-lastName" className="block text-sm font-medium text-gray-700 mb-1">
+                        Last name
+                      </label>
+                      <input
+                        id="enquiry-lastName"
+                        type="text"
+                        value={enquiryForm.lastName}
+                        onChange={(e) => setEnquiryForm((f) => ({ ...f, lastName: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Last name"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="enquiry-email" className="block text-sm font-medium text-gray-700 mb-1">
+                        Email
+                      </label>
+                      <input
+                        id="enquiry-email"
+                        type="email"
+                        value={enquiryForm.email}
+                        onChange={(e) => setEnquiryForm((f) => ({ ...f, email: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="you@example.com"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="enquiry-phone" className="block text-sm font-medium text-gray-700 mb-1">
+                        Phone
+                      </label>
+                      <input
+                        id="enquiry-phone"
+                        type="tel"
+                        value={enquiryForm.phone}
+                        onChange={(e) => setEnquiryForm((f) => ({ ...f, phone: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Phone number"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="enquiry-company" className="block text-sm font-medium text-gray-700 mb-1">
+                        Company
+                      </label>
+                      <input
+                        id="enquiry-company"
+                        type="text"
+                        value={enquiryForm.company}
+                        onChange={(e) => setEnquiryForm((f) => ({ ...f, company: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Company name"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="enquiry-qty" className="block text-sm font-medium text-gray-700 mb-1">
+                        Quantity
+                      </label>
+                      <input
+                        id="enquiry-qty"
+                        type="number"
+                        min={1}
+                        value={enquiryForm.quantity}
+                        onChange={(e) =>
+                          setEnquiryForm((f) => ({
+                            ...f,
+                            quantity: parseInt(e.target.value, 10) || 1,
+                          }))
+                        }
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label htmlFor="enquiry-notes" className="block text-sm font-medium text-gray-700 mb-1">
+                        Message
+                      </label>
+                      <textarea
+                        id="enquiry-notes"
+                        rows={3}
+                        value={enquiryForm.notes}
+                        onChange={(e) => setEnquiryForm((f) => ({ ...f, notes: e.target.value }))}
+                        className="w-full px-3 py-2 border border-gray-300 rounded-md focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        placeholder="Any additional details..."
+                      />
+                    </div>
+                    <p className="text-xs text-gray-500">* Provide at least email or phone so we can contact you.</p>
+                    {enquiryError && <p className="text-sm text-red-600">{enquiryError}</p>}
+                    <div className="flex gap-2 pt-2">
+                      <button
+                        type="submit"
+                        disabled={enquirySubmitting}
+                        className="flex-1 px-4 py-2.5 bg-gray-900 text-white font-medium rounded-md hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                      >
+                        {enquirySubmitting ? "Sending…" : "Submit enquiry"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEnquiryOpen(false)}
+                        className="px-4 py-2.5 border border-gray-300 text-gray-700 font-medium rounded-md hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                )}
+              </div>
+            </div>
+
             {addToCartSuccess && (
               <p className="mt-3 text-sm text-green-600 font-medium">
                 Added to bag.{" "}

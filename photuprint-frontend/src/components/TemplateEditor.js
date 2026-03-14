@@ -1,6 +1,9 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import dynamic from "next/dynamic"
+
+const PixelCraftEditor = dynamic(() => import("./PixelCraftEditor"), { ssr: false })
 
 /**
  * TemplateEditor - Canvas-based template editor with layered images
@@ -358,8 +361,10 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
       return
     }
 
-    // Get background images from template directly
-    const templateBackgroundImages = template?.backgroundImages || []
+    // Get background images from template directly; fallback to previewImage for PixelCraft/legacy templates
+    const rawBackgrounds = template?.backgroundImages || []
+    const templateBackgroundImages =
+      rawBackgrounds.length > 0 ? rawBackgrounds : template?.previewImage ? [template.previewImage] : []
 
     if (templateBackgroundImages.length > 0 && selectedBackgroundIndex < templateBackgroundImages.length) {
       setIsLoading(true)
@@ -1117,7 +1122,9 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
     link.href = dataUrl
     document.body.appendChild(link)
     link.click()
-    document.body.removeChild(link)
+    if (link.parentNode === document.body) {
+      document.body.removeChild(link)
+    }
   }
 
   // Handle download image - downloads combined and individual layers
@@ -1328,6 +1335,18 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
       <div className="p-4 bg-yellow-50 border border-yellow-200 rounded-md">
         <p className="text-yellow-800 text-sm">No template selected. Please select a template first.</p>
       </div>
+    )
+  }
+
+  // PixelCraft templates: use PixelCraftEditor for full canvas editing
+  if (template.pixelcraftDocument?.fabricJson) {
+    return (
+      <PixelCraftEditor
+        template={template}
+        onSave={onSave}
+        constrained={constrained}
+        simplified={simplified}
+      />
     )
   }
 

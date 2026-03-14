@@ -15,7 +15,8 @@ const api = axios.create({
 // Use config.skipAuth: true for public endpoints (e.g. GET product by slug) so expired/invalid tokens don't cause 401
 api.interceptors.request.use(
   (config) => {
-    const skipAuth = config.skipAuth === true
+    const isLeadEnquiry = config.url && String(config.url).includes("/clients/lead")
+    const skipAuth = config.skipAuth === true || isLeadEnquiry
     if (skipAuth && config.headers) {
       delete config.headers.Authorization
     } else if (typeof window !== "undefined") {

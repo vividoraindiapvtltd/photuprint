@@ -98,7 +98,7 @@ function ProfileTab({ profile, onUpdate, loading }) {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Date of Birth</label>
-              {editing ? <input type="date" value={formData.dateOfBirth} onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" /> : <p className="text-gray-900">{profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString() : "-"}</p>}
+              {editing ? <input type="date" value={formData.dateOfBirth} onChange={(e) => setFormData({ ...formData, dateOfBirth: e.target.value })} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" /> : <p className="text-gray-900" suppressHydrationWarning>{profile?.dateOfBirth ? new Date(profile.dateOfBirth).toLocaleDateString("en-IN") : "-"}</p>}
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-600 mb-1">Gender</label>

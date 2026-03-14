@@ -216,12 +216,44 @@
     "icon": "MdPerson"
   },
   {
+    "id": 57,
+    "title": "Sales Agent Manager",
+    "description": "Add/Edit/Delete sales agents (staff users)",
+    "link": "/dashboard/adduser?role=editor",
+    "bgColor": "#007bff",
+    "icon": "MdPeople"
+  },
+  {
     "id": 35,
-    "title": "Client Management",
-    "description": "Manage clients, track interactions, follow-ups, and sales pipeline",
+    "title": "Lead Manager",
+    "description": "Manage leads and clients, track interactions, follow-ups, and sales pipeline",
     "link": "/dashboard/clients",
     "bgColor": "#007bff",
     "icon": "MdPeople"
+  },
+  {
+    "id": 58,
+    "title": "Download leads",
+    "description": "View and download leads by day, week, month, year and by sales agent",
+    "link": "/dashboard/leads-download",
+    "bgColor": "#007bff",
+    "icon": "MdDownload"
+  },
+  {
+    "id": 59,
+    "title": "Incentive Manager",
+    "description": "Assign incentives and targets to sales agents",
+    "link": "/dashboard/incentives",
+    "bgColor": "#007bff",
+    "icon": "MdAttachMoney"
+  },
+  {
+    "id": 60,
+    "title": "Incentive Report",
+    "description": "View incentive payout by agent and period",
+    "link": "/dashboard/incentive-report",
+    "bgColor": "#007bff",
+    "icon": "MdAssessment"
   },
   {
     "id": 36,

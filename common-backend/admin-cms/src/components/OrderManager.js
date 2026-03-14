@@ -125,7 +125,7 @@ const OrderManager = () => {
   const formRef = useRef(null);
   
   // View mode and pagination states
-  const [viewMode, setViewMode] = useState('card');
+  const [viewMode, setViewMode] = useState('list');
   const [currentPage, setCurrentPage] = useState(1);
   const [itemsPerPage] = useState(10);
   const [hasMoreCards, setHasMoreCards] = useState(true);
@@ -1240,7 +1240,6 @@ const OrderManager = () => {
                       { value: "pending", label: "Pending" },
                       { value: "processing", label: "Processing" },
                       { value: "paid", label: "Paid" },
-                      { value: "advance_paid", label: "Advance Paid (COD)" },
                       { value: "failed", label: "Failed" },
                       { value: "refunded", label: "Refunded" },
                       { value: "cancelled", label: "Cancelled" },
@@ -1258,12 +1257,10 @@ const OrderManager = () => {
                     required={true}
                     options={[
                       { value: "pending", label: "Pending" },
-                      { value: "advance_paid", label: "Advance Paid (COD)" },
                       { value: "confirmed", label: "Confirmed" },
                       { value: "processing", label: "Processing" },
                       { value: "shipped", label: "Shipped" },
                       { value: "delivered", label: "Delivered" },
-                      { value: "cod_pending", label: "COD Pending" },
                       { value: "cancelled", label: "Cancelled" },
                       { value: "returned", label: "Returned" },
                     ]}

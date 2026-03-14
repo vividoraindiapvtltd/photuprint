@@ -68,14 +68,15 @@ function TestimonialCard({ item }) {
         )}
         <blockquote className="text-gray-700 text-sm leading-relaxed line-clamp-4">&ldquo;{quote}&rdquo;</blockquote>
         {createdDate && (
-          <span className="text-xs text-gray-500 mt-0.5">
+          <span className="text-xs text-gray-500 mt-0.5" suppressHydrationWarning>
             {(() => {
               const date = new Date(createdDate)
               if (isNaN(date.getTime())) return createdDate
+              const locale = "en-IN"
               const options = { weekday: "long" }
-              const day = date.toLocaleDateString(undefined, options)
+              const day = date.toLocaleDateString(locale, options)
               const d = String(date.getDate()).padStart(2, "0")
-              const m = date.toLocaleString("default", { month: "long" })
+              const m = date.toLocaleDateString(locale, { month: "long" })
               const y = String(date.getFullYear())
               return `${day}, ${d} ${m} ${y}`
             })()}

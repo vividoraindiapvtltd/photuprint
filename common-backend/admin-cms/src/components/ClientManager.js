@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import api from '../api/axios';
+import { usePermissions } from '../context/PermissionContext';
 import { 
   PageHeader, 
   AlertMessage, 
@@ -9,6 +10,8 @@ import {
   ActionButtons,
   SearchField,
   StatusFilter,
+  EntityCard,
+  EntityCardHeader,
   calculateStandardStatusCounts,
   filterEntitiesByStatus,
   DeleteConfirmationPopup,
@@ -36,6 +39,15 @@ const STATUS_OPTIONS = [
   { value: "lost", label: "Lost", color: "#dc3545" },
 ];
 
+const STATUS_DESCRIPTIONS = {
+  lead: "New contact or enquiry. Not yet qualified or in active sales process.",
+  prospect: "Qualified lead showing interest. Following up for conversion.",
+  active: "Current customer or deal in progress. Active relationship.",
+  inactive: "No recent activity. May need re-engagement or follow-up.",
+  closed: "Deal won or relationship concluded successfully.",
+  lost: "Opportunity lost or contact no longer pursuing.",
+};
+
 // Priority options
 const PRIORITY_OPTIONS = [
   { value: "low", label: "Low", color: "#6c757d" },
@@ -47,6 +59,7 @@ const PRIORITY_OPTIONS = [
 // Source options
 const SOURCE_OPTIONS = [
   { value: "website", label: "Website" },
+  { value: "indiamart", label: "Indiamart" },
   { value: "referral", label: "Referral" },
   { value: "social_media", label: "Social Media" },
   { value: "cold_call", label: "Cold Call" },
@@ -71,6 +84,7 @@ const INTERACTION_TYPES = [
 ];
 
 const ClientManager = () => {
+  const { isSuperAdmin } = usePermissions();
   // State for clients
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -78,6 +92,13 @@ const ClientManager = () => {
   const [success, setSuccess] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [stats, setStats] = useState(null);
+  // Super admin: website filter for leads (all vs specific website)
+  const [websites, setWebsites] = useState([]);
+  const [leadWebsiteFilter, setLeadWebsiteFilter] = useState('all');
+  // Super admin: filter leads by assigned agent
+  const [leadAgentFilter, setLeadAgentFilter] = useState('all');
+  // Sales agents (users with role editor) for assign dropdown
+  const [salesAgents, setSalesAgents] = useState([]);
   
   // View and filter states
   const [viewMode, setViewMode] = useState('card');
@@ -102,6 +123,9 @@ const ClientManager = () => {
     company: "",
     designation: "",
     industry: "",
+    productName: "",
+    quantity: "",
+    location: "",
     address: {
       street: "",
       city: "",
@@ -125,6 +149,7 @@ const ClientManager = () => {
       website: "",
     },
     isActive: true,
+    assignedTo: "",
   };
   
   const [formData, setFormData] = useState(initialFormData);
@@ -162,17 +187,25 @@ const ClientManager = () => {
   // DATA FETCHING
   // ============================================================================
 
+  const getClientRequestConfig = () => {
+    if (isSuperAdmin && leadWebsiteFilter === 'all') {
+      return { skipWebsiteId: true };
+    }
+    if (isSuperAdmin && leadWebsiteFilter && leadWebsiteFilter !== 'all') {
+      return { websiteId: leadWebsiteFilter };
+    }
+    return {};
+  };
+
   const fetchClients = async () => {
     try {
       setLoading(true);
-      const response = await api.get('/clients', {
-        params: {
-          showInactive: 'true',
-          includeDeleted: 'true',
-          limit: 100,
-        },
-      });
-      
+      const params = { showInactive: 'true', includeDeleted: 'true', limit: 100 };
+      if (isSuperAdmin && leadAgentFilter && leadAgentFilter !== 'all') {
+        params.assignedTo = leadAgentFilter;
+      }
+      const config = { params, ...getClientRequestConfig() };
+      const response = await api.get('/clients', config);
       setClients(response.data.clients || []);
       setError("");
     } catch (err) {
@@ -185,10 +218,25 @@ const ClientManager = () => {
 
   const fetchStats = async () => {
     try {
-      const response = await api.get('/clients/stats');
+      const config = getClientRequestConfig();
+      if (isSuperAdmin && leadAgentFilter && leadAgentFilter !== 'all') {
+        config.params = { assignedTo: leadAgentFilter };
+      }
+      const response = await api.get('/clients/stats', config);
       setStats(response.data);
     } catch (err) {
       console.error("Error fetching stats:", err);
+    }
+  };
+
+  const fetchSalesAgents = async () => {
+    try {
+      const config = isSuperAdmin ? { params: { role: 'editor' }, skipWebsiteId: true } : { params: { role: 'editor' } };
+      const response = await api.get('/users', config);
+      setSalesAgents(Array.isArray(response.data) ? response.data : []);
+    } catch (err) {
+      console.error("Error fetching sales agents:", err);
+      setSalesAgents([]);
     }
   };
 
@@ -204,7 +252,19 @@ const ClientManager = () => {
   useEffect(() => {
     fetchClients();
     fetchStats();
-  }, []);
+  }, [leadWebsiteFilter, leadAgentFilter]);
+
+  useEffect(() => {
+    fetchSalesAgents();
+  }, [isSuperAdmin]);
+
+  useEffect(() => {
+    if (isSuperAdmin && websites.length === 0) {
+      api.get('/websites?showInactive=true&includeDeleted=false').then((res) => {
+        setWebsites(Array.isArray(res.data) ? res.data : []);
+      }).catch(() => setWebsites([]));
+    }
+  }, [isSuperAdmin]);
 
   // ============================================================================
   // FILTERING AND PAGINATION
@@ -235,7 +295,9 @@ const ClientManager = () => {
         client.email?.toLowerCase().includes(query) ||
         client.phone?.includes(query) ||
         client.company?.toLowerCase().includes(query) ||
-        client.clientId?.toLowerCase().includes(query)
+        client.clientId?.toLowerCase().includes(query) ||
+        client.productName?.toLowerCase().includes(query) ||
+        client.location?.toLowerCase().includes(query)
       );
     }
     
@@ -352,15 +414,21 @@ const ClientManager = () => {
         email: formData.email?.trim().toLowerCase() || "",
         phone: formData.phone?.trim() || "",
         company: formData.company?.trim() || "",
+        productName: formData.productName?.trim() || "",
+        quantity: formData.quantity !== "" && formData.quantity != null ? Number(formData.quantity) : null,
+        location: formData.location?.trim() || "",
         estimatedValue: parseFloat(formData.estimatedValue) || 0,
         nextFollowUp: formData.nextFollowUp || null,
+        assignedTo: formData.assignedTo || null,
       };
-      
+      const apiConfig = editingId && isSuperAdmin
+        ? { skipWebsiteId: true }
+        : (isSuperAdmin && leadWebsiteFilter && leadWebsiteFilter !== 'all' ? { websiteId: leadWebsiteFilter } : {});
       if (editingId) {
-        await api.put(`/clients/${editingId}`, submitData);
+        await api.put(`/clients/${editingId}`, submitData, apiConfig);
         setSuccess(`Client "${formData.firstName} ${formData.lastName}" updated successfully!`);
       } else {
-        await api.post('/clients', submitData);
+        await api.post('/clients', submitData, apiConfig);
         setSuccess(`Client "${formData.firstName} ${formData.lastName}" created successfully!`);
       }
       
@@ -385,6 +453,9 @@ const ClientManager = () => {
       company: client.company || "",
       designation: client.designation || "",
       industry: client.industry || "",
+      productName: client.productName || "",
+      quantity: client.quantity != null && client.quantity !== "" ? client.quantity : "",
+      location: client.location || "",
       address: {
         street: client.address?.street || "",
         city: client.address?.city || "",
@@ -408,6 +479,7 @@ const ClientManager = () => {
         website: client.socialProfiles?.website || "",
       },
       isActive: client.isActive !== false,
+      assignedTo: client.assignedTo?._id || client.assignedTo || "",
     });
     
     setEditingId(client._id);
@@ -429,6 +501,11 @@ const ClientManager = () => {
   // ============================================================================
 
   const handleDelete = (clientId) => {
+    if (!isSuperAdmin) {
+      setError("Only super admin can delete leads.");
+      return;
+    }
+
     const client = clients.find(c => c._id === clientId);
     const isAlreadyDeleted = client?.deleted;
     
@@ -444,17 +521,23 @@ const ClientManager = () => {
   };
 
   const handleDeleteConfirm = async () => {
+    if (!isSuperAdmin) {
+      setDeletePopup((prev) => ({ ...prev, isVisible: false }));
+      setError("Only super admin can delete leads.");
+      return;
+    }
+
     const { clientId, isPermanentDelete } = deletePopup;
     const client = clients.find(c => c._id === clientId);
-    
+    const apiConfig = isSuperAdmin ? { skipWebsiteId: true } : {};
     try {
       setLoading(true);
       
       if (isPermanentDelete) {
-        await api.delete(`/clients/${clientId}/hard`);
+        await api.delete(`/clients/${clientId}/hard`, apiConfig);
         setSuccess(`Client "${client.firstName}" permanently deleted.`);
       } else {
-        await api.delete(`/clients/${clientId}`);
+        await api.delete(`/clients/${clientId}`, apiConfig);
         setSuccess(`Client "${client.firstName}" deleted.`);
       }
       
@@ -470,10 +553,10 @@ const ClientManager = () => {
 
   const handleRestore = async (clientId) => {
     const client = clients.find(c => c._id === clientId);
-    
+    const apiConfig = isSuperAdmin ? { skipWebsiteId: true } : {};
     try {
       setLoading(true);
-      await api.post(`/clients/${clientId}/restore`);
+      await api.post(`/clients/${clientId}/restore`, {}, apiConfig);
       setSuccess(`Client "${client.firstName}" restored!`);
       await fetchClients();
       await fetchStats();
@@ -489,8 +572,9 @@ const ClientManager = () => {
   // ============================================================================
 
   const handleStatusChange = async (clientId, newStatus) => {
+    const apiConfig = isSuperAdmin ? { skipWebsiteId: true } : {};
     try {
-      await api.put(`/clients/${clientId}/status`, { status: newStatus });
+      await api.put(`/clients/${clientId}/status`, { status: newStatus }, apiConfig);
       await fetchClients();
       await fetchStats();
       setSuccess("Status updated!");
@@ -618,16 +702,46 @@ const ClientManager = () => {
     <div className="paddingAll20">
       {/* Header */}
       <PageHeader
-        title="Client Management"
-        subtitle="Manage your clients, track interactions, and follow-ups"
+        title="Lead Manager"
+        subtitle="Manage leads and clients, track interactions, and follow-ups"
         isEditing={!!editingId}
         editText="Edit Client"
-        createText="Add New Client"
+        createText="Add Lead"
       />
 
       {/* Success/Error Messages */}
       <AlertMessage type="success" message={success} onClose={() => setSuccess("")} autoClose={true} />
       <AlertMessage type="error" message={error} onClose={() => setError("")} autoClose={true} />
+
+      {/* Super Admin: Website and Agent filters */}
+      {isSuperAdmin && (
+        <div className="makeFlex alignCenter gap12 appendBottom16" style={{ flexWrap: 'wrap' }}>
+          <label className="formLabel" style={{ margin: 0 }}>Leads from:</label>
+          <select
+            value={leadWebsiteFilter}
+            onChange={(e) => setLeadWebsiteFilter(e.target.value)}
+            className="formInput"
+            style={{ minWidth: '220px' }}
+          >
+            <option value="all">All websites</option>
+            {websites.filter(w => !w.deleted).map((w) => (
+              <option key={w._id} value={w._id}>{w.name || w.domain || w._id}</option>
+            ))}
+          </select>
+          <label className="formLabel" style={{ margin: 0 }}>Agent:</label>
+          <select
+            value={leadAgentFilter}
+            onChange={(e) => setLeadAgentFilter(e.target.value)}
+            className="formInput"
+            style={{ minWidth: '220px' }}
+          >
+            <option value="all">All agents</option>
+            {salesAgents.map((agent) => (
+              <option key={agent._id} value={agent._id}>{agent.name || agent.email || agent._id}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       {/* Statistics Cards */}
       {stats && (
@@ -731,6 +845,64 @@ const ClientManager = () => {
             </div>
           </div>
 
+          <div className="makeFlex row gap16">
+            <div className="flexOne">
+              <FormField
+                type="text"
+                name="productName"
+                label="Product name"
+                value={formData.productName}
+                onChange={handleChange}
+                placeholder="Product or item name"
+              />
+            </div>
+            <div className="flexOne">
+              <FormField
+                type="number"
+                name="quantity"
+                label="Quantity"
+                value={formData.quantity}
+                onChange={handleChange}
+                placeholder="0"
+                min={0}
+              />
+            </div>
+            <div className="flexOne">
+              <FormField
+                type="text"
+                name="location"
+                label="Location"
+                value={formData.location}
+                onChange={handleChange}
+                placeholder="City, state or address"
+              />
+            </div>
+          </div>
+
+          {/* Assign to sales agent — super admin only */}
+          {isSuperAdmin && (
+            <>
+              <h4 className="font16 fontSemiBold appendTop16 appendBottom12">Assignment</h4>
+              <div className="makeFlex row gap16">
+                <div className="flexOne">
+                  <label className="formLabel appendBottom8">Assign to sales agent</label>
+                  <select
+                    name="assignedTo"
+                    value={formData.assignedTo || ""}
+                    onChange={(e) => setFormData(prev => ({ ...prev, assignedTo: e.target.value }))}
+                    className="formInput"
+                    style={{ width: '100%' }}
+                  >
+                    <option value="">— Unassigned —</option>
+                    {salesAgents.map((agent) => (
+                      <option key={agent._id} value={agent._id}>{agent.name || agent.email || agent._id}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+
           {/* Status and Source */}
           <h4 className="font16 fontSemiBold appendTop16 appendBottom12">Status & Source</h4>
           <div className="makeFlex row gap16">
@@ -743,6 +915,11 @@ const ClientManager = () => {
                 onChange={handleChange}
                 options={STATUS_OPTIONS}
               />
+              {formData.status && STATUS_DESCRIPTIONS[formData.status] && (
+                <p className="font12 grayText appendTop6" style={{ margin: 0, lineHeight: 1.4 }}>
+                  {STATUS_DESCRIPTIONS[formData.status]}
+                </p>
+              )}
             </div>
             <div className="flexOne">
               <FormField
@@ -799,9 +976,7 @@ const ClientManager = () => {
             </div>
           </div>
 
-          {/* Notes */}
-          <h4 className="font16 fontSemiBold appendTop16 appendBottom12">Notes</h4>
-          <div className="makeFlex row gap16">
+          <div className="makeFlex row gap16 appendTop16">
             <div className="fullWidth">
               <FormField
                 type="textarea"
@@ -816,20 +991,22 @@ const ClientManager = () => {
           </div>
 
           {/* Active Checkbox */}
-          <div className="makeFlex alignCenter gap8 appendTop16">
-            <FormField
-              type="checkbox"
-              name="isActive"
-              value={formData.isActive}
-              onChange={handleChange}
-            />
-            <label>Active</label>
+          <div className="appendTop16">
+            <label className="formLabel makeFlex alignCenter gap8">
+              <FormField
+                type="checkbox"
+                name="isActive"
+                value={formData.isActive}
+                onChange={handleChange}
+              />
+              <span>Active</span>
+            </label>
           </div>
 
           {/* Form Actions */}
           <div className="formActions paddingTop16">
             <button type="submit" disabled={loading} className="btnPrimary">
-              {loading ? "Saving..." : (editingId ? "Update Client" : "Add Client")}
+              {loading ? "Saving..." : (editingId ? "Update Lead" : "Add Lead")}
             </button>
             {editingId && (
               <button type="button" onClick={handleCancel} className="btnSecondary">
@@ -882,7 +1059,7 @@ const ClientManager = () => {
         <div className="listHeader makeFlex spaceBetween end appendBottom24">
           <div className="leftSection">
             <h2 className="listTitle font30 fontBold blackText appendBottom16">
-              Clients ({filteredClients.length})
+              Leads ({filteredClients.length})
             </h2>
             <StatusFilter
               statusFilter={statusFilter}
@@ -907,29 +1084,25 @@ const ClientManager = () => {
         {filteredClients.length === 0 && !loading ? (
           <div className="emptyState textCenter paddingAll60">
             <div className="emptyIcon appendBottom16">👤</div>
-            <h3 className="font22 fontSemiBold grayText appendBottom8">No Clients Found</h3>
+            <h3 className="font22 fontSemiBold grayText appendBottom8">No Leads Found</h3>
             <p className="font16 grayText">Add your first client above to get started</p>
           </div>
         ) : (
           <>
             {/* Card View */}
             {viewMode === 'card' && (
-              <div className="brandsGrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
+              <div className="brandsGrid">
                 {displayedCards.map((client) => (
-                  <div
+                  <EntityCard
                     key={client._id}
-                    className="clientCard"
-                    style={{
-                      border: '1px solid #e0e0e0',
-                      borderRadius: '12px',
-                      overflow: 'hidden',
-                      backgroundColor: '#fff',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                    }}
-                  >
-                    {/* Card Header */}
-                    <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
-                      <div className="makeFlex spaceBetween alignCenter">
+                    entity={client}
+                    showImage={false}
+                    showId={false}
+                    size="normal"
+                    variant="detailed"
+                    className="brandCard"
+                    renderHeader={(client) => (
+                      <div className="entityCardHeader makeFlex spaceBetween alignCenter appendBottom16">
                         <div className="makeFlex alignCenter gap12">
                           <div
                             style={{
@@ -966,60 +1139,71 @@ const ClientManager = () => {
                           {client.priority}
                         </span>
                       </div>
-                    </div>
-
-                    {/* Card Body */}
-                    <div style={{ padding: '16px' }}>
-                      {client.email && (
-                        <div className="makeFlex alignCenter gap8 appendBottom8">
-                          <span>📧</span>
-                          <span className="font14" style={{ wordBreak: 'break-all' }}>{client.email}</span>
-                        </div>
-                      )}
-                      {client.phone && (
-                        <div className="makeFlex alignCenter gap8 appendBottom8">
-                          <span>📞</span>
-                          <span className="font14">{client.phone}</span>
-                        </div>
-                      )}
-                      <div className="makeFlex spaceBetween appendTop8">
-                        <span className="font12 grayText">Status:</span>
-                        <select
-                          value={client.status}
-                          onChange={(e) => handleStatusChange(client._id, e.target.value)}
-                          style={{
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            border: '1px solid #e0e0e0',
-                            backgroundColor: getStatusColor(client.status),
-                            color: '#fff',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                          }}
-                          disabled={client.deleted}
-                        >
-                          {STATUS_OPTIONS.map(s => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {client.nextFollowUp && (
+                    )}
+                    renderDetails={(client) => (
+                      <>
+                        {client.email && (
+                          <div className="makeFlex alignCenter gap8 appendBottom8">
+                            <span>📧</span>
+                            <span className="font14" style={{ wordBreak: 'break-all' }}>{client.email}</span>
+                          </div>
+                        )}
+                        {client.phone && (
+                          <div className="makeFlex alignCenter gap8 appendBottom8">
+                            <span>📞</span>
+                            <span className="font14">{client.phone}</span>
+                          </div>
+                        )}
+                        {(client.productName || client.quantity != null || client.location) && (
+                          <div className="appendTop8 appendBottom8" style={{ paddingTop: '8px', borderTop: '1px solid #eee' }}>
+                            {client.productName && <div className="font12"><span className="grayText">Product: </span>{client.productName}</div>}
+                            {client.quantity != null && client.quantity !== "" && <div className="font12"><span className="grayText">Qty: </span>{client.quantity}</div>}
+                            {client.location && <div className="font12"><span className="grayText">Location: </span>{client.location}</div>}
+                          </div>
+                        )}
+                        {(client.assignedTo && (client.assignedTo.name || client.assignedTo.email)) && (
+                          <div className="makeFlex alignCenter gap8 appendTop8">
+                            <span className="font12 grayText">Assigned to:</span>
+                            <span className="font12">{client.assignedTo.name || client.assignedTo.email}</span>
+                          </div>
+                        )}
                         <div className="makeFlex spaceBetween appendTop8">
-                          <span className="font12 grayText">Follow-up:</span>
-                          <span className="font12" style={{ color: new Date(client.nextFollowUp) < new Date() ? '#dc3545' : '#28a745' }}>
-                            {formatDate(client.nextFollowUp)}
-                          </span>
+                          <span className="font12 grayText">Status:</span>
+                          <select
+                            value={client.status}
+                            onChange={(e) => handleStatusChange(client._id, e.target.value)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #e0e0e0',
+                              backgroundColor: getStatusColor(client.status),
+                              color: '#fff',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                            }}
+                            disabled={client.deleted}
+                          >
+                            {STATUS_OPTIONS.map(s => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
                         </div>
-                      )}
-                      <div className="makeFlex spaceBetween appendTop8">
-                        <span className="font12 grayText">Interactions:</span>
-                        <span className="font12">{client.interactionCount || 0}</span>
-                      </div>
-                    </div>
-
-                    {/* Card Actions */}
-                    <div style={{ padding: '12px 16px', borderTop: '1px solid #f0f0f0', backgroundColor: '#fafafa' }}>
-                      <div className="makeFlex gap8 flexWrap">
+                        {client.nextFollowUp && (
+                          <div className="makeFlex spaceBetween appendTop8">
+                            <span className="font12 grayText">Follow-up:</span>
+                            <span className="font12" style={{ color: new Date(client.nextFollowUp) < new Date() ? '#dc3545' : '#28a745' }}>
+                              {formatDate(client.nextFollowUp)}
+                            </span>
+                          </div>
+                        )}
+                        <div className="makeFlex spaceBetween appendTop8">
+                          <span className="font12 grayText">Interactions:</span>
+                          <span className="font12">{client.interactionCount || 0}</span>
+                        </div>
+                      </>
+                    )}
+                    renderActions={(client) => (
+                      <div className="entityCardActions makeFlex gap8 flexWrap">
                         {!client.deleted && (
                           <>
                             <button
@@ -1042,8 +1226,9 @@ const ClientManager = () => {
                         )}
                         <button
                           className="btnSmall btnDanger"
-                          onClick={() => handleDelete(client._id)}
-                          disabled={loading}
+                          onClick={isSuperAdmin ? () => handleDelete(client._id) : undefined}
+                          disabled={!isSuperAdmin || loading}
+                          title={isSuperAdmin ? "Delete lead" : "Only super admin can delete leads"}
                           style={{ fontSize: '12px', padding: '6px 10px' }}
                         >
                           🗑️
@@ -1059,8 +1244,8 @@ const ClientManager = () => {
                           </button>
                         )}
                       </div>
-                    </div>
-                  </div>
+                    )}
+                  />
                 ))}
               </div>
             )}
@@ -1084,8 +1269,12 @@ const ClientManager = () => {
                         <th style={{ padding: '12px', textAlign: 'left' }}>Client</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Contact</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Company</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Product</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Qty</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Location</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Priority</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Assigned to</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Follow-up</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Actions</th>
                       </tr>
@@ -1122,6 +1311,9 @@ const ClientManager = () => {
                             <div className="font12 grayText">{client.phone || "-"}</div>
                           </td>
                           <td style={{ padding: '12px' }}>{client.company || "-"}</td>
+                          <td style={{ padding: '12px' }}>{client.productName || "-"}</td>
+                          <td style={{ padding: '12px' }}>{client.quantity != null && client.quantity !== "" ? client.quantity : "-"}</td>
+                          <td style={{ padding: '12px' }}>{client.location || "-"}</td>
                           <td style={{ padding: '12px' }}>
                             <span
                               style={{
@@ -1149,6 +1341,11 @@ const ClientManager = () => {
                             </span>
                           </td>
                           <td style={{ padding: '12px' }}>
+                            {client.assignedTo && (client.assignedTo.name || client.assignedTo.email)
+                              ? (client.assignedTo.name || client.assignedTo.email)
+                              : "-"}
+                          </td>
+                          <td style={{ padding: '12px' }}>
                             {client.nextFollowUp ? (
                               <span style={{ color: new Date(client.nextFollowUp) < new Date() ? '#dc3545' : '#28a745' }}>
                                 {formatDate(client.nextFollowUp)}
@@ -1158,7 +1355,7 @@ const ClientManager = () => {
                           <td style={{ padding: '12px' }}>
                             <ActionButtons
                               onEdit={client.deleted ? undefined : () => handleEdit(client)}
-                              onDelete={() => handleDelete(client._id)}
+                              onDelete={isSuperAdmin ? () => handleDelete(client._id) : undefined}
                               onRevert={client.deleted ? () => handleRestore(client._id) : undefined}
                               loading={loading}
                               size="small"
@@ -1166,6 +1363,8 @@ const ClientManager = () => {
                               deleteText="🗑️"
                               revertText="🔄"
                               editDisabled={client.deleted}
+                              deleteDisabled={!isSuperAdmin || loading}
+                              deleteTitle={isSuperAdmin ? "Delete lead" : "Only super admin can delete leads"}
                             />
                           </td>
                         </tr>

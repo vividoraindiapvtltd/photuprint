@@ -11,6 +11,9 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
 
+  // fabric.js has Node.js bindings that break webpack; exclude from server bundling
+  serverExternalPackages: ["fabric", "canvas"],
+
   compiler: {
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
   },
@@ -22,11 +25,17 @@ const nextConfig = {
   },
 
   async rewrites() {
+    const apiBase = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api").replace(/\/api\/?$/, "") || "http://localhost:8080"
     return {
       afterFiles: [
         {
           source: "/api/:path*",
-          destination: "http://localhost:8080/api/:path*",
+          destination: `${apiBase}/api/:path*`,
+        },
+        // Proxy uploads so variant/color images load from same origin
+        {
+          source: "/uploads/:path*",
+          destination: `${apiBase}/uploads/:path*`,
         },
       ],
     }
@@ -49,30 +58,17 @@ const nextConfig = {
     ]
   },
 
-  webpack: (config, { isServer }) => {
+  webpack: (config, { dev, isServer }) => {
     config.resolve.alias = {
       ...config.resolve.alias,
       "@": path.resolve(__dirname, "src"),
+      // Force browser build of fabric (avoids Node.js .node bindings that break client bundle)
+      ...(isServer ? {} : { fabric: path.resolve(__dirname, "node_modules/fabric/dist/index.min.mjs") }),
     }
-
-    if (!isServer) {
-      config.optimization = {
-        ...config.optimization,
-        splitChunks: {
-          ...config.optimization.splitChunks,
-          cacheGroups: {
-            ...config.optimization.splitChunks?.cacheGroups,
-            vendor: {
-              test: /[\\/]node_modules[\\/](axios|isomorphic-dompurify|dompurify)[\\/]/,
-              name: "vendor-lib",
-              chunks: "all",
-              priority: 20,
-            },
-          },
-        },
-      }
+    // Disable webpack file cache in dev to avoid ENOENT/rename errors (e.g. when .next is cleared while running)
+    if (dev) {
+      config.cache = false
     }
-
     return config
   },
 

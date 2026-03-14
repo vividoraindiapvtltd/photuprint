@@ -434,7 +434,15 @@ export const updateTemplate = async (req, res) => {
     const body = req.body || {}
     const name = body.name
     const description = body.description
-    const categoryId = body.categoryId
+    // Normalize categoryId: FormData may send "[object Object]" if frontend passed an object
+    let categoryId = body.categoryId
+    if (categoryId && typeof categoryId === "object" && categoryId._id) {
+      categoryId = categoryId._id
+    }
+    if (categoryId && (typeof categoryId !== "string" || categoryId === "[object Object]" || !/^[a-f0-9]{24}$/i.test(String(categoryId).trim()))) {
+      categoryId = undefined
+    }
+    if (categoryId) categoryId = String(categoryId).trim()
     const isActive = body.isActive
     // PixelCraft: accept JSON-first template document updates
     let incomingPixelcraftDocument = null

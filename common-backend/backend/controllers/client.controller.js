@@ -1,4 +1,5 @@
 import Client from "../models/client.model.js"
+import User from "../models/user.model.js"
 import Interaction from "../models/interaction.model.js"
 import cloudinary from "../utils/cloudinary.js"
 import { removeLocalFile } from "../utils/fileCleanup.js"
@@ -13,7 +14,44 @@ import { removeLocalFile } from "../utils/fileCleanup.js"
  * - Assignment tracking
  * - Statistics and analytics
  * - Multi-tenant support
+ * - Super admin can see all leads (no website filter) when X-Website-Id is not sent
  */
+
+const isSuperAdminViewAll = (req) => req.user?.role === "super_admin" && !req.websiteId && !req.tenant?._id
+
+/**
+ * Pick a sales agent (editor) for the given website with the fewest assigned leads (least-loaded).
+ * Returns agent _id or null if no editors exist for the website.
+ */
+async function getNextAgentForWebsite(websiteId) {
+  const editors = await User.find({
+    role: "editor",
+    isActive: true,
+    deleted: false,
+    $or: [
+      { website: websiteId },
+      { accessibleWebsites: websiteId },
+    ],
+  })
+    .select("_id")
+    .lean()
+  if (!editors?.length) return null
+  const agentIds = editors.map((e) => e._id)
+  const counts = await Promise.all(
+    agentIds.map((agentId) =>
+      Client.countDocuments({
+        website: websiteId,
+        assignedTo: agentId,
+        deleted: false,
+      })
+    )
+  )
+  let minIdx = 0
+  for (let i = 1; i < counts.length; i++) {
+    if (counts[i] < counts[minIdx]) minIdx = i
+  }
+  return agentIds[minIdx]
+}
 
 // ============================================================================
 // CRUD OPERATIONS
@@ -25,11 +63,13 @@ import { removeLocalFile } from "../utils/fileCleanup.js"
 export const getClients = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
-    
-    if (!websiteId) {
+    const isEditor = req.user?.role === "editor" && !isSuperAdminViewAll(req)
+
+    // Editors see only their leads (assigned or created) across all websites; no website required
+    if (!isEditor && !websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const {
       status,
       priority,
@@ -38,6 +78,7 @@ export const getClients = async (req, res) => {
       search,
       company,
       source,
+      period,
       showInactive = "false",
       includeDeleted = "false",
       sortBy = "createdAt",
@@ -45,9 +86,33 @@ export const getClients = async (req, res) => {
       page = 1,
       limit = 20,
     } = req.query
+
+    // Build query: editors have no website filter (see all their leads); others filter by website or all (super_admin)
+    let query = isEditor ? {} : (websiteId ? { website: websiteId } : {})
     
-    // Build query
-    const query = { website: websiteId }
+    // Period filter (date range: same as export)
+    if (period) {
+      const now = new Date()
+      let startDate
+      switch (String(period).toLowerCase()) {
+        case "day":
+          startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+          break
+        case "week":
+          startDate = new Date(now)
+          startDate.setDate(now.getDate() - 7)
+          break
+        case "month":
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+          break
+        case "year":
+          startDate = new Date(now.getFullYear(), 0, 1)
+          break
+        default:
+          startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+      }
+      query.createdAt = { $gte: startDate, $lte: now }
+    }
     
     // Status filter
     if (status && status !== "all") {
@@ -60,7 +125,7 @@ export const getClients = async (req, res) => {
     }
     
     // Assigned user filter
-    if (assignedTo) {
+    if (assignedTo && assignedTo !== "all") {
       query.assignedTo = assignedTo
     }
     
@@ -99,7 +164,18 @@ export const getClients = async (req, res) => {
         { phone: { $regex: search, $options: "i" } },
         { company: { $regex: search, $options: "i" } },
         { clientId: { $regex: search, $options: "i" } },
+        { productName: { $regex: search, $options: "i" } },
+        { location: { $regex: search, $options: "i" } },
       ]
+    }
+    
+    // Sales agents (role=editor) see only leads assigned to them OR created by them (across all websites)
+    if (isEditor) {
+      const userId = req.user._id
+      const ownershipFilter = {
+        $or: [{ assignedTo: userId }, { createdBy: userId }],
+      }
+      query = Object.keys(query).length ? { $and: [query, ownershipFilter] } : ownershipFilter
     }
     
     // Build sort
@@ -144,14 +220,12 @@ export const getClientById = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const { id } = req.params
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-    })
+    const clientQuery = websiteId ? { _id: id, website: websiteId } : { _id: id }
+    const client = await Client.findOne(clientQuery)
       .populate("assignedTo", "name email phone")
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
@@ -161,11 +235,9 @@ export const getClientById = async (req, res) => {
     }
     
     // Get recent interactions
-    const recentInteractions = await Interaction.find({
-      client: id,
-      website: websiteId,
-      deleted: false,
-    })
+    const interactionQuery = { client: id, deleted: false }
+    if (websiteId) interactionQuery.website = websiteId
+    const recentInteractions = await Interaction.find(interactionQuery)
       .populate("createdBy", "name email")
       .sort({ createdAt: -1 })
       .limit(10)
@@ -177,6 +249,76 @@ export const getClientById = async (req, res) => {
     })
   } catch (error) {
     console.error("Error fetching client:", error)
+    res.status(500).json({ msg: "Server error", error: error.message })
+  }
+}
+
+/**
+ * Create a lead from public website form (bulk product enquiry, contact, etc.)
+ * No auth required. Uses tenant from X-Website-Id or domain.
+ * Duplicate email allowed (multiple enquiries from same contact).
+ */
+export const createLead = async (req, res) => {
+  try {
+    const websiteId = req.websiteId || req.tenant?._id
+
+    if (!websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      company,
+      productName,
+      quantity,
+      location,
+      notes,
+    } = req.body
+
+    const first = (firstName || "").toString().trim()
+    if (!first) {
+      return res.status(400).json({ msg: "First name is required" })
+    }
+    const contact = (email || phone || "").toString().trim()
+    if (!contact) {
+      return res.status(400).json({ msg: "Email or phone is required" })
+    }
+
+    const assignedTo = await getNextAgentForWebsite(websiteId)
+
+    const client = new Client({
+      firstName: first,
+      lastName: (lastName || "").toString().trim(),
+      email: email ? String(email).trim().toLowerCase() : undefined,
+      phone: phone ? String(phone).trim() : undefined,
+      company: company ? String(company).trim() : "",
+      productName: productName ? String(productName).trim() : "",
+      quantity: quantity != null && quantity !== "" ? Number(quantity) : null,
+      location: location ? String(location).trim() : "",
+      notes: notes ? String(notes).trim() : "",
+      status: "lead",
+      source: "website",
+      sourceDetails: "Bulk product enquiry",
+      tags: ["bulk-enquiry", "website"],
+      priority: "medium",
+      estimatedValue: 0,
+      currency: "INR",
+      isActive: true,
+      website: websiteId,
+      ...(assignedTo && { assignedTo }),
+    })
+
+    await client.save()
+
+    res.status(201).json({
+      msg: "Thank you! We have received your enquiry and will get back to you soon.",
+      clientId: client._id,
+    })
+  } catch (error) {
+    console.error("Error creating lead:", error)
     res.status(500).json({ msg: "Server error", error: error.message })
   }
 }
@@ -202,6 +344,9 @@ export const createClient = async (req, res) => {
       company,
       designation,
       industry,
+      productName,
+      quantity,
+      location,
       address,
       status = "lead",
       source = "other",
@@ -255,7 +400,15 @@ export const createClient = async (req, res) => {
     if (typeof tags === "string") {
       parsedTags = tags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
     }
-    
+
+    // For leads without an assigned agent, auto-assign to a sales agent (least-loaded) so leads are not idle
+    let resolvedAssignedTo = assignedTo
+    if (status === "lead" && !resolvedAssignedTo) {
+      const autoAgent = await getNextAgentForWebsite(websiteId)
+      resolvedAssignedTo = autoAgent || userId
+    }
+    if (!resolvedAssignedTo) resolvedAssignedTo = userId
+
     // Create client
     const client = new Client({
       firstName: firstName.trim(),
@@ -266,6 +419,9 @@ export const createClient = async (req, res) => {
       company: company?.trim(),
       designation: designation?.trim(),
       industry: industry?.trim(),
+      productName: productName?.trim() || "",
+      quantity: quantity != null && quantity !== "" ? Number(quantity) : null,
+      location: location?.trim() || "",
       address,
       status,
       source,
@@ -274,7 +430,7 @@ export const createClient = async (req, res) => {
       priority,
       estimatedValue: parseFloat(estimatedValue) || 0,
       currency: currency || "INR",
-      assignedTo: assignedTo || userId,
+      assignedTo: resolvedAssignedTo,
       nextFollowUp: nextFollowUp || null,
       notes: notes?.trim(),
       internalNotes: internalNotes?.trim(),
@@ -325,14 +481,12 @@ export const updateClient = async (req, res) => {
     const userId = req.user?._id
     const { id } = req.params
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-    })
+    const clientQuery = websiteId ? { _id: id, website: websiteId } : { _id: id }
+    const client = await Client.findOne(clientQuery)
     
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
@@ -347,6 +501,9 @@ export const updateClient = async (req, res) => {
       company,
       designation,
       industry,
+      productName,
+      quantity,
+      location,
       address,
       status,
       source,
@@ -368,12 +525,9 @@ export const updateClient = async (req, res) => {
     
     // Check for duplicate email if changing
     if (email && email.toLowerCase().trim() !== client.email) {
-      const existingClient = await Client.findOne({
-        website: websiteId,
-        email: email.toLowerCase().trim(),
-        _id: { $ne: id },
-        deleted: false,
-      })
+      const dupQuery = { email: email.toLowerCase().trim(), _id: { $ne: id }, deleted: false }
+      if (websiteId) dupQuery.website = websiteId
+      const existingClient = await Client.findOne(dupQuery)
       
       if (existingClient) {
         return res.status(400).json({ msg: "A client with this email already exists" })
@@ -409,6 +563,9 @@ export const updateClient = async (req, res) => {
     if (company !== undefined) client.company = company?.trim()
     if (designation !== undefined) client.designation = designation?.trim()
     if (industry !== undefined) client.industry = industry?.trim()
+    if (productName !== undefined) client.productName = productName?.trim() || ""
+    if (quantity !== undefined) client.quantity = quantity != null && quantity !== "" ? Number(quantity) : null
+    if (location !== undefined) client.location = location?.trim() || ""
     if (address !== undefined) client.address = { ...client.address, ...address }
     if (status !== undefined) client.status = status
     if (source !== undefined) client.source = source
@@ -452,7 +609,7 @@ export const updateClient = async (req, res) => {
         },
         status: "completed",
         completedAt: new Date(),
-        website: websiteId,
+        website: client.website,
         createdBy: userId,
       })
     }
@@ -482,14 +639,12 @@ export const deleteClient = async (req, res) => {
     const userId = req.user?._id
     const { id } = req.params
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-    })
+    const clientQuery = websiteId ? { _id: id, website: websiteId } : { _id: id }
+    const client = await Client.findOne(clientQuery)
     
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
@@ -517,15 +672,12 @@ export const restoreClient = async (req, res) => {
     const userId = req.user?._id
     const { id } = req.params
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-      deleted: true,
-    })
+    const clientQuery = websiteId ? { _id: id, website: websiteId, deleted: true } : { _id: id, deleted: true }
+    const client = await Client.findOne(clientQuery)
     
     if (!client) {
       return res.status(404).json({ msg: "Deleted client not found" })
@@ -533,12 +685,9 @@ export const restoreClient = async (req, res) => {
     
     // Check for email conflict
     if (client.email) {
-      const existingClient = await Client.findOne({
-        website: websiteId,
-        email: client.email,
-        _id: { $ne: id },
-        deleted: false,
-      })
+      const dupQuery = { email: client.email, _id: { $ne: id }, deleted: false }
+      if (client.website) dupQuery.website = client.website
+      const existingClient = await Client.findOne(dupQuery)
       
       if (existingClient) {
         return res.status(400).json({
@@ -568,21 +717,16 @@ export const hardDeleteClient = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const { id } = req.params
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    // Delete all interactions first
-    await Interaction.deleteMany({
-      client: id,
-      website: websiteId,
-    })
+    const interactionFilter = { client: id }
+    if (websiteId) interactionFilter.website = websiteId
+    await Interaction.deleteMany(interactionFilter)
     
-    // Delete client
-    const result = await Client.deleteOne({
-      _id: id,
-      website: websiteId,
-    })
+    const clientFilter = websiteId ? { _id: id, website: websiteId } : { _id: id }
+    const result = await Client.deleteOne(clientFilter)
     
     if (result.deletedCount === 0) {
       return res.status(404).json({ msg: "Client not found" })
@@ -609,7 +753,7 @@ export const updateClientStatus = async (req, res) => {
     const { id } = req.params
     const { status, reason } = req.body
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
@@ -618,11 +762,8 @@ export const updateClientStatus = async (req, res) => {
       return res.status(400).json({ msg: "Invalid status" })
     }
     
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-      deleted: false,
-    })
+    const clientQuery = websiteId ? { _id: id, website: websiteId, deleted: false } : { _id: id, deleted: false }
+    const client = await Client.findOne(clientQuery)
     
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
@@ -643,7 +784,7 @@ export const updateClientStatus = async (req, res) => {
       statusChange: { from: oldStatus, to: status, reason },
       status: "completed",
       completedAt: new Date(),
-      website: websiteId,
+      website: websiteId || client.website,
       createdBy: userId,
     })
     
@@ -667,15 +808,12 @@ export const assignClient = async (req, res) => {
     const { id } = req.params
     const { assignedTo, notes } = req.body
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-      deleted: false,
-    })
+    const clientQuery = websiteId ? { _id: id, website: websiteId, deleted: false } : { _id: id, deleted: false }
+    const client = await Client.findOne(clientQuery)
     
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
@@ -695,7 +833,7 @@ export const assignClient = async (req, res) => {
       description: notes || "Client was assigned to a new user",
       status: "completed",
       completedAt: new Date(),
-      website: websiteId,
+      website: websiteId || client.website,
       createdBy: userId,
     })
     
@@ -721,7 +859,7 @@ export const bulkAssignClients = async (req, res) => {
     const userId = req.user?._id
     const { clientIds, assignedTo } = req.body
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
@@ -729,12 +867,10 @@ export const bulkAssignClients = async (req, res) => {
       return res.status(400).json({ msg: "Client IDs array is required" })
     }
     
+    const filter = { _id: { $in: clientIds }, deleted: false }
+    if (websiteId) filter.website = websiteId
     const result = await Client.updateMany(
-      {
-        _id: { $in: clientIds },
-        website: websiteId,
-        deleted: false,
-      },
+      filter,
       {
         assignedTo,
         updatedBy: userId,
@@ -760,7 +896,7 @@ export const bulkUpdateStatus = async (req, res) => {
     const userId = req.user?._id
     const { clientIds, status } = req.body
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
@@ -773,17 +909,23 @@ export const bulkUpdateStatus = async (req, res) => {
       return res.status(400).json({ msg: "Invalid status" })
     }
     
-    const result = await Client.updateMany(
-      {
-        _id: { $in: clientIds },
-        website: websiteId,
-        deleted: false,
-      },
-      {
-        status,
-        updatedBy: userId,
-      }
-    )
+    const filter = { _id: { $in: clientIds }, deleted: false }
+    if (websiteId) filter.website = websiteId
+
+    const updateFields = {
+      status,
+      updatedBy: userId,
+    }
+
+    // Mirror the pre-save hook logic that updateMany bypasses
+    if (status === "active") {
+      updateFields.convertedAt = new Date()
+    }
+    if (status === "closed" || status === "lost") {
+      updateFields.closedAt = new Date()
+    }
+
+    const result = await Client.updateMany(filter, updateFields)
     
     res.json({
       msg: `${result.modifiedCount} clients updated`,
@@ -805,8 +947,12 @@ export const bulkUpdateStatus = async (req, res) => {
 export const getClientStats = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
-    
-    if (!websiteId) {
+    const userId = req.user?._id
+    const userRole = req.user?.role
+    const isEditor = userRole === "editor" && !isSuperAdminViewAll(req)
+
+    // For editors, allow stats without strict website context and scope to their own leads only
+    if (!websiteId && !isSuperAdminViewAll(req) && !isEditor) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
@@ -817,8 +963,27 @@ export const getClientStats = async (req, res) => {
     const monthStart = new Date(now)
     monthStart.setMonth(now.getMonth() - 1)
     
-    const baseQuery = { website: websiteId, deleted: false }
-    
+    let baseQuery
+    if (isEditor && userId) {
+      // Editors: only see their own leads (assigned or created), across websites
+      baseQuery = {
+        deleted: false,
+        $or: [
+          { assignedTo: userId },
+          { createdBy: userId },
+        ],
+      }
+    } else {
+      // Admins / super admins: website-scoped stats (or all websites if view-all)
+      baseQuery = websiteId ? { website: websiteId, deleted: false } : { deleted: false }
+    }
+
+    const { assignedTo: assignedToFilter } = req.query
+    const statsQuery =
+      !isEditor && assignedToFilter && assignedToFilter !== "all"
+        ? { ...baseQuery, assignedTo: assignedToFilter }
+        : baseQuery
+
     const [
       total,
       active,
@@ -832,33 +997,33 @@ export const getClientStats = async (req, res) => {
       recentlyContacted,
       totalValue,
     ] = await Promise.all([
-      Client.countDocuments(baseQuery),
-      Client.countDocuments({ ...baseQuery, isActive: true }),
+      Client.countDocuments(statsQuery),
+      Client.countDocuments({ ...statsQuery, isActive: true }),
       Client.aggregate([
-        { $match: baseQuery },
+        { $match: statsQuery },
         { $group: { _id: "$status", count: { $sum: 1 } } },
       ]),
       Client.aggregate([
-        { $match: baseQuery },
+        { $match: statsQuery },
         { $group: { _id: "$priority", count: { $sum: 1 } } },
       ]),
       Client.aggregate([
-        { $match: baseQuery },
+        { $match: statsQuery },
         { $group: { _id: "$source", count: { $sum: 1 } } },
       ]),
-      Client.countDocuments({ ...baseQuery, createdAt: { $gte: todayStart } }),
-      Client.countDocuments({ ...baseQuery, createdAt: { $gte: weekStart } }),
-      Client.countDocuments({ ...baseQuery, createdAt: { $gte: monthStart } }),
+      Client.countDocuments({ ...statsQuery, createdAt: { $gte: todayStart } }),
+      Client.countDocuments({ ...statsQuery, createdAt: { $gte: weekStart } }),
+      Client.countDocuments({ ...statsQuery, createdAt: { $gte: monthStart } }),
       Client.countDocuments({
-        ...baseQuery,
+        ...statsQuery,
         nextFollowUp: { $gte: now, $lte: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000) },
       }),
       Client.countDocuments({
-        ...baseQuery,
+        ...statsQuery,
         lastContactedAt: { $gte: weekStart },
       }),
       Client.aggregate([
-        { $match: { ...baseQuery, status: { $in: ["active", "prospect"] } } },
+        { $match: { ...statsQuery, status: { $in: ["active", "prospect"] } } },
         { $group: { _id: null, total: { $sum: "$estimatedValue" } } },
       ]),
     ])
@@ -899,7 +1064,7 @@ export const getUpcomingFollowUps = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const { days = 7, assignedTo } = req.query
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
@@ -908,11 +1073,11 @@ export const getUpcomingFollowUps = async (req, res) => {
     future.setDate(future.getDate() + parseInt(days))
     
     const query = {
-      website: websiteId,
       isActive: true,
       deleted: false,
       nextFollowUp: { $gte: now, $lte: future },
     }
+    if (websiteId) query.website = websiteId
     
     if (assignedTo) {
       query.assignedTo = assignedTo
@@ -938,14 +1103,12 @@ export const getRecentClients = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const { limit = 10 } = req.query
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const clients = await Client.find({
-      website: websiteId,
-      deleted: false,
-    })
+    const findQuery = websiteId ? { website: websiteId, deleted: false } : { deleted: false }
+    const clients = await Client.find(findQuery)
       .populate("assignedTo", "name email")
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
@@ -966,7 +1129,7 @@ export const searchClients = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const { q, limit = 10 } = req.query
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
@@ -974,9 +1137,9 @@ export const searchClients = async (req, res) => {
       return res.json([])
     }
     
+    const findQuery = websiteId ? { website: websiteId, deleted: false } : { deleted: false }
     const clients = await Client.find({
-      website: websiteId,
-      deleted: false,
+      ...findQuery,
       $or: [
         { firstName: { $regex: q, $options: "i" } },
         { lastName: { $regex: q, $options: "i" } },
@@ -1004,18 +1167,165 @@ export const getTags = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     
-    if (!websiteId) {
+    if (!websiteId && !isSuperAdminViewAll(req)) {
       return res.status(400).json({ msg: "Website context is required" })
     }
     
-    const tags = await Client.distinct("tags", {
-      website: websiteId,
-      deleted: false,
-    })
+    const distinctQuery = websiteId ? { website: websiteId, deleted: false } : { deleted: false }
+    const tags = await Client.distinct("tags", distinctQuery)
     
     res.json(tags.filter(Boolean).sort())
   } catch (error) {
     console.error("Error fetching tags:", error)
+    res.status(500).json({ msg: "Server error", error: error.message })
+  }
+}
+
+const LEAD_EXPORT_HEADERS = [
+  "Client ID",
+  "First Name",
+  "Last Name",
+  "Email",
+  "Phone",
+  "Company",
+  "Product",
+  "Quantity",
+  "Location",
+  "Status",
+  "Source",
+  "Priority",
+  "Assigned To",
+  "Created At",
+]
+
+function buildLeadRows(clients) {
+  return clients.map((c) => [
+    c.clientId || "",
+    c.firstName || "",
+    c.lastName || "",
+    c.email || "",
+    c.phone || "",
+    c.company || "",
+    c.productName || "",
+    c.quantity != null ? c.quantity : "",
+    c.location || "",
+    c.status || "",
+    c.source || "",
+    c.priority || "",
+    c.assignedTo ? (c.assignedTo.name || c.assignedTo.email || "") : "",
+    c.createdAt ? new Date(c.createdAt).toISOString() : "",
+  ])
+}
+
+/**
+ * Export leads (by period and optional agent) as CSV, Excel, or PDF
+ * Query: period=day|week|month|year, assignedTo=userId|all, format=csv|xlsx|pdf
+ */
+export const exportLeads = async (req, res) => {
+  try {
+    const websiteId = req.websiteId || req.tenant?._id
+    if (!websiteId && !isSuperAdminViewAll(req)) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+
+    const { period = "month", assignedTo, format = "csv" } = req.query
+    const fmt = String(format).toLowerCase()
+    if (!["csv", "xlsx", "pdf"].includes(fmt)) {
+      return res.status(400).json({ msg: "Invalid format. Use csv, xlsx, or pdf." })
+    }
+
+    const now = new Date()
+    let startDate
+    switch (String(period).toLowerCase()) {
+      case "day":
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        break
+      case "week":
+        startDate = new Date(now)
+        startDate.setDate(now.getDate() - 7)
+        break
+      case "month":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case "year":
+        startDate = new Date(now.getFullYear(), 0, 1)
+        break
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    }
+
+    let query = { deleted: false, createdAt: { $gte: startDate, $lte: now } }
+    if (websiteId) query.website = websiteId
+    if (assignedTo && assignedTo !== "all") query.assignedTo = assignedTo
+
+    if (req.user?.role === "editor" && !isSuperAdminViewAll(req)) {
+      const userId = req.user._id
+      delete query.assignedTo
+      query = {
+        $and: [
+          query,
+          { $or: [{ assignedTo: userId }, { createdBy: userId }] },
+        ],
+      }
+    }
+
+    const clients = await Client.find(query)
+      .populate("assignedTo", "name email")
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 })
+      .lean()
+
+    const rows = buildLeadRows(clients)
+    const dateStr = new Date().toISOString().slice(0, 10)
+
+    if (fmt === "csv") {
+      const escapeCsv = (v) => {
+        if (v == null) return ""
+        const s = String(v).replace(/"/g, '""')
+        return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s}"` : s
+      }
+      const csv = [LEAD_EXPORT_HEADERS.join(","), ...rows.map((r) => r.map(escapeCsv).join(","))].join("\n")
+      const filename = `leads-${period}-${dateStr}.csv`
+      res.setHeader("Content-Type", "text/csv; charset=utf-8")
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      return res.send("\uFEFF" + csv)
+    }
+
+    if (fmt === "xlsx") {
+      const XLSX = await import("xlsx")
+      const wb = XLSX.utils.book_new()
+      const sheetData = [LEAD_EXPORT_HEADERS, ...rows]
+      const ws = XLSX.utils.aoa_to_sheet(sheetData)
+      XLSX.utils.book_append_sheet(wb, ws, "Leads")
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
+      const filename = `leads-${period}-${dateStr}.xlsx`
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      return res.send(buf)
+    }
+
+    if (fmt === "pdf") {
+      const PDFDocument = (await import("pdfkit-table")).default
+      const filename = `leads-${period}-${dateStr}.pdf`
+      res.setHeader("Content-Type", "application/pdf")
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      const doc = new PDFDocument({ margin: 30, size: "A4" })
+      doc.pipe(res)
+      const table = {
+        title: `Leads export (${period})`,
+        subtitle: `Generated ${new Date().toLocaleString()}`,
+        headers: LEAD_EXPORT_HEADERS,
+        rows,
+      }
+      await doc.table(table, {
+        prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
+        prepareRow: () => doc.font("Helvetica").fontSize(7),
+      })
+      doc.end()
+      return
+    }
+  } catch (error) {
+    console.error("Error exporting leads:", error)
     res.status(500).json({ msg: "Server error", error: error.message })
   }
 }

@@ -72,6 +72,13 @@ const orderSchema = new mongoose.Schema(
       required: true,
       min: 0
     },
+    // Optional: sales agent responsible for this order (for incentives)
+    salesAgent: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+      index: true,
+    },
     shippingAddress: {
       name: { type: String, required: true },
       phone: { type: String },

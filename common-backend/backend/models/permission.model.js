@@ -114,6 +114,8 @@ permissionSchema.statics.seedDefaultPermissions = async function() {
     { key: "categories_create", label: "Create Categories", module: "categories", action: "create", sortOrder: 2 },
     { key: "categories_edit", label: "Edit Categories", module: "categories", action: "edit", sortOrder: 3 },
     { key: "categories_delete", label: "Delete Categories", module: "categories", action: "delete", sortOrder: 4 },
+    { key: "subcategories_view", label: "View Subcategories", module: "categories", action: "view", sortOrder: 5 },
+    { key: "subcategories_manage", label: "Manage Subcategories", module: "categories", action: "manage", sortOrder: 6 },
     
     // Products
     { key: "products_view", label: "View Products", module: "products", action: "view", sortOrder: 1 },
@@ -121,9 +123,12 @@ permissionSchema.statics.seedDefaultPermissions = async function() {
     { key: "products_edit", label: "Edit Products", module: "products", action: "edit", sortOrder: 3 },
     { key: "products_delete", label: "Delete Products", module: "products", action: "delete", sortOrder: 4 },
     
-    // Homepage Settings
+    // Homepage & storefront
     { key: "homepage_view", label: "View Homepage Settings", module: "homepage", action: "view", sortOrder: 1 },
-    { key: "homepage_manage", label: "Manage Homepage Settings", module: "homepage", action: "manage", sortOrder: 2 },
+    { key: "homepage_manage", label: "Manage Homepage Sections", module: "homepage", action: "manage", sortOrder: 2 },
+    { key: "homepage_carousel_manage", label: "Manage Full Width Carousel", module: "homepage", action: "manage", sortOrder: 3 },
+    { key: "homepage_footer_sections_manage", label: "Manage Footer Sections", module: "homepage", action: "manage", sortOrder: 4 },
+    { key: "homepage_footer_settings_manage", label: "Manage Footer Settings", module: "homepage", action: "manage", sortOrder: 5 },
     
     // Orders
     { key: "orders_view", label: "View Orders", module: "orders", action: "view", sortOrder: 1 },
@@ -146,6 +151,9 @@ permissionSchema.statics.seedDefaultPermissions = async function() {
     { key: "clients_create", label: "Create Clients", module: "clients", action: "create", sortOrder: 2 },
     { key: "clients_edit", label: "Edit Clients", module: "clients", action: "edit", sortOrder: 3 },
     { key: "clients_delete", label: "Delete Clients", module: "clients", action: "delete", sortOrder: 4 },
+    { key: "leads_download_view", label: "Download Leads", module: "clients", action: "view", sortOrder: 5 },
+    { key: "incentives_view", label: "View Incentive Manager", module: "clients", action: "view", sortOrder: 6 },
+    { key: "incentive_report_view", label: "View Incentive Report", module: "clients", action: "view", sortOrder: 7 },
     
     // Reviews
     { key: "reviews_view", label: "View Reviews", module: "reviews", action: "view", sortOrder: 1 },
@@ -191,6 +199,21 @@ permissionSchema.statics.seedDefaultPermissions = async function() {
     // Product Attributes
     { key: "attributes_view", label: "View Product Attributes", module: "attributes", action: "view", sortOrder: 1 },
     { key: "attributes_manage", label: "Manage Product Attributes", module: "attributes", action: "manage", sortOrder: 2 },
+    // Individual attribute managers (for finer control in User Access Manager)
+    { key: "attributes_collar_manage", label: "Collar Style Manager", module: "attributes", action: "manage", sortOrder: 10 },
+    { key: "attributes_color_manage", label: "Color Manager", module: "attributes", action: "manage", sortOrder: 11 },
+    { key: "attributes_country_manage", label: "Country of Origin Manager", module: "attributes", action: "manage", sortOrder: 12 },
+    { key: "attributes_fit_type_manage", label: "Fit Type Manager", module: "attributes", action: "manage", sortOrder: 13 },
+    { key: "attributes_printing_type_manage", label: "Printing Type Manager", module: "attributes", action: "manage", sortOrder: 14 },
+    { key: "attributes_height_manage", label: "Height Manager", module: "attributes", action: "manage", sortOrder: 15 },
+    { key: "attributes_length_manage", label: "Length Manager", module: "attributes", action: "manage", sortOrder: 16 },
+    { key: "attributes_material_manage", label: "Material Manager", module: "attributes", action: "manage", sortOrder: 17 },
+    { key: "attributes_pattern_manage", label: "Pattern Manager", module: "attributes", action: "manage", sortOrder: 18 },
+    { key: "attributes_pincode_manage", label: "Pincode Manager", module: "attributes", action: "manage", sortOrder: 19 },
+    { key: "attributes_size_manage", label: "Size Manager", module: "attributes", action: "manage", sortOrder: 20 },
+    { key: "attributes_sleeve_type_manage", label: "Sleeve Type Manager", module: "attributes", action: "manage", sortOrder: 21 },
+    { key: "attributes_width_manage", label: "Width Manager", module: "attributes", action: "manage", sortOrder: 22 },
+    { key: "attributes_variation_manage", label: "Variation Manager", module: "attributes", action: "manage", sortOrder: 23 },
   ]
   
   for (const permission of defaultPermissions) {

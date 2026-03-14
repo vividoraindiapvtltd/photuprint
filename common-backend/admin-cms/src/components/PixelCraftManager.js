@@ -1959,10 +1959,16 @@ export default function PixelCraftManager() {
         dimensionId: activeTemplate.dimensionId || null,
       }
 
+      const categoryIdStr =
+        typeof activeTemplate.categoryId === "object" && activeTemplate.categoryId?._id != null
+          ? String(activeTemplate.categoryId._id)
+          : activeTemplate.categoryId != null
+            ? String(activeTemplate.categoryId)
+            : ""
       const formData = new FormData()
       formData.append("name", activeTemplate.name)
       formData.append("description", activeTemplate.description || "")
-      formData.append("categoryId", activeTemplate.categoryId)
+      formData.append("categoryId", categoryIdStr)
       formData.append("isActive", "false")
       formData.append("pixelcraftStatus", "draft")
       formData.append("pixelcraftVersion", String(activeTemplate.pixelcraftVersion || 1))
@@ -2085,40 +2091,83 @@ export default function PixelCraftManager() {
   }
 
   const publish = async () => {
+    const c = fabricRef.current
     if (!activeTemplate?._id) {
       setError("Save draft first, then publish")
+      return
+    }
+    if (!activeTemplate?.name?.trim()) {
+      setError("Template name is required")
+      return
+    }
+    if (!activeTemplate?.categoryId) {
+      setError("Category is required")
+      return
+    }
+    if (!c) {
+      setError("Canvas not ready")
       return
     }
     try {
       setLoading(true)
       setError("")
       setSuccess("")
-      const formData = new FormData()
-      formData.append("pixelcraftStatus", "published")
-      formData.append("isActive", "true")
 
-      // If template has no thumbnail but canvas is available, generate and send one (always send thumbnail on publish so it's fresh)
-      const c = fabricRef.current
-      if (c) {
-        try {
-          const w = c.get("width") || 0
-          const h = c.get("height") || 0
-          if (w > 0 && h > 0) {
-            c.requestRenderAll()
-            await new Promise((resolve) => requestAnimationFrame(resolve))
-            await new Promise((resolve) => requestAnimationFrame(resolve))
-            const blob = await c.toBlob({ format: "png", multiplier: 0.25 })
-            if (blob && blob.size > 0) {
-              formData.append("previewImage", blob, `pixelcraft_preview_${Date.now()}.png`)
-            }
+      // Convert blob images to data URLs (same as saveDraft) so they persist
+      const allObjects = c.getObjects()
+      const images = []
+      allObjects.forEach((obj) => collectImageObjects(obj, images))
+      for (const img of images) {
+        const src = img.getSrc ? img.getSrc() : ""
+        if (src && src.startsWith("blob:")) {
+          const el = img.getElement ? img.getElement() : null
+          if (el) {
+            const dataUrl = await blobToDataURL(el)
+            if (dataUrl) await img.setSrc(dataUrl)
           }
-        } catch (e) {
-          console.warn("Thumbnail capture on publish failed:", e)
         }
       }
 
+      const canvasJson = c.toObject(CANVAS_PROPERTIES_TO_INCLUDE)
+      const spec = getCanvasSpec(activeTemplate, dimensions)
+      const pixelcraftDocument = {
+        ...buildDefaultPixelcraftDocument(canvasJson, spec),
+        dimensionId: activeTemplate.dimensionId || null,
+      }
+
+      const categoryIdStr =
+        typeof activeTemplate.categoryId === "object" && activeTemplate.categoryId?._id != null
+          ? String(activeTemplate.categoryId._id)
+          : activeTemplate.categoryId != null
+            ? String(activeTemplate.categoryId)
+            : ""
+      const formData = new FormData()
+      formData.append("name", activeTemplate.name)
+      formData.append("description", activeTemplate.description || "")
+      formData.append("categoryId", categoryIdStr)
+      formData.append("isActive", "true")
+      formData.append("pixelcraftStatus", "published")
+      formData.append("pixelcraftVersion", String(activeTemplate.pixelcraftVersion || 1))
+      formData.append("pixelcraftDocument", JSON.stringify(pixelcraftDocument))
+
+      // Thumbnail/preview
+      try {
+        const w = c.get("width") || 0
+        const h = c.get("height") || 0
+        if (w > 0 && h > 0) {
+          c.requestRenderAll()
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          await new Promise((resolve) => requestAnimationFrame(resolve))
+          const blob = await c.toBlob({ format: "png", multiplier: 0.25 })
+          if (blob && blob.size > 0) {
+            formData.append("previewImage", blob, `pixelcraft_preview_${Date.now()}.png`)
+          }
+        }
+      } catch (e) {
+        console.warn("Thumbnail capture on publish failed:", e)
+      }
+
       const putRes = await api.put(`/templates/${activeTemplate._id}`, formData)
-      await api.patch(`/templates/${activeTemplate._id}/status`, { isActive: true })
       setSuccess("✅ Published")
       const updated = putRes?.data
       if (updated) setActiveTemplate(updated)

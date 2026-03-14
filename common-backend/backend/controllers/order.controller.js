@@ -1,7 +1,6 @@
 import Order from '../models/order.model.js';
 import User from '../models/user.model.js';
 import Product from '../models/product.model.js';
-import { scheduleReviewEmail } from "../utils/reviewEmailScheduler.js"
 
 // Get all orders
 export const getOrders = async (req, res) => {
@@ -11,7 +10,7 @@ export const getOrders = async (req, res) => {
       return res.status(400).json({ msg: "Website context is required" })
     }
 
-    const { search, showInactive, includeDeleted, paymentStatus, orderStatus, userId } = req.query;
+    const { search, showInactive, includeDeleted, paymentStatus, orderStatus, userId, limit } = req.query;
     let query = {
       website: req.websiteId, // Filter by tenant website
     };
@@ -51,13 +50,15 @@ export const getOrders = async (req, res) => {
       ];
     }
 
-    const orders = await Order.find(query)
+    let queryBuilder = Order.find(query)
       .populate('user', 'name email phone')
       .populate('products.product', 'name images price')
       .populate('couponId', 'code discountType discountValue')
       .populate('website', 'name domain')
       .sort({ createdAt: -1 });
-    
+    const limitNum = limit ? parseInt(limit, 10) : 0;
+    if (limitNum > 0) queryBuilder = queryBuilder.limit(limitNum);
+    const orders = await queryBuilder;
     res.json(orders);
   } catch (error) {
     console.error('Error fetching orders:', error);
@@ -142,7 +143,8 @@ export const createOrder = async (req, res) => {
       shipmentDate,
       estimatedDeliveryDate,
       notes,
-      website
+      website,
+      salesAgent,
     } = req.body;
 
     // Validation
@@ -227,7 +229,8 @@ export const createOrder = async (req, res) => {
       notes: notes || null,
       isActive: true,
       deleted: false,
-      website: website || req.websiteId // Multi-tenant: Use provided website or from context
+      website: website || req.websiteId, // Multi-tenant: Use provided website or from context
+      salesAgent: salesAgent || null,
     });
 
     const savedOrder = await newOrder.save();
@@ -235,10 +238,6 @@ export const createOrder = async (req, res) => {
       .populate('user', 'name email phone')
       .populate('products.product', 'name images price')
       .populate('couponId', 'code discountType discountValue');
-
-    // Schedule product review email 1 day after order (non-blocking)
-    const orderObj = populatedOrder?.toObject ? { ...populatedOrder.toObject(), user: populatedOrder.user } : populatedOrder
-    scheduleReviewEmail(orderObj).catch((err) => console.error("[createOrder] Review email schedule error:", err.message))
 
     res.status(201).json(populatedOrder);
   } catch (error) {

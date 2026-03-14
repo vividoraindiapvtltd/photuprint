@@ -3,19 +3,12 @@
 import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
-import DOMPurify from "isomorphic-dompurify"
 import api from "@/utils/api"
 import { getImageSrc } from "@/utils/imageUrl"
 
-const ALLOWED_TAGS = ["p", "br", "strong", "em", "u", "ul", "ol", "li", "a", "h2", "h3", "h4"]
-
-function sanitizeHtml(html, opts = {}) {
+function sanitizeHtml(html, _opts) {
   if (!html || typeof html !== "string") return ""
-  const tags = opts.ALLOWED_TAGS || ALLOWED_TAGS
-  const purifier = DOMPurify?.default ?? DOMPurify
-  const sanitizer = purifier?.sanitize ?? (typeof DOMPurify === "function" ? DOMPurify : null)
-  if (typeof sanitizer === "function") return sanitizer.call(purifier, html, { ALLOWED_TAGS: tags })
-  return html.replace(/<[^>]+>/g, " ")
+  return String(html).replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "").replace(/<[^>]+>/g, " ")
 }
 
 const SOCIAL_ICONS = {
@@ -306,7 +299,7 @@ function SectionLogo({ section, theme = {} }) {
   if (!logoUrl) return null
   const src = getImageSrc(logoUrl)
   const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
-  const img = <Image src={src} alt={logoAlt || section.title || "Logo"} width={160} height={40} className="h-10 w-auto object-contain max-w-full" title={logoTitle || undefined} />
+  const img = <Image src={src} alt={logoAlt || section.title || "Logo"} width={160} height={40} className="object-contain max-w-full" style={{ width: "auto", height: "2.5rem" }} title={logoTitle || undefined} />
   return (
     <div>
       {section.title && (
@@ -329,7 +322,11 @@ function SectionCopyright({ section, theme = {} }) {
   const text = section.config?.text || "© {year} All rights reserved."
   const year = new Date().getFullYear()
   const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
-  return <div style={bodyStyle}>{text.replace("{year}", year)}</div>
+  return (
+    <div style={bodyStyle} suppressHydrationWarning>
+      {text.replace("{year}", year)}
+    </div>
+  )
 }
 
 function SectionCustom({ section, theme = {} }) {
@@ -432,7 +429,9 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
   if (sections.length === 0) {
     return (
       <footer className="bg-gray-900 text-white py-8 border-t border-gray-200">
-        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm">© {new Date().getFullYear()} All rights reserved.</div>
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm" suppressHydrationWarning>
+          © {new Date().getFullYear()} All rights reserved.
+        </div>
       </footer>
     )
   }

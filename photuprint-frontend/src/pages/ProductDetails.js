@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react"
 import Link from "next/link"
 import { useParams } from "next/navigation"
-import DOMPurify from "dompurify"
 import ColorSelector from "../components/product/ColorSelector"
 import ProductReviews from "../components/ProductReviews"
 import TemplateRenderer from "../components/TemplateRenderer"
@@ -89,7 +88,7 @@ export default function ProductDetails() {
 
           {product?.price && <p className="text-xl font-semibold text-gray-800 mb-4">${product.price}</p>}
 
-          {product?.description && <div className="text-gray-700 mb-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description) }} />}
+          {product?.description && <div className="text-gray-700 mb-4 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: String(product.description).replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "").replace(/<[^>]+>/g, " ") }} />}
 
           <ColorSelector variants={variants} selectedId={selected?._id} onChange={(_, v) => setSelected(v)} />
 

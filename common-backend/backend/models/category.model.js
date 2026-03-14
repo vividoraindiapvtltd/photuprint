@@ -6,6 +6,7 @@ const categorySchema = new mongoose.Schema({
   slug: { type: String, required: true },
   description: { type: String, default: null },
   image: { type: String, default: null },
+  order: { type: Number, default: 0 },
   isActive: { type: Boolean, default: true },
   deleted: { type: Boolean, default: false }, // Add deleted field for soft delete
   // Multi-tenant: Website/Tenant reference

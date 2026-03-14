@@ -60,10 +60,10 @@ const PERMISSION_MENU_MAP = {
   testimonials_manage: [33],
   
   // Users
-  users_view: [20],
-  users_create: [20],
-  users_edit: [20],
-  users_manage: [20],
+  users_view: [20, 57],
+  users_create: [20, 57],
+  users_edit: [20, 57],
+  users_manage: [20, 57],
   
   // User Access Management
   user_access_view: [36],
@@ -74,6 +74,11 @@ const PERMISSION_MENU_MAP = {
   clients_create: [35],
   clients_edit: [35],
   clients_manage: [35],
+  
+  // Download Leads, Incentive Manager, Incentive Report (explicit permissions)
+  leads_download_view: [58],
+  incentives_view: [59],
+  incentive_report_view: [60],
   
   // Orders
   orders_view: [21, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52],
@@ -130,13 +135,22 @@ const MENU_PERMISSION_MAP = {
   15: ['categories_view', 'categories_manage', 'subcategories_view', 'subcategories_manage'],
   
   // Variation Manager
-  26: ['attributes_view', 'attributes_manage'],
+  26: ['attributes_view', 'attributes_manage', 'attributes_variation_manage'],
   
   // Product Manager
   19: ['products_view', 'products_manage'],
   
   // Homepage Settings
   34: ['homepage_view', 'homepage_manage'],
+
+  // Footer Manager (sections)
+  54: ['homepage_view', 'homepage_footer_sections_manage'],
+
+  // Footer Setting (styles)
+  55: ['homepage_view', 'homepage_footer_settings_manage'],
+
+  // Full Width Carousel
+  56: ['homepage_view', 'homepage_carousel_manage'],
   
   // Collar Style Manager
   3: ['attributes_view', 'attributes_manage'],
@@ -192,8 +206,20 @@ const MENU_PERMISSION_MAP = {
   // User Manager
   20: ['users_view', 'users_manage'],
   
+  // Sales Agent Manager (alias of User Manager filtered to editors)
+  57: ['users_view', 'users_manage'],
+  
   // Client Management
   35: ['clients_view', 'clients_manage'],
+  
+  // Download leads (requires explicit permission — not shown to agents by default)
+  58: ['leads_download_view'],
+  
+  // Incentive Manager (requires explicit permission — not shown to agents by default)
+  59: ['incentives_view'],
+  
+  // Incentive Report (requires explicit permission — not shown to agents by default)
+  60: ['incentive_report_view'],
   
   // User Access Manager
   36: ['user_access_view', 'user_access_manage'],
@@ -260,12 +286,12 @@ export const ROUTE_PERMISSION_MAP = {
   '/dashboard/addbrand': ['brands_view', 'brands_manage'],
   '/dashboard/addcategory': ['categories_view', 'categories_manage'],
   '/dashboard/addsubcategory': ['categories_view', 'subcategories_view', 'subcategories_manage'],
-  '/dashboard/variationmanager': ['attributes_view', 'attributes_manage'],
+  '/dashboard/variationmanager': ['attributes_view', 'attributes_manage', 'attributes_variation_manage'],
   '/dashboard/addproducts': ['products_view', 'products_manage'],
   '/dashboard/homepage-sections': ['homepage_view', 'homepage_manage'],
-  '/dashboard/frontend': ['homepage_view', 'homepage_manage'],
-  '/dashboard/footer-sections': ['homepage_view', 'homepage_manage'],
-  '/dashboard/footer-settings': ['homepage_view', 'homepage_manage'],
+  '/dashboard/frontend': ['homepage_view', 'homepage_carousel_manage'],
+  '/dashboard/footer-sections': ['homepage_view', 'homepage_footer_sections_manage'],
+  '/dashboard/footer-settings': ['homepage_view', 'homepage_footer_settings_manage'],
   '/dashboard/addcollarstyle': ['attributes_view', 'attributes_manage'],
   '/dashboard/addcolor': ['attributes_view', 'attributes_manage'],
   '/dashboard/addcountryoforigin': ['attributes_view', 'attributes_manage'],
@@ -285,6 +311,9 @@ export const ROUTE_PERMISSION_MAP = {
   '/dashboard/templatemanager': ['templates_view', 'templates_manage'],
   '/dashboard/adduser': ['users_view', 'users_manage'],
   '/dashboard/clients': ['clients_view', 'clients_manage'],
+  '/dashboard/leads-download': ['leads_download_view'],
+  '/dashboard/incentives': ['incentives_view'],
+  '/dashboard/incentive-report': ['incentive_report_view'],
   '/dashboard/user-access': ['user_access_view', 'user_access_manage'],
   '/dashboard/addorder': ['orders_view', 'orders_manage'],
   '/dashboard/addshipping': ['shipping_view', 'shipping_manage'],

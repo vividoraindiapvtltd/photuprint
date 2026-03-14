@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from "react"
 import Link from "next/link"
 import { useRouter } from "next/router"
-import DOMPurify from "dompurify"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
 import { getProductSlug } from "../utils/slugify"
@@ -142,7 +141,7 @@ export default function ProductsList() {
                   {/* Product Info */}
                   <div className="p-4">
                     <h3 className="text-lg font-semibold text-gray-900 mb-2 line-clamp-2">{product.name}</h3>
-                    {product.description && <div className="text-sm text-gray-600 mb-3 line-clamp-2 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(product.description) }} />}
+                    {product.description && <div className="text-sm text-gray-600 mb-3 line-clamp-2 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: String(product.description).replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "").replace(/<[^>]+>/g, " ") }} />}
 
                     <div className="flex items-center justify-between mb-3">
                       {product.price && <span className="text-xl font-bold text-blue-600">${product.price}</span>}

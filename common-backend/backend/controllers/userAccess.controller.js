@@ -21,6 +21,9 @@ import bcrypt from "bcryptjs"
  */
 export const getAllPermissions = async (req, res) => {
   try {
+    // Ensure default permissions (including new modules/screens) are present
+    await Permission.seedDefaultPermissions()
+
     const permissions = await Permission.find({ isActive: true })
       .sort({ module: 1, sortOrder: 1 })
       .lean()
@@ -304,10 +307,27 @@ export const createStaffUser = async (req, res) => {
       }
     }
     
-    // Validate permissions exist
-    if (permissions.length > 0) {
-      const validPermissions = await Permission.find({ key: { $in: permissions } })
-      if (validPermissions.length !== permissions.length) {
+    // Determine default permissions when none are explicitly provided
+    let assignedPermissions = permissions
+    if ((!assignedPermissions || assignedPermissions.length === 0) && role !== "super_admin") {
+      if (role === "editor") {
+        // Sales agent: basic dashboard + lead management
+        assignedPermissions = [
+          "dashboard_view",
+          "clients_view",
+          "clients_manage",
+        ]
+      } else if (role === "admin") {
+        // Admin: by default, grant all active permissions
+        const allPerms = await Permission.find({ isActive: true }).select("key").lean()
+        assignedPermissions = allPerms.map((p) => p.key)
+      }
+    }
+
+    // Validate permissions exist (after applying defaults)
+    if (assignedPermissions && assignedPermissions.length > 0) {
+      const validPermissions = await Permission.find({ key: { $in: assignedPermissions } })
+      if (validPermissions.length !== assignedPermissions.length) {
         return res.status(400).json({ msg: "Some permissions are invalid" })
       }
     }
@@ -325,7 +345,7 @@ export const createStaffUser = async (req, res) => {
       username: username?.toLowerCase().trim() || null,
       password, // Will be hashed by pre-save hook
       role,
-      permissions: role === "super_admin" ? [] : permissions, // Super admin doesn't need permissions
+      permissions: role === "super_admin" ? [] : (assignedPermissions || []), // Super admin doesn't need permissions
       website: assignedWebsite,
       accessibleWebsites,
       phone: phone?.trim(),

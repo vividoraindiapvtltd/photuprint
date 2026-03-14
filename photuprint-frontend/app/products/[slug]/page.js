@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation"
 import { getProductBySlug, getProductSlugs } from "../../../src/lib/product-data"
-import ProductDetailsClient from "../../../components/ProductDetailsClient"
+import ProductDetailsClientLoader from "../../../components/ProductDetailsClientLoader"
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL || "https://photuprint.com"
 
@@ -68,7 +68,7 @@ export async function generateMetadata({ params }) {
   }
 }
 
-function ProductJsonLd({ product }) {
+function ProductJsonLd({ product, priceValidUntil }) {
   const imageUrl = getImageUrl(product)
   const price = product.discountedPrice || product.price
 
@@ -90,8 +90,8 @@ function ProductJsonLd({ product }) {
         priceCurrency: "INR",
         price: String(price),
         availability: product.inStock === false ? "https://schema.org/OutOfStock" : "https://schema.org/InStock",
-        ...(product.price && product.discountedPrice && product.price !== product.discountedPrice && {
-          priceValidUntil: new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0],
+        ...(priceValidUntil && {
+          priceValidUntil,
         }),
       },
     }),
@@ -107,6 +107,7 @@ function ProductJsonLd({ product }) {
   return (
     <script
       type="application/ld+json"
+      suppressHydrationWarning
       dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
     />
   )
@@ -120,10 +121,16 @@ export default async function ProductPage({ params }) {
     notFound()
   }
 
+  // Compute priceValidUntil once at request time to avoid Date.now() hydration mismatch
+  const priceValidUntil =
+    product.price && product.discountedPrice && product.price !== product.discountedPrice
+      ? new Date(Date.now() + 30 * 86400000).toISOString().split("T")[0]
+      : null
+
   return (
     <>
-      <ProductJsonLd product={product} />
-      <ProductDetailsClient initialProduct={product} />
+      <ProductJsonLd product={product} priceValidUntil={priceValidUntil} />
+      <ProductDetailsClientLoader initialProduct={product} />
     </>
   )
 }

@@ -55,14 +55,25 @@ api.interceptors.request.use((config) => {
   }
 
   // Multi-tenant: Add X-Website-Id header for admin/CMS requests
+  // Allow per-request override: config.skipWebsiteId = true (omit header), config.websiteId = id (use specific website)
   try {
-    const selectedWebsiteStr = localStorage.getItem("selectedWebsite")
-    if (selectedWebsiteStr) {
-      const selectedWebsite = JSON.parse(selectedWebsiteStr)
-      if (selectedWebsite?._id) {
-        config.headers['X-Website-Id'] = selectedWebsite._id
+    if (config.skipWebsiteId === true) {
+      delete config.headers['X-Website-Id']
+      delete config.headers['x-website-id']
+    } else if (config.websiteId) {
+      config.headers['X-Website-Id'] = config.websiteId
+      config.headers['x-website-id'] = config.websiteId
+    } else {
+      const selectedWebsiteStr = localStorage.getItem("selectedWebsite")
+      if (selectedWebsiteStr) {
+        const selectedWebsite = JSON.parse(selectedWebsiteStr)
+        if (selectedWebsite?._id) {
+          config.headers['X-Website-Id'] = selectedWebsite._id
+        }
       }
     }
+    delete config.skipWebsiteId
+    delete config.websiteId
   } catch (error) {
     console.warn("Failed to get selected website for tenant context:", error)
   }

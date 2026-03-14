@@ -162,7 +162,7 @@ const ColorManager = () => {
       if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
         // Extract filename from system path
         const filename = imageUrl.split('/').pop();
-        return `/uploads/${filename}`;
+        return `http://localhost:8080/uploads/${filename}`;
       }
       // Otherwise it's a valid Cloudinary URL, return as is
       return imageUrl;
@@ -172,16 +172,16 @@ const ColorManager = () => {
     if (imageUrl.includes('/backend/uploads/') || imageUrl.includes('/Users/')) {
       // Extract filename from system path
       const filename = imageUrl.split('/').pop();
-      return `/uploads/${filename}`;
+      return `http://localhost:8080/uploads/${filename}`;
     }
     
     // Handle relative paths
     if (imageUrl.startsWith('/uploads/') || imageUrl.startsWith('/')) {
-      return `${imageUrl}`;
+      return `http://localhost:8080${imageUrl}`;
     }
     
     // Relative path without leading slash
-    return `/uploads/${imageUrl}`;
+    return `http://localhost:8080/uploads/${imageUrl}`;
   };
 
   // Fetch colors from backend

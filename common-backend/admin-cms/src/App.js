@@ -48,11 +48,14 @@ import TemplateDimensionManager from "./components/TemplateDimensionManager"
 import FontStyleManager from "./components/FontStyleManager"
 import ImageToVector from "./components/ImageToVector"
 import TestimonialManager from "./components/TestimonialManager"
+import IncentiveManager from "./components/IncentiveManager"
+import IncentiveReport from "./components/IncentiveReport"
 import HomepageSectionManager from "./components/HomepageSectionManager"
 import FooterManager from "./components/FooterManager"
 import FooterSetting from "./components/FooterSetting"
 import FrontendCarousel from "./components/FrontendCarousel"
 import ClientManager from "./components/ClientManager"
+import LeadsDownload from "./components/LeadsDownload"
 import UserAccessManager from "./components/UserAccessManager"
 import Reports from "./pages/Reports"
 import ProductCostCalculator from "./pages/ProductCostCalculator"
@@ -216,6 +219,30 @@ export default function App() {
               element={
                 <PrivateRoute>
                   <ClientManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="leads-download"
+              element={
+                <PrivateRoute>
+                  <LeadsDownload />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="incentives"
+              element={
+                <PrivateRoute>
+                  <IncentiveManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="incentive-report"
+              element={
+                <PrivateRoute>
+                  <IncentiveReport />
                 </PrivateRoute>
               }
             />

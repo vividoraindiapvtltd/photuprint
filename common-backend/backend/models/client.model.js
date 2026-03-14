@@ -79,6 +79,23 @@ const clientSchema = new mongoose.Schema(
       maxlength: [100, "Industry cannot exceed 100 characters"],
     },
     
+    // Product / order info
+    productName: {
+      type: String,
+      trim: true,
+      maxlength: [300, "Product name cannot exceed 300 characters"],
+    },
+    quantity: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    location: {
+      type: String,
+      trim: true,
+      maxlength: [200, "Location cannot exceed 200 characters"],
+    },
+    
     // Address
     address: {
       street: { type: String, trim: true, maxlength: 255 },
@@ -99,7 +116,7 @@ const clientSchema = new mongoose.Schema(
     // Lead Source
     source: {
       type: String,
-      enum: ["website", "referral", "social_media", "cold_call", "email_campaign", "trade_show", "advertisement", "partner", "other"],
+      enum: ["website", "indiamart", "referral", "social_media", "cold_call", "email_campaign", "trade_show", "advertisement", "partner", "other"],
       default: "other",
     },
     

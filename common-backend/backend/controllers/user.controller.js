@@ -18,7 +18,7 @@ export const getUsers = async (req, res) => {
       "req.tenant": req.tenant ? req.tenant._id : null,
     })
 
-    const { search, showInactive, includeDeleted, role } = req.query
+    const { search, showInactive, includeDeleted, role, limit } = req.query
     let query = {}
 
     // Filter by website when websiteId is provided (applies to both super admins and regular admins)
@@ -88,10 +88,13 @@ export const getUsers = async (req, res) => {
     console.log("🔍 Final MongoDB query:", JSON.stringify(query, null, 2))
     console.log("🔍 Query website value type:", query.website ? (query.website instanceof mongoose.Types.ObjectId ? "ObjectId" : typeof query.website) : "null")
 
-    const users = await User.find(query)
+    let queryBuilder = User.find(query)
       .select("-password")
       .populate("website", "name domain") // Populate website with name and domain
-      .sort({ createdAt: -1 })
+      .sort({ createdAt: -1 });
+    const limitNum = limit ? parseInt(limit, 10) : 0;
+    if (limitNum > 0) queryBuilder = queryBuilder.limit(limitNum);
+    const users = await queryBuilder;
 
     console.log("🔍 Found users:", users.length)
     if (users.length > 0 && query.website) {
