@@ -1,6 +1,6 @@
 import Company from '../models/company.model.js';
 import Website from '../models/website.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Get all companies
 export const getCompanies = async (req, res) => {
@@ -225,22 +225,10 @@ export const createCompany = async (req, res) => {
     // Handle logo upload
     let logoUrl = null;
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import("../utils/cloudinary.js")).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/company",
-          resource_type: "auto",
-        });
-        logoUrl = result.secure_url;
-        
-        // Clean up temporary file after upload
-        removeLocalFile(req.file.path);
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError);
-        // Fallback to local storage
-        logoUrl = `/uploads/${req.file.filename}`;
-      }
+      logoUrl = await tenantCloudinaryUpload(req.websiteId, req.file, {
+        folder: "photuprint/company",
+        resource_type: "auto",
+      });
     }
 
     const company = new Company({
@@ -422,22 +410,10 @@ export const updateCompany = async (req, res) => {
 
     // Handle logo upload
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import("../utils/cloudinary.js")).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/company",
-          resource_type: "auto",
-        });
-        company.logo = result.secure_url;
-        
-        // Clean up temporary file after upload
-        removeLocalFile(req.file.path);
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError);
-        // Fallback to local storage
-        company.logo = `/uploads/${req.file.filename}`;
-      }
+      company.logo = await tenantCloudinaryUpload(req.websiteId, req.file, {
+        folder: "photuprint/company",
+        resource_type: "auto",
+      });
     }
 
     const updatedCompany = await company.save();

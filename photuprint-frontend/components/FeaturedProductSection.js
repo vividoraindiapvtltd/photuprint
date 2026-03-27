@@ -596,12 +596,12 @@ export function RecentlyViewedProducts() {
   if (!hasProducts && !showGuestFallback) return null
 
   return (
-    <div className="bg-white py-8 border-b border-gray-200">
-      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between mb-6">
+    <div className="border-b border-gray-200 bg-white py-5 sm:py-8">
+      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
+        <div className="mb-4 flex items-center justify-between sm:mb-6">
           <div className="flex items-center space-x-2">
             <span className="text-xl">🕐</span>
-            <h2 className="text-2xl font-bold text-gray-900">Recently Viewed</h2>
+            <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">Recently Viewed</h2>
           </div>
           <Link href="/account?tab=recently-viewed" className="text-blue-600 hover:text-blue-700 font-semibold text-sm flex items-center">
             View All

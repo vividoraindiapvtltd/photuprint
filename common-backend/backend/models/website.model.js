@@ -35,6 +35,8 @@ const websiteSchema = new mongoose.Schema(
     razorpayKeySecret: { type: String, default: null, trim: true },
 
     // Per-website Cloudinary credentials (falls back to env vars if empty)
+    // cloudinaryUrl: e.g. cloudinary://API_KEY:API_SECRET@CLOUD_NAME — takes precedence over the three fields when set
+    cloudinaryUrl: { type: String, default: null, trim: true },
     cloudinaryCloudName: { type: String, default: null, trim: true },
     cloudinaryApiKey: { type: String, default: null, trim: true },
     cloudinaryApiSecret: { type: String, default: null, trim: true },

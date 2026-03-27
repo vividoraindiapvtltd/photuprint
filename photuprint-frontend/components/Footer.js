@@ -1,6 +1,6 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useEffect, useLayoutEffect, useRef, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import DOMPurify from "isomorphic-dompurify"
@@ -85,7 +85,7 @@ function SectionLinks({ section, theme = {} }) {
   return (
     <div>
       {section.title && (
-        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+        <h4 className="mb-2 uppercase sm:mb-3" style={{ ...titleStyle, fontWeight: 700 }}>
           {section.title}
         </h4>
       )}
@@ -132,7 +132,7 @@ function SectionContact({ section, theme = {} }) {
   return (
     <div>
       {section.title && (
-        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+        <h4 className="mb-2 uppercase sm:mb-3" style={{ ...titleStyle, fontWeight: 700 }}>
           {section.title}
         </h4>
       )}
@@ -198,25 +198,25 @@ function SectionNewsletter({ section, theme = {} }) {
   return (
     <div>
       {section.title && (
-        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+        <h4 className="mb-2 uppercase sm:mb-3" style={{ ...titleStyle, fontWeight: 700 }}>
           {section.title}
         </h4>
       )}
-      <form onSubmit={handleSubmit} className="flex gap-2">
+      <form onSubmit={handleSubmit} className="flex w-full min-w-0 flex-col gap-2 sm:flex-row sm:items-stretch">
         <input
           type="email"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           placeholder={placeholder}
           required
-          className="flex-1 border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+          className="w-full min-w-0 flex-1 border rounded px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
           style={{
             ...inputStyle,
             borderWidth: inputStyle.borderColor ? 1 : 0,
             borderStyle: "solid",
           }}
         />
-        <button type="submit" disabled={status === "loading"} className="px-4 py-2 text-sm font-medium rounded hover:opacity-90 disabled:opacity-50" style={subscribeButtonStyle}>
+        <button type="submit" disabled={status === "loading"} className="w-full shrink-0 px-4 py-2 text-sm font-medium rounded hover:opacity-90 disabled:opacity-50 sm:w-auto" style={subscribeButtonStyle}>
           {status === "loading" ? "..." : buttonText}
         </button>
       </form>
@@ -243,7 +243,7 @@ function SectionSocial({ section, theme = {} }) {
   return (
     <div>
       {section.title && (
-        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+        <h4 className="mb-2 uppercase sm:mb-3" style={{ ...titleStyle, fontWeight: 700 }}>
           {section.title}
         </h4>
       )}
@@ -263,14 +263,58 @@ function SectionAbout({ section, theme = {} }) {
   const sanitizedDescription = description ? sanitizeHtml(description, { ALLOWED_TAGS: ["p", "br", "strong", "em", "u", "ul", "ol", "li", "a", "h2", "h3", "h4"] }) : ""
   const titleStyle = { fontSize: theme.titleFontSize || undefined, color: theme.titleColor || undefined }
   const bodyStyle = { fontSize: theme.bodyTextSize || undefined, color: theme.bodyTextColor || undefined }
+  const [expanded, setExpanded] = useState(false)
+  const [showToggle, setShowToggle] = useState(false)
+  const measureRef = useRef(null)
+
+  useEffect(() => {
+    setExpanded(false)
+  }, [sanitizedDescription])
+
+  useLayoutEffect(() => {
+    if (!sanitizedDescription || expanded) return
+    const el = measureRef.current
+    if (!el) return
+    setShowToggle(el.scrollHeight > el.clientHeight + 1)
+  }, [sanitizedDescription, expanded])
+
+  const linkColor = theme.linkColor || "#9ca3af"
+  const linkHover = theme.linkHoverColor || "#ffffff"
+
   return (
     <div>
       {section.title && (
-        <h4 className="mb-2 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+        <h4 className="mb-2 uppercase sm:mb-3" style={{ ...titleStyle, fontWeight: 700 }}>
           {section.title}
         </h4>
       )}
-      {sanitizedDescription && <div className="footer-about-description [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1" style={bodyStyle} dangerouslySetInnerHTML={{ __html: sanitizedDescription }} />}
+      {sanitizedDescription && (
+        <div>
+          <div
+            ref={measureRef}
+            className={`footer-about-description [&_p]:mb-2 [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_li]:mb-1 ${expanded ? "" : "line-clamp-5"}`}
+            style={bodyStyle}
+            dangerouslySetInnerHTML={{ __html: sanitizedDescription }}
+          />
+          {showToggle && (
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="mt-2 text-sm font-medium underline decoration-1 underline-offset-2 transition-opacity hover:opacity-90"
+              style={{ color: linkColor }}
+              onMouseEnter={(e) => {
+                if (linkHover) e.currentTarget.style.color = linkHover
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = linkColor
+              }}
+              aria-expanded={expanded}
+            >
+              {expanded ? "Read less" : "Read more"}
+            </button>
+          )}
+        </div>
+      )}
     </div>
   )
 }
@@ -282,7 +326,7 @@ function SectionPayment({ section, theme = {} }) {
   return (
     <div>
       {section.title && (
-        <h4 className="mb-3 uppercase" style={{ ...titleStyle, fontWeight: 700 }}>
+        <h4 className="mb-2 uppercase sm:mb-3" style={{ ...titleStyle, fontWeight: 700 }}>
           {section.title}
         </h4>
       )}
@@ -421,9 +465,9 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
 
   if (loading) {
     return (
-      <footer className="bg-gray-900 text-white py-8">
-        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="animate-pulse h-32 bg-gray-800 rounded" />
+      <footer className="bg-gray-900 py-5 text-white sm:py-8">
+        <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
+          <div className="h-24 animate-pulse rounded bg-gray-800 sm:h-32" />
         </div>
       </footer>
     )
@@ -431,8 +475,15 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
 
   if (sections.length === 0) {
     return (
+<<<<<<< Updated upstream
       <footer className="bg-gray-900 text-white py-8 border-t border-gray-200">
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm">© {new Date().getFullYear()} All rights reserved.</div>
+=======
+      <footer className="border-t border-gray-200 bg-gray-900 py-5 text-white sm:py-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm" suppressHydrationWarning>
+          © {new Date().getFullYear()} All rights reserved.
+        </div>
+>>>>>>> Stashed changes
       </footer>
     )
   }
@@ -449,12 +500,13 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
     const span =
       {
         fullWidth: "col-span-12",
-        cols4: "col-span-12 sm:col-span-6 lg:col-span-3",
-        cols3: "col-span-12 sm:col-span-6 lg:col-span-4",
-        cols2: "col-span-12 sm:col-span-6",
+        // Mobile: two columns (6+6); scale up at lg for 3–4 column desktop layouts
+        cols4: "col-span-6 lg:col-span-3",
+        cols3: "col-span-6 md:col-span-4 lg:col-span-4",
+        cols2: "col-span-6",
         cols1: "col-span-12",
         cols1rows2: "col-span-12",
-      }[layout] || "col-span-12 sm:col-span-6 lg:col-span-3"
+      }[layout] || "col-span-6 lg:col-span-3"
     return span
   }
 
@@ -507,16 +559,20 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
 
   return (
     <footer className="text-white" style={footerStyle}>
-      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-12">
+      <div className="mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
         {rows.map((row, rowIndex) => (
-          <div key={rowIndex} className={`grid grid-cols-12 gap-8 ${rowIndex < rows.length - 1 ? "mt-4 mb-4 pb-8 border-b" : ""}`} style={{ color: mergedTheme.bodyTextColor, ...(rowIndex < rows.length - 1 ? dividerStyle : {}) }}>
+          <div
+            key={rowIndex}
+            className={`grid grid-cols-12 gap-5 sm:gap-6 lg:gap-8 ${rowIndex < rows.length - 1 ? "mt-2 mb-2 border-b pb-4 sm:mt-4 sm:mb-4 sm:pb-6 lg:pb-8" : ""}`}
+            style={{ color: mergedTheme.bodyTextColor, ...(rowIndex < rows.length - 1 ? dividerStyle : {}) }}
+          >
             {row.type === "fullWidth" ? (
-              <div className="min-w-0 col-span-12">{renderSection(row.sections[0], mergedTheme)}</div>
+              <div className="col-span-12 min-w-0">{renderSection(row.sections[0], mergedTheme)}</div>
             ) : (
               row.columns.map((columnSections, colIdx) => (
                 <div key={colIdx} className={`min-w-0 ${getSectionSpan(columnSections[0]?.displayLayout)}`}>
                   {columnSections.map((section, sectionIdx) => (
-                    <div key={section._id} className={sectionIdx > 0 ? "mt-6" : ""}>
+                    <div key={section._id} className={sectionIdx > 0 ? "mt-4 sm:mt-6" : ""}>
                       {renderSection(section, mergedTheme)}
                     </div>
                   ))}
@@ -526,7 +582,7 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
           </div>
         ))}
         {copyrightSection && (
-          <div className="mt-8 pt-8 border-t" style={dividerStyleTop}>
+          <div className="mt-4 border-t pt-4 sm:mt-6 sm:pt-6 md:mt-8 md:pt-8" style={dividerStyleTop}>
             {renderSection(copyrightSection, mergedTheme)}
           </div>
         )}

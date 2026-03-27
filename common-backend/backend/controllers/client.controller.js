@@ -1,7 +1,6 @@
 import Client from "../models/client.model.js"
 import Interaction from "../models/interaction.model.js"
-import cloudinary from "../utils/cloudinary.js"
-import { removeLocalFile } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 
 /**
  * Client Controller
@@ -182,6 +181,91 @@ export const getClientById = async (req, res) => {
 }
 
 /**
+<<<<<<< Updated upstream
+=======
+ * Create a lead from public website form (bulk product enquiry, contact, etc.)
+ * No auth required. Uses tenant from X-Website-Id or domain.
+ * Duplicate email allowed (multiple enquiries from same contact).
+ */
+export const createLead = async (req, res) => {
+  try {
+    const websiteId = req.websiteId || req.tenant?._id
+
+    if (!websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+
+    const {
+      firstName,
+      lastName,
+      email,
+      phone,
+      company,
+      productName,
+      quantity,
+      location,
+      notes,
+      leadKind,
+    } = req.body
+
+    const first = (firstName || "").toString().trim()
+    if (!first) {
+      return res.status(400).json({ msg: "First name is required" })
+    }
+    const contact = (email || phone || "").toString().trim()
+    if (!contact) {
+      return res.status(400).json({ msg: "Email or phone is required" })
+    }
+
+    const kind = (leadKind || "bulk").toString().trim().toLowerCase().replace(/-/g, "_")
+    let sourceDetails = "Bulk product enquiry"
+    let leadTags = ["bulk-enquiry", "website"]
+    if (kind === "contact") {
+      sourceDetails = "Contact form"
+      leadTags = ["contact", "website"]
+    } else if (kind === "connect_wizard") {
+      sourceDetails = "Connect now wizard"
+      leadTags = ["connect-wizard", "website"]
+    }
+
+    const assignedTo = await getNextAgentForWebsite(websiteId)
+
+    const client = new Client({
+      firstName: first,
+      lastName: (lastName || "").toString().trim(),
+      email: email ? String(email).trim().toLowerCase() : undefined,
+      phone: phone ? String(phone).trim() : undefined,
+      company: company ? String(company).trim() : "",
+      productName: productName ? String(productName).trim() : "",
+      quantity: quantity != null && quantity !== "" ? Number(quantity) : null,
+      location: location ? String(location).trim() : "",
+      notes: notes ? String(notes).trim() : "",
+      status: "lead",
+      source: "website",
+      sourceDetails,
+      tags: leadTags,
+      priority: "medium",
+      estimatedValue: 0,
+      currency: "INR",
+      isActive: true,
+      website: websiteId,
+      ...(assignedTo && { assignedTo }),
+    })
+
+    await client.save()
+
+    res.status(201).json({
+      msg: "Thank you! We have received your enquiry and will get back to you soon.",
+      clientId: client._id,
+    })
+  } catch (error) {
+    console.error("Error creating lead:", error)
+    res.status(500).json({ msg: "Server error", error: error.message })
+  }
+}
+
+/**
+>>>>>>> Stashed changes
  * Create a new client
  */
 export const createClient = async (req, res) => {
@@ -235,19 +319,13 @@ export const createClient = async (req, res) => {
     // Handle avatar upload
     let avatarUrl = null
     if (req.file) {
-      try {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "clients",
-          transformation: [
-            { width: 200, height: 200, crop: "fill" },
-            { quality: "auto" },
-          ],
-        })
-        avatarUrl = result.secure_url
-        removeLocalFile(req.file.path)
-      } catch (uploadError) {
-        console.error("Error uploading avatar:", uploadError)
-      }
+      avatarUrl = await tenantCloudinaryUpload(websiteId, req.file, {
+        folder: "clients",
+        transformation: [
+          { width: 200, height: 200, crop: "fill" },
+          { quality: "auto" },
+        ],
+      })
     }
     
     // Parse tags if string
@@ -385,19 +463,13 @@ export const updateClient = async (req, res) => {
     
     // Handle avatar upload
     if (req.file) {
-      try {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "clients",
-          transformation: [
-            { width: 200, height: 200, crop: "fill" },
-            { quality: "auto" },
-          ],
-        })
-        client.avatar = result.secure_url
-        removeLocalFile(req.file.path)
-      } catch (uploadError) {
-        console.error("Error uploading avatar:", uploadError)
-      }
+      client.avatar = await tenantCloudinaryUpload(websiteId, req.file, {
+        folder: "clients",
+        transformation: [
+          { width: 200, height: 200, crop: "fill" },
+          { quality: "auto" },
+        ],
+      })
     }
 
     // Update fields

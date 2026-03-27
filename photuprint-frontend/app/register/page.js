@@ -1,11 +1,13 @@
 "use client"
 
-import { Suspense, useState, useEffect } from "react"
+import { Suspense, useState, useEffect, useRef } from "react"
 import { useGoogleLogin } from "@react-oauth/google"
 import { useAuth } from "../../src/context/AuthContext"
 import api from "../../src/utils/api"
 import { useRouter, useSearchParams } from "next/navigation"
 import Link from "next/link"
+import ReCAPTCHA from "react-google-recaptcha"
+import { validatePassword, PASSWORD_RULES } from "../../src/utils/passwordValidation"
 
 function RegisterContent() {
   const { login, isAuthenticated } = useAuth()
@@ -24,6 +26,8 @@ function RegisterContent() {
   const [verificationEmail, setVerificationEmail] = useState("")
   const [resendLoading, setResendLoading] = useState(false)
   const [resendMsg, setResendMsg] = useState("")
+  const [captchaToken, setCaptchaToken] = useState(null)
+  const captchaRef = useRef(null)
 
   // Get the redirect URL from query params
   const from = searchParams.get("from") || "/"
@@ -54,8 +58,9 @@ function RegisterContent() {
       return
     }
 
-    if (formData.password.length < 6) {
-      setError("Password must be at least 6 characters long")
+    const pwError = validatePassword(formData.password)
+    if (pwError) {
+      setError(pwError)
       setLoading(false)
       return
     }
@@ -82,13 +87,19 @@ function RegisterContent() {
       return
     }
 
+    if (!captchaToken) {
+      setError("Please complete the CAPTCHA verification")
+      setLoading(false)
+      return
+    }
+
     try {
-      // Register the user
       const registerResponse = await api.post("/auth/register", {
         name: formData.name,
         email: formData.email,
         mobile: formData.mobile,
         password: formData.password,
+        captchaToken,
       })
 
       const data = registerResponse.data || {}
@@ -110,6 +121,8 @@ function RegisterContent() {
       console.error("Registration error:", err)
       const errorMessage = err.response?.data?.msg || err.message || "Registration failed. Please try again."
       setError(errorMessage)
+      setCaptchaToken(null)
+      captchaRef.current?.reset()
     } finally {
       setLoading(false)
     }
@@ -269,7 +282,8 @@ function RegisterContent() {
               <label htmlFor="password" className="block text-sm font-medium text-gray-700 mb-1">
                 Password
               </label>
-              <input id="password" name="password" type="password" autoComplete="new-password" required className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Minimum 6 characters" value={formData.password} onChange={handleChange} />
+              <input id="password" name="password" type="password" autoComplete="new-password" required className="appearance-none relative block w-full px-3 py-2 border border-gray-300 placeholder-gray-500 text-gray-900 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500 focus:z-10 sm:text-sm" placeholder="Min 8 chars, 1 uppercase, 1 special" value={formData.password} onChange={handleChange} />
+              <p className="mt-1 text-xs text-gray-500">{PASSWORD_RULES}</p>
             </div>
 
             <div>
@@ -280,8 +294,14 @@ function RegisterContent() {
             </div>
           </div>
 
+          {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && (
+            <div className="flex justify-center">
+              <ReCAPTCHA ref={captchaRef} sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY} onChange={(token) => setCaptchaToken(token)} onExpired={() => setCaptchaToken(null)} />
+            </div>
+          )}
+
           <div>
-            <button type="submit" disabled={loading} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
+            <button type="submit" disabled={loading || !captchaToken} className="group relative w-full flex justify-center py-2 px-4 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
               {loading ? "Creating account..." : "Create account"}
             </button>
           </div>

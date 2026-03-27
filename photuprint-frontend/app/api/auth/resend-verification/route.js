@@ -5,7 +5,7 @@ import { NextResponse } from "next/server"
 export const dynamic = "force-dynamic"
 
 export async function POST(request) {
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+  const backendUrl = process.env.API_URL || "http://localhost:8080/api"
   const websiteId = request.headers.get("x-website-id") || request.headers.get("X-Website-Id") || process.env.NEXT_PUBLIC_WEBSITE_ID
 
   if (!websiteId) {

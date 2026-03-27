@@ -47,8 +47,14 @@ export const register = async (req, res) => {
     if (!email || !String(email).trim()) {
       return res.status(400).json({ msg: "Email is required", code: "EMAIL_REQUIRED" })
     }
-    if (!password || String(password).length < 6) {
-      return res.status(400).json({ msg: "Password is required and must be at least 6 characters", code: "PASSWORD_REQUIRED" })
+    if (!password || String(password).length < 8) {
+      return res.status(400).json({ msg: "Password must be at least 8 characters", code: "PASSWORD_REQUIRED" })
+    }
+    if (!/[A-Z]/.test(String(password))) {
+      return res.status(400).json({ msg: "Password must contain at least 1 uppercase letter", code: "PASSWORD_WEAK" })
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(String(password))) {
+      return res.status(400).json({ msg: "Password must contain at least 1 special character", code: "PASSWORD_WEAK" })
     }
     const emailLower = String(email).trim().toLowerCase()
 

@@ -3,7 +3,7 @@
  * Used by the homepage Server Component to enable SSR for the footer.
  */
 
-const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+const backendUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
 const websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID
 
 const headers = {

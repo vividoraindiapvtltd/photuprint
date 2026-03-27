@@ -2,6 +2,7 @@ import { Suspense } from "react"
 import HomePage from "../components/HomePage"
 import { getHomepageData } from "../src/lib/homepage-data"
 import { getFooterData } from "../src/lib/footer-data"
+import { getCategoriesData } from "../src/lib/categories-data"
 
 export const revalidate = 60
 
@@ -27,18 +28,13 @@ function HomepageJsonLd() {
 }
 
 export default async function Page() {
-  const [homeData, footerData] = await Promise.all([getHomepageData(), getFooterData()])
+  const [homeData, footerData, categoriesData] = await Promise.all([getHomepageData(), getFooterData(), getCategoriesData()])
 
   return (
     <>
       <HomepageJsonLd />
       <Suspense>
-        <HomePage
-          initialSections={homeData.sections}
-          fallbackProducts={homeData.fallbackProducts}
-          initialFooterSections={footerData.sections}
-          initialFooterTheme={footerData.theme}
-        />
+        <HomePage initialSections={homeData.sections} fallbackProducts={homeData.fallbackProducts} initialFooterSections={footerData.sections} initialFooterTheme={footerData.theme} initialCategories={categoriesData} />
       </Suspense>
     </>
   )

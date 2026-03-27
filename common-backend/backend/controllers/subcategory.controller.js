@@ -1,6 +1,6 @@
 import Subcategory from '../models/subcategory.model.js';
 import Category from '../models/category.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Generate next subcategory ID
 const generateNextSubcategoryId = async () => {
@@ -143,18 +143,7 @@ export const createSubCategory = async (req, res) => {
     // Handle image upload
     let imageUrl = null;
     if (req.file) {
-      try {
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/subcategories',
-        });
-        imageUrl = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image uploaded to Cloudinary:', imageUrl);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        imageUrl = `/uploads/${req.file.filename}`; // Fallback
-      }
+      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/subcategories' });
     }
 
     // Generate unique subcategory ID
@@ -219,19 +208,7 @@ export const updateSubCategory = async (req, res) => {
 
     // Handle image update/removal
     if (req.file) {
-      // New image file uploaded
-      try {
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/subcategories',
-        });
-        subcategory.image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image updated in Cloudinary:', subcategory.image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        subcategory.image = `/uploads/${req.file.filename}`; // Fallback
-      }
+      subcategory.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/subcategories' });
     } else if (req.body.image !== undefined) {
       // Image field explicitly set (could be null to remove image)
       if (req.body.image === null || req.body.image === '') {

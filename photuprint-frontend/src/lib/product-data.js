@@ -3,7 +3,7 @@
  * Used by SSR page components for product detail and listing pages.
  */
 
-const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+const backendUrl = process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
 const websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID
 
 const headers = {
@@ -19,9 +19,7 @@ const headers = {
 export async function getProductBySlug(slugOrId) {
   if (!slugOrId) return null
   const isObjectId = /^[0-9a-fA-F]{24}$/.test(slugOrId)
-  const url = isObjectId
-    ? `${backendUrl}/products/${slugOrId}`
-    : `${backendUrl}/products/slug/${encodeURIComponent(slugOrId)}`
+  const url = isObjectId ? `${backendUrl}/products/${slugOrId}` : `${backendUrl}/products/slug/${encodeURIComponent(slugOrId)}`
   try {
     const res = await fetch(url, { headers, next: { revalidate: 600 } })
     if (!res.ok) return null
@@ -109,10 +107,7 @@ export async function getCategories() {
 export async function getSubcategories(categoryId) {
   if (!categoryId) return []
   try {
-    const res = await fetch(
-      `${backendUrl}/subcategories?category=${encodeURIComponent(categoryId)}&showInactive=false&includeDeleted=false`,
-      { headers, next: { revalidate: 300 } },
-    )
+    const res = await fetch(`${backendUrl}/subcategories?category=${encodeURIComponent(categoryId)}&showInactive=false&includeDeleted=false`, { headers, next: { revalidate: 300 } })
     if (!res.ok) return []
     const data = await res.json()
     return data?.subcategories ?? (Array.isArray(data) ? data : [])
@@ -132,7 +127,11 @@ export async function getCategoryBySlug(slug) {
   const categories = await getCategories()
   const slugLower = slug.toLowerCase()
   const found = categories.find((c) => {
-    const catSlug = (c.slug || c.name || "").trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")
+    const catSlug = (c.slug || c.name || "")
+      .trim()
+      .toLowerCase()
+      .replace(/\s+/g, "-")
+      .replace(/[^a-z0-9-]/g, "")
     return catSlug === slugLower
   })
   if (!found) return null

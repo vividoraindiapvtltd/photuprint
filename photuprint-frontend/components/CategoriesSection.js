@@ -16,30 +16,15 @@ function getCategorySlug(category) {
 function CategoryCard({ category }) {
   const id = category._id ?? category.id
   const name = category.name ?? "Category"
-  const imageUrl =
-    category.image ??
-    category.imageUrl ??
-    category.banner ??
-    category.thumbnail ??
-    category.icon ??
-    null
+  const imageUrl = category.image ?? category.imageUrl ?? category.banner ?? category.thumbnail ?? category.icon ?? null
   const slug = getCategorySlug(category)
-  const href = slug ? `/${slug}` : (id ? `/products?categoryId=${encodeURIComponent(id)}` : "/products")
+  const href = slug ? `/${slug}` : id ? `/products?categoryId=${encodeURIComponent(id)}` : "/products"
 
   return (
-    <Link
-      href={href}
-      className="group block bg-white rounded-lg overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-200"
-    >
+    <Link href={href} className="group block bg-white rounded-lg overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-200">
       <div className="relative aspect-[4/5] sm:aspect-square bg-gray-100 overflow-hidden">
         {imageUrl ? (
-          <Image
-            src={getImageSrc(imageUrl) || imageUrl}
-            alt={name}
-            fill
-            sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw"
-            className="object-cover group-hover:scale-105 transition-transform duration-200"
-          />
+          <Image src={getImageSrc(imageUrl) || imageUrl} alt={name} fill sizes="(max-width: 640px) 50vw, (max-width: 768px) 33vw, 25vw" className="object-cover group-hover:scale-105 transition-transform duration-200" loading="lazy" />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-300">
             <span className="text-gray-400 text-sm font-medium uppercase">{name.charAt(0)}</span>
@@ -73,11 +58,13 @@ function CategoriesSectionShimmer() {
   )
 }
 
-export default function CategoriesSection() {
-  const [categories, setCategories] = useState([])
-  const [loading, setLoading] = useState(true)
+export default function CategoriesSection({ initialCategories = [] }) {
+  const hasInitial = initialCategories.length > 0
+  const [categories, setCategories] = useState(initialCategories)
+  const [loading, setLoading] = useState(!hasInitial)
 
   useEffect(() => {
+    if (hasInitial) return
     api
       .get("/categories?showInactive=false&includeDeleted=false", { skipAuth: true })
       .then((res) => {
@@ -86,7 +73,7 @@ export default function CategoriesSection() {
       })
       .catch(() => setCategories([]))
       .finally(() => setLoading(false))
-  }, [])
+  }, [hasInitial])
 
   if (loading) return <CategoriesSectionShimmer />
   if (categories.length === 0) return null
@@ -94,9 +81,7 @@ export default function CategoriesSection() {
   return (
     <section className="bg-white py-10 border-b border-gray-200">
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8">
-        <h2 className="text-xl font-bold text-gray-900 text-center uppercase tracking-wide mb-8">
-          Categories
-        </h2>
+        <h2 className="text-xl font-bold text-gray-900 text-center uppercase tracking-wide mb-8">Categories</h2>
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4">
           {categories.map((cat) => (
             <CategoryCard key={cat._id ?? cat.id} category={cat} />

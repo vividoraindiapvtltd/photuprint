@@ -1,16 +1,18 @@
 "use client"
 
-import { useEffect, useState, useRef, Suspense } from "react"
+import { useEffect, useState, useRef, Suspense, useCallback } from "react"
+import { createPortal } from "react-dom"
 import { useRouter, useSearchParams } from "next/navigation"
 import Image from "next/image"
 import { useAuth } from "../../src/context/AuthContext"
+import { useMediaQuery } from "../../src/hooks/useMediaQuery"
 import Header from "../../src/components/Header"
 import api from "../../src/utils/api"
 import { getProductSlug } from "../../src/utils/slugify"
 import { getImageSrc } from "../../src/utils/imageUrl"
 
 // Tab Components
-function ProfileTab({ profile, onUpdate, loading }) {
+function ProfileTab({ profile, onUpdate, loading, isMdUp = true }) {
   const [editing, setEditing] = useState(false)
   const [formData, setFormData] = useState({
     name: "",
@@ -72,7 +74,7 @@ function ProfileTab({ profile, onUpdate, loading }) {
       <div className="flex justify-between items-center">
         <h2 className="text-2xl font-bold text-gray-900">Your Account</h2>
         {!editing && (
-          <button onClick={() => setEditing(true)} className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
+          <button type="button" onClick={() => setEditing(true)} className="min-h-[44px] px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors inline-flex items-center justify-center">
             Edit Profile
           </button>
         )}
@@ -138,11 +140,11 @@ function ProfileTab({ profile, onUpdate, loading }) {
 
         {/* Edit Actions */}
         {editing && (
-          <div className="p-6 bg-gray-50 flex justify-end space-x-3">
-            <button onClick={() => setEditing(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          <div className="p-6 bg-gray-50 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end sm:space-x-3">
+            <button type="button" onClick={() => setEditing(false)} className="min-h-[44px] px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
               Cancel
             </button>
-            <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+            <button type="button" onClick={handleSave} disabled={saving} className="min-h-[44px] px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
               {saving ? "Saving..." : "Save Changes"}
             </button>
           </div>
@@ -150,14 +152,15 @@ function ProfileTab({ profile, onUpdate, loading }) {
       </div>
 
       {/* Shipping & Billing Address (single address saved via profile) */}
-      <AddressSection profile={profile} onUpdate={onUpdate} />
+      <AddressSection profile={profile} onUpdate={onUpdate} isMdUp={isMdUp} />
     </div>
   )
 }
 
 // Single shipping & billing address saved via PUT /users/profile (backend has one address object)
-function AddressSection({ profile, onUpdate }) {
+function AddressSection({ profile, onUpdate, isMdUp = true }) {
   const addr = profile?.address || {}
+  const hasAddress = !!(addr.street || addr.city || addr.state || addr.zipCode || addr.country)
   const [showForm, setShowForm] = useState(false)
   const [formData, setFormData] = useState({
     addressLine1: "",
@@ -169,6 +172,62 @@ function AddressSection({ profile, onUpdate }) {
     phone: "",
   })
   const [saving, setSaving] = useState(false)
+  const [addressPortalReady, setAddressPortalReady] = useState(false)
+  const [addressSheetDragY, setAddressSheetDragY] = useState(0)
+  const addressSheetDragYRef = useRef(0)
+  const addressTouchStartY = useRef(null)
+
+  useEffect(() => {
+    setAddressPortalReady(true)
+  }, [])
+
+  const closeAddressSheet = useCallback(() => {
+    setShowForm(false)
+    setAddressSheetDragY(0)
+    addressSheetDragYRef.current = 0
+    addressTouchStartY.current = null
+  }, [])
+
+  useEffect(() => {
+    if (!showForm || isMdUp) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const onKey = (e) => {
+      if (e.key === "Escape") closeAddressSheet()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [showForm, isMdUp, closeAddressSheet])
+
+  const onAddressSheetTouchStart = (e) => {
+    addressTouchStartY.current = e.touches[0].clientY
+  }
+  const onAddressSheetTouchMove = (e) => {
+    if (addressTouchStartY.current == null) return
+    const dy = e.touches[0].clientY - addressTouchStartY.current
+    if (dy > 0) {
+      addressSheetDragYRef.current = dy
+      setAddressSheetDragY(dy)
+    }
+  }
+  const onAddressSheetTouchEnd = () => {
+    if (addressSheetDragYRef.current > 100) closeAddressSheet()
+    else {
+      setAddressSheetDragY(0)
+      addressSheetDragYRef.current = 0
+    }
+    addressTouchStartY.current = null
+  }
+
+  useEffect(() => {
+    if (isMdUp) {
+      setAddressSheetDragY(0)
+      addressSheetDragYRef.current = 0
+    }
+  }, [isMdUp])
 
   useEffect(() => {
     const a = profile?.address || {}
@@ -231,40 +290,76 @@ function AddressSection({ profile, onUpdate }) {
     }
   }
 
-  const hasAddress = !!(addr.street || addr.city || addr.state || addr.zipCode || addr.country)
+  const inputClass = "min-h-[44px] px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+
+  const renderAddressFields = (withHeading = true) => (
+    <>
+      {withHeading && <h4 className="font-medium text-gray-900 mb-4">{hasAddress ? "Edit Address" : "Add default address"}</h4>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <input type="tel" placeholder="Phone Number" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "").slice(0, 15) })} className={inputClass} />
+        <div className="md:col-span-2" />
+        <input type="text" placeholder="Address Line 1" value={formData.addressLine1} onChange={(e) => setFormData({ ...formData, addressLine1: e.target.value })} className={`md:col-span-2 ${inputClass}`} />
+        <input type="text" placeholder="Address Line 2 (Optional)" value={formData.addressLine2} onChange={(e) => setFormData({ ...formData, addressLine2: e.target.value })} className={`md:col-span-2 ${inputClass}`} />
+        <input type="text" placeholder="City" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className={inputClass} />
+        <input type="text" placeholder="State" value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className={inputClass} />
+        <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, "").slice(0, 10) })} className={inputClass} />
+        <input type="text" placeholder="Country" value={formData.country} onChange={(e) => setFormData({ ...formData, country: e.target.value })} className={inputClass} />
+      </div>
+      <div className="flex flex-col-reverse sm:flex-row justify-end gap-3 mt-4">
+        <button type="button" onClick={closeAddressSheet} className="min-h-[44px] px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
+          Cancel
+        </button>
+        <button type="button" onClick={handleSave} disabled={saving} className="min-h-[44px] px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+          {saving ? "Saving..." : "Save Address"}
+        </button>
+      </div>
+    </>
+  )
 
   return (
     <div className="bg-white rounded-xl shadow-sm border border-gray-200">
-      <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+      <div className="p-6 border-b border-gray-100 flex flex-col gap-3 sm:flex-row sm:justify-between sm:items-center">
         <h3 className="text-lg font-semibold text-gray-900">Shipping & Billing Address</h3>
-        <button onClick={handleOpenForm} className="px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors">
+        <button type="button" onClick={handleOpenForm} className="min-h-[44px] shrink-0 px-4 py-2 text-sm font-medium text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg transition-colors w-full sm:w-auto">
           {hasAddress ? "Edit Address" : "+ Add Address"}
         </button>
       </div>
 
-      {showForm && (
-        <div className="p-6 border-b border-gray-100 bg-gray-50">
-          <h4 className="font-medium text-gray-900 mb-4">{hasAddress ? "Edit Address" : "Add default address"}</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <input type="tel" placeholder="Phone Number" value={formData.phone} onChange={(e) => setFormData({ ...formData, phone: e.target.value.replace(/\D/g, "").slice(0, 15) })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <div className="md:col-span-2" />
-            <input type="text" placeholder="Address Line 1" value={formData.addressLine1} onChange={(e) => setFormData({ ...formData, addressLine1: e.target.value })} className="md:col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="text" placeholder="Address Line 2 (Optional)" value={formData.addressLine2} onChange={(e) => setFormData({ ...formData, addressLine2: e.target.value })} className="md:col-span-2 px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="text" placeholder="City" value={formData.city} onChange={(e) => setFormData({ ...formData, city: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="text" placeholder="State" value={formData.state} onChange={(e) => setFormData({ ...formData, state: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="text" placeholder="Pincode" value={formData.pincode} onChange={(e) => setFormData({ ...formData, pincode: e.target.value.replace(/\D/g, "").slice(0, 10) })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-            <input type="text" placeholder="Country" value={formData.country} onChange={(e) => setFormData({ ...formData, country: e.target.value })} className="px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
-          </div>
-          <div className="flex justify-end space-x-3 mt-4">
-            <button onClick={() => setShowForm(false)} className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors">
-              Cancel
-            </button>
-            <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm font-medium text-white bg-blue-600 rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-              {saving ? "Saving..." : "Save Address"}
-            </button>
-          </div>
-        </div>
-      )}
+      {showForm && isMdUp && <div className="p-6 border-b border-gray-100 bg-gray-50">{renderAddressFields(true)}</div>}
+
+      {showForm && !isMdUp && addressPortalReady && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[70] md:hidden" role="presentation">
+              <button type="button" className="absolute inset-0 bg-black/40 animate-pp-backdrop-in border-0 cursor-default" aria-label="Close address form" onClick={closeAddressSheet} />
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="pp-account-address-title"
+                className="absolute bottom-0 left-0 right-0 flex max-h-[92vh] flex-col rounded-t-2xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-pp-sheet-up"
+                style={addressSheetDragY > 0 ? { transform: `translateY(${addressSheetDragY}px)`, transition: "none" } : undefined}
+                onTouchStart={onAddressSheetTouchStart}
+                onTouchMove={onAddressSheetTouchMove}
+                onTouchEnd={onAddressSheetTouchEnd}
+              >
+                <div className="flex shrink-0 flex-col items-center border-b border-gray-100 px-4 pt-3 pb-2">
+                  <div className="mb-2 h-1 w-10 rounded-full bg-gray-300" aria-hidden />
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <h2 id="pp-account-address-title" className="text-lg font-semibold text-gray-900">
+                      {hasAddress ? "Edit address" : "Add address"}
+                    </h2>
+                    <button type="button" onClick={closeAddressSheet} className="min-h-[44px] min-w-[44px] rounded-lg p-2 text-gray-500 hover:bg-gray-100 flex items-center justify-center" aria-label="Close">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-4 pb-[max(1rem,env(safe-area-inset-bottom))] bg-gray-50">{renderAddressFields(false)}</div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       <div className="p-6">
         {!hasAddress && !showForm ? (
@@ -757,8 +852,63 @@ function AccountPageContent() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const wasAuthenticated = useRef(false)
+  const isMdUp = useMediaQuery("(min-width: 768px)")
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+  const [accountNavPortalReady, setAccountNavPortalReady] = useState(false)
+  const [accountNavSheetDragY, setAccountNavSheetDragY] = useState(0)
+  const accountNavSheetDragYRef = useRef(0)
+  const accountNavTouchStartY = useRef(null)
 
   const token = user?.token
+
+  useEffect(() => {
+    setAccountNavPortalReady(true)
+  }, [])
+
+  const closeAccountMobileNav = useCallback(() => {
+    setMobileNavOpen(false)
+    setAccountNavSheetDragY(0)
+    accountNavSheetDragYRef.current = 0
+    accountNavTouchStartY.current = null
+  }, [])
+
+  useEffect(() => {
+    if (isMdUp) setMobileNavOpen(false)
+  }, [isMdUp])
+
+  useEffect(() => {
+    if (!mobileNavOpen || isMdUp) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const onKey = (e) => {
+      if (e.key === "Escape") closeAccountMobileNav()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [mobileNavOpen, isMdUp, closeAccountMobileNav])
+
+  const onAccountNavSheetTouchStart = (e) => {
+    accountNavTouchStartY.current = e.touches[0].clientY
+  }
+  const onAccountNavSheetTouchMove = (e) => {
+    if (accountNavTouchStartY.current == null) return
+    const dy = e.touches[0].clientY - accountNavTouchStartY.current
+    if (dy > 0) {
+      accountNavSheetDragYRef.current = dy
+      setAccountNavSheetDragY(dy)
+    }
+  }
+  const onAccountNavSheetTouchEnd = () => {
+    if (accountNavSheetDragYRef.current > 100) closeAccountMobileNav()
+    else {
+      setAccountNavSheetDragY(0)
+      accountNavSheetDragYRef.current = 0
+    }
+    accountNavTouchStartY.current = null
+  }
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -819,6 +969,7 @@ function AccountPageContent() {
   const handleTabChange = (tab) => {
     setActiveTab(tab)
     router.push(`/account?tab=${tab}`, { scroll: false })
+    closeAccountMobileNav()
   }
 
   const tabs = [
@@ -847,37 +998,50 @@ function AccountPageContent() {
 
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-8">
         <div className="flex flex-col lg:flex-row gap-8">
-          {/* Sidebar Navigation */}
-          <aside className="lg:w-64 flex-shrink-0">
-            <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden sticky top-24">
-              {/* User Info */}
-              <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white">
-                <div className="flex items-center space-x-3">
-                  {user?.user?.picture ? <Image src={user.user.picture} alt={user.user.name ?? ""} width={48} height={48} className="w-12 h-12 rounded-full border-2 border-white/30 object-cover" /> : <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-semibold">{user?.user?.name?.charAt(0).toUpperCase() || "U"}</div>}
-                  <div>
-                    <p className="font-semibold">{user?.user?.name}</p>
-                    <p className="text-xs text-white/80">{user?.user?.email}</p>
+          {isMdUp && (
+            <aside className="lg:w-64 flex-shrink-0">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden sticky top-24">
+                <div className="p-4 bg-gradient-to-r from-blue-500 to-purple-600 text-white">
+                  <div className="flex items-center space-x-3">
+                    {user?.user?.picture ? <Image src={user.user.picture} alt={user.user.name ?? ""} width={48} height={48} className="w-12 h-12 rounded-full border-2 border-white/30 object-cover" /> : <div className="w-12 h-12 rounded-full bg-white/20 flex items-center justify-center text-lg font-semibold">{user?.user?.name?.charAt(0).toUpperCase() || "U"}</div>}
+                    <div className="min-w-0">
+                      <p className="font-semibold truncate">{user?.user?.name}</p>
+                      <p className="text-xs text-white/80 truncate">{user?.user?.email}</p>
+                    </div>
                   </div>
                 </div>
+
+                <nav className="p-2" aria-label="Account sections">
+                  {tabs.map((tab) => (
+                    <button key={tab.id} type="button" onClick={() => handleTabChange(tab.id)} className={`w-full min-h-[44px] flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === tab.id ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-50"}`}>
+                      <svg className="w-5 h-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
+                      </svg>
+                      <span className="text-sm font-medium">{tab.label}</span>
+                    </button>
+                  ))}
+                </nav>
               </div>
+            </aside>
+          )}
 
-              {/* Navigation */}
-              <nav className="p-2">
-                {tabs.map((tab) => (
-                  <button key={tab.id} onClick={() => handleTabChange(tab.id)} className={`w-full flex items-center space-x-3 px-4 py-3 rounded-lg text-left transition-colors ${activeTab === tab.id ? "bg-blue-50 text-blue-600" : "text-gray-700 hover:bg-gray-50"}`}>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
-                    </svg>
-                    <span className="text-sm font-medium">{tab.label}</span>
-                  </button>
-                ))}
-              </nav>
-            </div>
-          </aside>
-
-          {/* Main Content */}
           <main className="flex-1 min-w-0">
-            {activeTab === "profile" && <ProfileTab profile={profile} onUpdate={fetchProfile} loading={loading} />}
+            {!isMdUp && (
+              <div className="mb-4">
+                <button
+                  type="button"
+                  onClick={() => setMobileNavOpen(true)}
+                  className="flex w-full min-h-[44px] items-center justify-between gap-3 rounded-xl border border-gray-200 bg-white px-4 py-3 text-left shadow-sm"
+                  aria-expanded={mobileNavOpen}
+                  aria-controls="pp-account-nav-sheet"
+                >
+                  <span className="text-sm font-semibold text-gray-900">{tabs.find((t) => t.id === activeTab)?.label ?? "Account"}</span>
+                  <span className="text-xs font-medium text-blue-600">Menu</span>
+                </button>
+              </div>
+            )}
+
+            {activeTab === "profile" && <ProfileTab profile={profile} onUpdate={fetchProfile} loading={loading} isMdUp={isMdUp} />}
             {activeTab === "orders" && <OrdersTab isAuthenticated={isAuthenticated} token={token} />}
             {activeTab === "wishlist" && <WishlistTab />}
             {activeTab === "recently-viewed" && <RecentlyViewedTab />}
@@ -886,6 +1050,61 @@ function AccountPageContent() {
           </main>
         </div>
       </div>
+
+      {!isMdUp && accountNavPortalReady && mobileNavOpen && typeof document !== "undefined"
+        ? createPortal(
+            <div className="fixed inset-0 z-[70] md:hidden" role="presentation">
+              <button type="button" className="absolute inset-0 bg-black/40 animate-pp-backdrop-in border-0 cursor-default" aria-label="Close account menu" onClick={closeAccountMobileNav} />
+              <div
+                id="pp-account-nav-sheet"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="pp-account-nav-title"
+                className="absolute bottom-0 left-0 right-0 flex max-h-[85vh] flex-col rounded-t-2xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-pp-sheet-up"
+                style={accountNavSheetDragY > 0 ? { transform: `translateY(${accountNavSheetDragY}px)`, transition: "none" } : undefined}
+                onTouchStart={onAccountNavSheetTouchStart}
+                onTouchMove={onAccountNavSheetTouchMove}
+                onTouchEnd={onAccountNavSheetTouchEnd}
+              >
+                <div className="flex shrink-0 flex-col items-center border-b border-gray-100 px-4 pt-3 pb-2">
+                  <div className="mb-2 h-1 w-10 rounded-full bg-gray-300" aria-hidden />
+                  <div className="flex w-full items-center justify-between gap-2">
+                    <h2 id="pp-account-nav-title" className="text-lg font-semibold text-gray-900">
+                      Account menu
+                    </h2>
+                    <button type="button" onClick={closeAccountMobileNav} className="min-h-[44px] min-w-[44px] rounded-lg p-2 text-gray-500 hover:bg-gray-100 flex items-center justify-center" aria-label="Close menu">
+                      <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                      </svg>
+                    </button>
+                  </div>
+                </div>
+                <div className="min-h-0 flex-1 overflow-y-auto p-3 pb-[max(1rem,env(safe-area-inset-bottom))]">
+                  <div className="mb-3 rounded-xl bg-gradient-to-r from-blue-500 to-purple-600 p-3 text-white">
+                    <div className="flex items-center gap-3">
+                      {user?.user?.picture ? <Image src={user.user.picture} alt={user.user.name ?? ""} width={44} height={44} className="h-11 w-11 shrink-0 rounded-full border-2 border-white/30 object-cover" /> : <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-white/20 text-base font-semibold">{user?.user?.name?.charAt(0).toUpperCase() || "U"}</div>}
+                      <div className="min-w-0">
+                        <p className="truncate font-semibold">{user?.user?.name}</p>
+                        <p className="truncate text-xs text-white/80">{user?.user?.email}</p>
+                      </div>
+                    </div>
+                  </div>
+                  <nav className="space-y-1" aria-label="Account sections">
+                    {tabs.map((tab) => (
+                      <button key={tab.id} type="button" onClick={() => handleTabChange(tab.id)} className={`flex w-full min-h-[48px] items-center gap-3 rounded-lg px-4 py-3 text-left transition-colors ${activeTab === tab.id ? "bg-blue-50 text-blue-600" : "text-gray-800 hover:bg-gray-50"}`}>
+                        <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={tab.icon} />
+                        </svg>
+                        <span className="text-sm font-medium">{tab.label}</span>
+                      </button>
+                    ))}
+                  </nav>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   )
 }

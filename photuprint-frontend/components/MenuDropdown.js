@@ -3,7 +3,7 @@
 import Link from "next/link"
 import { useState, useRef, useEffect } from "react"
 
-const menuData = {
+export const menuData = {
   men: {
     columns: [
       {

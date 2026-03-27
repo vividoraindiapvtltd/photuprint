@@ -3,7 +3,7 @@
 import { NextResponse } from "next/server"
 
 export async function GET() {
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+  const backendUrl = process.env.API_URL || "http://localhost:8080/api"
   const websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID
 
   if (!websiteId) {
@@ -51,7 +51,7 @@ export async function GET() {
           details: errorMessage,
           status: response.status,
         },
-        { status: response.status }
+        { status: response.status },
       )
     }
 
@@ -68,7 +68,7 @@ export async function GET() {
         error: "Internal server error",
         details: error.message,
       },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }

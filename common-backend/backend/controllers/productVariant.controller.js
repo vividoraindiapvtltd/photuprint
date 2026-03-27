@@ -1,7 +1,7 @@
 import ProductVariant from "../models/productVariant.model.js"
 import Product from "../models/product.model.js"
 import mongoose from "mongoose"
-import { removeLocalFile } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 
 /**
  * Generate all possible variant combinations from selected attributes
@@ -327,32 +327,18 @@ export const updateVariant = async (req, res) => {
     
     // Handle primary image upload (if provided)
     if (req.files && req.files.primaryImage && req.files.primaryImage.length > 0) {
-      try {
-        const cloudinary = (await import("../utils/cloudinary.js")).default
-        const result = await cloudinary.uploader.upload(req.files.primaryImage[0].path, {
-          folder: "photuprint/variants",
-        })
-        variant.primaryImage = result.secure_url
-        removeLocalFile(req.files.primaryImage[0].path)
-        console.log("Primary image uploaded to Cloudinary:", variant.primaryImage)
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError)
-        // Fallback to local storage
-        variant.primaryImage = `/uploads/${req.files.primaryImage[0].filename}`
-      }
+      variant.primaryImage = await tenantCloudinaryUpload(req.websiteId, req.files.primaryImage[0], {
+        folder: "photuprint/variants",
+      })
     }
     
     // Handle additional images uploads (if provided)
     if (req.files && req.files.images && req.files.images.length > 0) {
       try {
-        const cloudinary = (await import("../utils/cloudinary.js")).default
         const newImageUrls = []
         for (const file of req.files.images) {
-          const result = await cloudinary.uploader.upload(file.path, {
-            folder: "photuprint/variants",
-          })
-          newImageUrls.push(result.secure_url)
-          removeLocalFile(file.path)
+          const url = await tenantCloudinaryUpload(req.websiteId, file, { folder: "photuprint/variants" })
+          if (url) newImageUrls.push(url)
         }
         // Merge with existing images (keep existing, add new, limit to 5)
         const existingImages = Array.isArray(variant.images) ? variant.images : []

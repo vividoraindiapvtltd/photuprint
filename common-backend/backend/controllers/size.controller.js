@@ -1,5 +1,5 @@
 import Size from "../models/size.model.js"
-import { removeLocalFile } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 
 // Get all sizes
 export const getSizes = async (req, res) => {
@@ -106,20 +106,7 @@ export const createSize = async (req, res) => {
     // Handle image upload
     let imageUrl = null
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import("../utils/cloudinary.js")).default
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/sizes",
-        })
-        imageUrl = result.secure_url
-        removeLocalFile(req.file.path)
-        console.log("Image uploaded to Cloudinary:", imageUrl)
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError)
-        // Fallback to local storage
-        imageUrl = `/uploads/${req.file.filename}`
-      }
+      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: "photuprint/sizes" })
     }
 
     const size = new Size({
@@ -224,20 +211,7 @@ export const updateSize = async (req, res) => {
 
     // Handle image upload
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import("../utils/cloudinary.js")).default
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/sizes",
-        })
-        size.image = result.secure_url
-        removeLocalFile(req.file.path)
-        console.log("Image updated in Cloudinary:", size.image)
-      } catch (uploadError) {
-        console.error("Cloudinary upload failed:", uploadError)
-        // Fallback to local storage
-        size.image = `/uploads/${req.file.filename}`
-      }
+      size.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: "photuprint/sizes" })
     }
 
     const updatedSize = await size.save()

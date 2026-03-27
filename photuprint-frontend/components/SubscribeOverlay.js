@@ -33,6 +33,8 @@ export default function SubscribeOverlay() {
     if (typeof window === "undefined") return
     const dismissed = sessionStorage.getItem(STORAGE_KEY)
     if (dismissed === "1") return
+    // No auto popup on small viewports (mobile-first; avoids intrusive overlays)
+    if (!window.matchMedia("(min-width: 768px)").matches) return
     const t = setTimeout(() => setVisible(true), SHOW_DELAY_MS)
     return () => clearTimeout(t)
   }, [])
@@ -62,19 +64,21 @@ export default function SubscribeOverlay() {
   if (!visible) return null
 
   return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4" aria-modal="true" role="dialog">
+    <div
+      className="fixed inset-0 z-[100] flex items-end justify-center p-0 sm:items-center sm:p-4"
+      aria-modal="true"
+      role="dialog"
+    >
       {/* Backdrop */}
-      <div
-        className="absolute inset-0 bg-black/50 backdrop-blur-sm"
+      <button
+        type="button"
+        className="absolute inset-0 bg-black/50 backdrop-blur-sm animate-pp-backdrop-in"
         onClick={close}
-        onKeyDown={(e) => e.key === "Escape" && close()}
-        role="button"
-        tabIndex={0}
         aria-label="Close overlay"
       />
 
-      {/* Card */}
-      <div className="relative w-full max-w-md rounded-2xl bg-white shadow-xl border border-gray-200 overflow-hidden">
+      {/* Card — bottom sheet on narrow screens, centered modal on sm+ */}
+      <div className="relative w-full max-w-md rounded-t-2xl border border-gray-200 border-b-0 bg-white shadow-xl sm:rounded-2xl sm:border-b overflow-hidden max-h-[min(92vh,640px)] sm:max-h-none flex flex-col">
         <button
           type="button"
           onClick={close}

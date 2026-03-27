@@ -1,5 +1,5 @@
 import Brand from '../models/brand.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Get all brands
 export const getBrands = async (req, res) => {
@@ -112,19 +112,7 @@ export const createBrand = async (req, res) => {
     // Handle logo upload if present
     let logo = null;
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/brands',
-        });
-        logo = result.secure_url;
-        removeLocalFile(req.file.path);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        logo = `/uploads/${req.file.filename}`;
-      }
+      logo = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/brands' });
     }
 
     const brand = new Brand({
@@ -221,18 +209,7 @@ export const updateBrand = async (req, res) => {
 
     // Handle logo upload if present
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/brands',
-        });
-        brand.logo = result.secure_url;
-        removeLocalFile(req.file.path);
-      } catch (uploadError) {
-        // Fallback to local storage
-        brand.logo = `/uploads/${req.file.filename}`;
-      }
+      brand.logo = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/brands' });
     }
 
     // Update fields (brandId cannot be changed as it's auto-generated)

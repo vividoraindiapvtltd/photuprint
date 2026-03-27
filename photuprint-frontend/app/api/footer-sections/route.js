@@ -6,7 +6,7 @@ import { NextResponse } from "next/server"
 const FETCH_TIMEOUT_MS = 8000
 
 export async function GET(request) {
-  const backendUrl = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+  const backendUrl = process.env.API_URL || "http://localhost:8080/api"
   const websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID
 
   const controller = new AbortController()

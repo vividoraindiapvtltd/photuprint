@@ -1,7 +1,5 @@
 import axios from "axios"
 
-
-
 // Get the current hostname and port for flexible API configuration
 const getBaseURL = () => {
   if (typeof window === "undefined") return "/api"
@@ -32,28 +30,30 @@ export const getUploadBaseURL = () => {
 }
 
 const api = axios.create({
-  baseURL: getBaseURL()
+  baseURL: getBaseURL(),
 })
 
 // Add request interceptor for authentication and multi-tenancy
-api.interceptors.request.use((config) => {
-  const isAuthRequest = /\/auth\/(login|register|google|create-super-admin|setup-super-admin)/.test(config.url || '')
-  try {
-    const userStr = localStorage.getItem("adminUser")
-    if (userStr) {
-      const user = JSON.parse(userStr)
-      if (user?.token) {
-        config.headers.Authorization = `Bearer ${user.token}`
+api.interceptors.request.use(
+  (config) => {
+    const isAuthRequest = /\/auth\/(login|register|google|create-super-admin|setup-super-admin)/.test(config.url || "")
+    try {
+      const userStr = localStorage.getItem("adminUser")
+      if (userStr) {
+        const user = JSON.parse(userStr)
+        if (user?.token) {
+          config.headers.Authorization = `Bearer ${user.token}`
+        } else if (!isAuthRequest) {
+          console.warn("No token found in adminUser")
+        }
       } else if (!isAuthRequest) {
-        console.warn("No token found in adminUser")
+        console.warn("No adminUser found in localStorage")
       }
-    } else if (!isAuthRequest) {
-      console.warn("No adminUser found in localStorage")
+    } catch (error) {
+      console.error("Error parsing adminUser from localStorage:", error)
     }
-  } catch (error) {
-    console.error("Error parsing adminUser from localStorage:", error)
-  }
 
+<<<<<<< Updated upstream
   // Multi-tenant: Add X-Website-Id header for admin/CMS requests
   try {
     const selectedWebsiteStr = localStorage.getItem("selectedWebsite")
@@ -61,20 +61,48 @@ api.interceptors.request.use((config) => {
       const selectedWebsite = JSON.parse(selectedWebsiteStr)
       if (selectedWebsite?._id) {
         config.headers['X-Website-Id'] = selectedWebsite._id
+=======
+    // Multi-tenant: Add X-Website-Id header for admin/CMS requests
+    // Allow per-request override: config.skipWebsiteId = true (omit header), config.websiteId = id (use specific website)
+    try {
+      if (config.skipWebsiteId === true) {
+        delete config.headers["X-Website-Id"]
+        delete config.headers["x-website-id"]
+      } else if (config.websiteId) {
+        config.headers["X-Website-Id"] = config.websiteId
+        config.headers["x-website-id"] = config.websiteId
+      } else {
+        const selectedWebsiteStr = localStorage.getItem("selectedWebsite")
+        if (selectedWebsiteStr) {
+          const selectedWebsite = JSON.parse(selectedWebsiteStr)
+          if (selectedWebsite?._id) {
+            config.headers["X-Website-Id"] = selectedWebsite._id
+          }
+        }
+>>>>>>> Stashed changes
       }
+      delete config.skipWebsiteId
+      delete config.websiteId
+    } catch (error) {
+      console.warn("Failed to get selected website for tenant context:", error)
     }
+<<<<<<< Updated upstream
   } catch (error) {
     console.warn("Failed to get selected website for tenant context:", error)
   }
+=======
+>>>>>>> Stashed changes
 
-  // Don't override Content-Type for FormData - let axios set it automatically with boundary
-  if (config.data instanceof FormData) {
-    delete config.headers['Content-Type']
-  }
-  return config
-}, (error) => {
-  return Promise.reject(error)
-})
+    // Don't override Content-Type for FormData - let axios set it automatically with boundary
+    if (config.data instanceof FormData) {
+      delete config.headers["Content-Type"]
+    }
+    return config
+  },
+  (error) => {
+    return Promise.reject(error)
+  },
+)
 
 // Add response interceptor for error handling
 api.interceptors.response.use(
@@ -93,7 +121,7 @@ api.interceptors.response.use(
     }
 
     return Promise.reject(error)
-  }
+  },
 )
 
 export default api

@@ -1,23 +1,23 @@
 import Review from "../models/review.model.js"
-import cloudinary from "../utils/cloudinary.js"
-import { removeLocalFile, removeLocalFiles } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload, tenantCloudinaryDestroyByUrl } from "../utils/cloudinary.js"
+import { removeLocalFiles } from "../utils/fileCleanup.js"
 
 // Get all reviews (with admin and public filtering)
 export const getReviews = async (req, res) => {
   try {
     // Multi-tenant: Filter by website (for admin requests)
     // For public storefront, website will be resolved from domain
-    const websiteId = req.websiteId || req.tenant?._id;
-    
+    const websiteId = req.websiteId || req.tenant?._id
+
     const { categoryId, subCategoryId, productId, status, rating, source, search, showInactive = "true", includeDeleted = "true", page = 1, limit = 20 } = req.query
 
     console.log("Getting reviews with filters:", { status, source, rating, isAdmin: req.user?.role === "admin" })
 
     let query = {}
-    
+
     // Add website filter if available (for multi-tenant)
     if (websiteId) {
-      query.website = websiteId;
+      query.website = websiteId
     }
 
     // Handle deleted filter
@@ -94,9 +94,9 @@ export const getReviews = async (req, res) => {
 export const getReviewById = async (req, res) => {
   try {
     // Multi-tenant: Filter by website if available
-    const websiteId = req.websiteId || req.tenant?._id;
-    const query = websiteId ? { _id: req.params.id, website: websiteId } : { _id: req.params.id };
-    
+    const websiteId = req.websiteId || req.tenant?._id
+    const query = websiteId ? { _id: req.params.id, website: websiteId } : { _id: req.params.id }
+
     const review = await Review.findOne(query).populate("categoryId", "name categoryId").populate("subCategoryId", "name subcategoryId").populate("productId", "name productId images")
 
     if (!review) {
@@ -223,6 +223,18 @@ export const createReview = async (req, res) => {
       return res.status(400).json({ msg: "Rating must be between 1 and 5" })
     }
 
+    // Resolve website for tenant Cloudinary (before image handling)
+    let uploadWebsiteId = req.websiteId || req.tenant?._id
+    if (!uploadWebsiteId && productId) {
+      try {
+        const Product = (await import("../models/product.model.js")).default
+        const p = await Product.findById(productId).select("website").lean()
+        if (p?.website) uploadWebsiteId = p.website
+      } catch (_) {
+        /* ignore */
+      }
+    }
+
     // Handle image uploads with Cloudinary or local storage
     let avatar = null
     let productImage = null // Keep for backward compatibility
@@ -235,83 +247,23 @@ export const createReview = async (req, res) => {
     const hasAnyFiles = hasAvatarFile || hasProductImageFile || hasProductImagesFiles
 
     if (hasAnyFiles) {
-      // Check if Cloudinary is configured
-      const cloudinaryConfigured = !!(
-        process.env.CLOUDINARY_CLOUD_NAME &&
-        process.env.CLOUDINARY_API_KEY &&
-        process.env.CLOUDINARY_API_SECRET
-      )
-
-      if (cloudinaryConfigured) {
-        try {
-          if (hasAvatarFile) {
-            const avatarResult = await cloudinary.uploader.upload(req.files.avatar[0].path, {
-              folder: "photuprint/reviews/avatars",
-            })
-            avatar = avatarResult.secure_url
-            removeLocalFile(req.files.avatar[0].path)
-          }
-          
-          // Handle single productImage (backward compatibility)
-          if (hasProductImageFile) {
-            const productImageResult = await cloudinary.uploader.upload(req.files.productImage[0].path, {
-              folder: "photuprint/reviews/products",
-            })
-            productImage = productImageResult.secure_url
-            productImages = [productImage] // Add to array as well
-            removeLocalFile(req.files.productImage[0].path)
-          }
-          
-          // Handle multiple productImages (up to 6)
-          if (hasProductImagesFiles) {
-            const filesToUpload = req.files.productImages.slice(0, 6)
-            const uploadPromises = filesToUpload.map(file => 
-              cloudinary.uploader.upload(file.path, {
-                folder: "photuprint/reviews/products",
-              })
-            )
-            const results = await Promise.all(uploadPromises)
-            productImages = results.map(result => result.secure_url)
-            // Clean up local files after successful upload
-            removeLocalFiles(filesToUpload)
-            // Set first image as productImage for backward compatibility
-            if (productImages.length > 0) {
-              productImage = productImages[0]
-            }
-          }
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          // Fallback to local storage
-          if (hasAvatarFile) {
-            avatar = `/uploads/${req.files.avatar[0].filename}`
-          }
-          if (hasProductImageFile) {
-            productImage = `/uploads/${req.files.productImage[0].filename}`
-            productImages = [productImage]
-          }
-          if (hasProductImagesFiles) {
-            productImages = req.files.productImages.slice(0, 6).map(file => `/uploads/${file.filename}`)
-            if (productImages.length > 0) {
-              productImage = productImages[0]
-            }
-          }
+      if (hasAvatarFile) {
+        avatar = await tenantCloudinaryUpload(uploadWebsiteId, req.files.avatar[0], { folder: "photuprint/reviews/avatars" })
+      }
+      if (hasProductImageFile) {
+        productImage = await tenantCloudinaryUpload(uploadWebsiteId, req.files.productImage[0], {
+          folder: "photuprint/reviews/products",
+        })
+        productImages = productImage ? [productImage] : []
+      }
+      if (hasProductImagesFiles) {
+        const filesToUpload = req.files.productImages.slice(0, 6)
+        productImages = []
+        for (const file of filesToUpload) {
+          const url = await tenantCloudinaryUpload(uploadWebsiteId, file, { folder: "photuprint/reviews/products" })
+          if (url) productImages.push(url)
         }
-      } else {
-        // Cloudinary not configured - use local storage
-        console.log("Cloudinary not configured, using local storage for uploads")
-        if (hasAvatarFile) {
-          avatar = `/uploads/${req.files.avatar[0].filename}`
-        }
-        if (hasProductImageFile) {
-          productImage = `/uploads/${req.files.productImage[0].filename}`
-          productImages = [productImage]
-        }
-        if (hasProductImagesFiles) {
-          productImages = req.files.productImages.slice(0, 6).map(file => `/uploads/${file.filename}`)
-          if (productImages.length > 0) {
-            productImage = productImages[0]
-          }
-        }
+        if (productImages.length > 0) productImage = productImages[0]
       }
     }
 
@@ -332,12 +284,12 @@ export const createReview = async (req, res) => {
     const statusFromForm = req.body.status
     const validStatuses = ["pending", "approved", "rejected"]
     let finalStatus = "pending" // Default for regular users
-    
+
     if (isAdmin) {
       // Admin can set any valid status, default to approved if not specified
       finalStatus = validStatuses.includes(statusFromForm) ? statusFromForm : "approved"
     }
-    
+
     const reviewData = {
       categoryId,
       subCategoryId,
@@ -365,22 +317,22 @@ export const createReview = async (req, res) => {
     })
 
     // Multi-tenant: Get website from product or request context
-    const websiteId = req.websiteId || req.tenant?._id;
+    const websiteId = req.websiteId || req.tenant?._id
     if (!websiteId) {
       // Try to get website from product
       try {
-        const Product = (await import("../models/product.model.js")).default;
-        const product = await Product.findById(productId).select('website');
+        const Product = (await import("../models/product.model.js")).default
+        const product = await Product.findById(productId).select("website")
         if (product?.website) {
-          reviewData.website = product.website;
+          reviewData.website = product.website
         } else {
-          return res.status(400).json({ msg: "Website context is required" });
+          return res.status(400).json({ msg: "Website context is required" })
         }
       } catch (err) {
-        return res.status(400).json({ msg: "Website context is required" });
+        return res.status(400).json({ msg: "Website context is required" })
       }
     } else {
-      reviewData.website = websiteId;
+      reviewData.website = websiteId
     }
 
     const review = new Review(reviewData)
@@ -400,8 +352,8 @@ export const createReview = async (req, res) => {
 export const updateReview = async (req, res) => {
   try {
     // Multi-tenant: Filter by website if available
-    const websiteId = req.websiteId || req.tenant?._id;
-    const query = websiteId ? { _id: req.params.id, website: websiteId } : { _id: req.params.id };
+    const websiteId = req.websiteId || req.tenant?._id
+    const query = websiteId ? { _id: req.params.id, website: websiteId } : { _id: req.params.id }
 
     const { categoryId, subCategoryId, productId, productName, userId, name, title, email, comment, rating, status } = req.body
 
@@ -411,6 +363,8 @@ export const updateReview = async (req, res) => {
       return res.status(404).json({ msg: "Review not found" })
     }
 
+    const cloudWebsiteId = websiteId || review.website
+
     // Users can only update their own reviews (if needed in future)
     // For now, only admins can update
     if (!req.user || (req.user.role !== "admin" && req.user.role !== "super_admin")) {
@@ -419,21 +373,11 @@ export const updateReview = async (req, res) => {
 
     // CRITICAL: Store original productImages BEFORE any modifications
     // This is needed for fallback logic when existingProductImages is not provided
-    const originalProductImages = review.productImages && Array.isArray(review.productImages) 
-      ? [...review.productImages] 
-      : [];
+    const originalProductImages = review.productImages && Array.isArray(review.productImages) ? [...review.productImages] : []
 
     // Handle image removal (when empty string is sent)
     if (req.body.avatar === "" || req.body.avatar === null) {
-      // Delete old avatar from Cloudinary if exists
-      if (review.avatar && review.avatar.includes("cloudinary")) {
-        const publicId = review.avatar.split("/").slice(-2).join("/").split(".")[0]
-        try {
-          await cloudinary.uploader.destroy(publicId)
-        } catch (destroyError) {
-          console.error("Error deleting old avatar:", destroyError)
-        }
-      }
+      await tenantCloudinaryDestroyByUrl(cloudWebsiteId, review.avatar)
       review.avatar = null
     }
 
@@ -444,26 +388,26 @@ export const updateReview = async (req, res) => {
     console.log("req.body keys:", Object.keys(req.body))
     console.log("req.body.existingProductImages type:", typeof req.body.existingProductImages)
     console.log("req.body.existingProductImages value:", req.body.existingProductImages)
-    
-    if (req.body.existingProductImages !== undefined && req.body.existingProductImages !== null && req.body.existingProductImages !== '') {
+
+    if (req.body.existingProductImages !== undefined && req.body.existingProductImages !== null && req.body.existingProductImages !== "") {
       try {
-        let parsed = req.body.existingProductImages;
+        let parsed = req.body.existingProductImages
         // If it's a string, try to parse it as JSON
-        if (typeof parsed === 'string') {
+        if (typeof parsed === "string") {
           // Handle empty string or "[]"
-          if (parsed.trim() === '' || parsed.trim() === '[]') {
-            parsed = [];
+          if (parsed.trim() === "" || parsed.trim() === "[]") {
+            parsed = []
           } else {
-            parsed = JSON.parse(parsed);
+            parsed = JSON.parse(parsed)
           }
         }
-        
+
         // Ensure it's an array
         if (Array.isArray(parsed)) {
-          existingProductImages = parsed.filter(url => url && typeof url === 'string' && url.trim() !== '');
+          existingProductImages = parsed.filter((url) => url && typeof url === "string" && url.trim() !== "")
         } else {
-          console.warn("existingProductImages is not an array:", parsed);
-          existingProductImages = [];
+          console.warn("existingProductImages is not an array:", parsed)
+          existingProductImages = []
         }
         console.log("✅ Parsed existing product images:", existingProductImages.length, existingProductImages)
       } catch (e) {
@@ -475,43 +419,39 @@ export const updateReview = async (req, res) => {
       console.log("⚠️ No existingProductImages in request body (undefined/null/empty)")
       // Use ORIGINAL review images as fallback (before any modifications)
       if (originalProductImages.length > 0) {
-        existingProductImages = originalProductImages;
+        existingProductImages = originalProductImages
         console.log("Using ORIGINAL review images as fallback:", existingProductImages.length, existingProductImages)
       } else {
         console.log("No original images to use as fallback")
       }
     }
     console.log("Final existingProductImages to preserve:", existingProductImages.length, existingProductImages)
-    console.log("existingProductImages details:", existingProductImages.map((url, idx) => `${idx + 1}: ${typeof url} - ${url ? url.substring(0, 60) + '...' : 'null/undefined'}`))
+    console.log(
+      "existingProductImages details:",
+      existingProductImages.map((url, idx) => `${idx + 1}: ${typeof url} - ${url ? url.substring(0, 60) + "..." : "null/undefined"}`),
+    )
     console.log("===========================================")
-    
+
     // CRITICAL SAFEGUARD: If we have new files to upload but no existingProductImages, use originalProductImages
     // This prevents data loss when FormData parsing fails or frontend doesn't send existingProductImages
     if (req.files && req.files.productImages && Array.isArray(req.files.productImages) && req.files.productImages.length > 0) {
       if (existingProductImages.length === 0 && originalProductImages.length > 0) {
         console.warn("⚠️ CRITICAL: No existingProductImages parsed but have new files and original images exist!")
         console.warn("Using originalProductImages as fallback to prevent data loss")
-        existingProductImages = [...originalProductImages]; // Create a copy
+        existingProductImages = [...originalProductImages] // Create a copy
         console.log("Fallback existingProductImages:", existingProductImages.length, existingProductImages)
       }
     }
-    
+
     // Handle productImages array from body (when sent as JSON array to remove all)
-    if (req.body.productImages !== undefined && typeof req.body.productImages === 'string') {
+    if (req.body.productImages !== undefined && typeof req.body.productImages === "string") {
       try {
         const parsed = JSON.parse(req.body.productImages)
         if (Array.isArray(parsed) && parsed.length === 0) {
           // All images were removed
           const oldImages = review.productImages || []
           for (const oldImage of oldImages) {
-            if (oldImage && oldImage.includes("cloudinary")) {
-              const publicId = oldImage.split("/").slice(-2).join("/").split(".")[0]
-              try {
-                await cloudinary.uploader.destroy(publicId)
-              } catch (destroyError) {
-                console.error("Error deleting old product image:", destroyError)
-              }
-            }
+            await tenantCloudinaryDestroyByUrl(cloudWebsiteId, oldImage)
           }
           review.productImages = []
           review.productImage = null
@@ -520,32 +460,16 @@ export const updateReview = async (req, res) => {
         console.error("Error parsing productImages JSON:", e)
       }
     }
-    
+
     // Handle single productImage removal (backward compatibility)
     // Only process if productImages wasn't already handled above
     if ((req.body.productImage === "" || req.body.productImage === null) && !req.files.productImages) {
-      // Delete old product image from Cloudinary if exists
-      if (review.productImage && review.productImage.includes("cloudinary")) {
-        const publicId = review.productImage.split("/").slice(-2).join("/").split(".")[0]
-        try {
-          await cloudinary.uploader.destroy(publicId)
-        } catch (destroyError) {
-          console.error("Error deleting old product image:", destroyError)
-        }
-      }
+      await tenantCloudinaryDestroyByUrl(cloudWebsiteId, review.productImage)
       review.productImage = null
       // Also clear productImages if productImage is removed (and no new images uploaded)
       if (review.productImages && review.productImages.length > 0 && !req.files.productImages) {
-        // Delete all old images
         for (const oldImage of review.productImages) {
-          if (oldImage && oldImage.includes("cloudinary")) {
-            const publicId = oldImage.split("/").slice(-2).join("/").split(".")[0]
-            try {
-              await cloudinary.uploader.destroy(publicId)
-            } catch (destroyError) {
-              console.error("Error deleting old product image:", destroyError)
-            }
-          }
+          await tenantCloudinaryDestroyByUrl(cloudWebsiteId, oldImage)
         }
         review.productImages = []
       }
@@ -555,41 +479,21 @@ export const updateReview = async (req, res) => {
     if (req.files) {
       try {
         if (req.files.avatar && req.files.avatar[0]) {
-          // Delete old avatar from Cloudinary if exists
-          if (review.avatar && review.avatar.includes("cloudinary")) {
-            const publicId = review.avatar.split("/").slice(-2).join("/").split(".")[0]
-            try {
-              await cloudinary.uploader.destroy(publicId)
-            } catch (destroyError) {
-              console.error("Error deleting old avatar:", destroyError)
-            }
-          }
-          const avatarResult = await cloudinary.uploader.upload(req.files.avatar[0].path, {
+          await tenantCloudinaryDestroyByUrl(cloudWebsiteId, review.avatar)
+          review.avatar = await tenantCloudinaryUpload(cloudWebsiteId, req.files.avatar[0], {
             folder: "photuprint/reviews/avatars",
           })
-          review.avatar = avatarResult.secure_url
-          removeLocalFile(req.files.avatar[0].path)
         }
         // Handle single productImage upload (backward compatibility)
         if (req.files.productImage && req.files.productImage[0]) {
-          // Delete old product image from Cloudinary if exists
-          if (review.productImage && review.productImage.includes("cloudinary")) {
-            const publicId = review.productImage.split("/").slice(-2).join("/").split(".")[0]
-            try {
-              await cloudinary.uploader.destroy(publicId)
-            } catch (destroyError) {
-              console.error("Error deleting old product image:", destroyError)
-            }
-          }
-          const productImageResult = await cloudinary.uploader.upload(req.files.productImage[0].path, {
+          await tenantCloudinaryDestroyByUrl(cloudWebsiteId, review.productImage)
+          const url = await tenantCloudinaryUpload(cloudWebsiteId, req.files.productImage[0], {
             folder: "photuprint/reviews/products",
           })
-          review.productImage = productImageResult.secure_url
-          // Update productImages array
-          review.productImages = [productImageResult.secure_url]
-          removeLocalFile(req.files.productImage[0].path)
+          review.productImage = url
+          review.productImages = url ? [url] : []
         }
-        
+
         // Handle multiple productImages upload (up to 6)
         if (req.files.productImages && Array.isArray(req.files.productImages)) {
           console.log("=== PROCESSING PRODUCT IMAGES UPLOAD ===")
@@ -597,28 +501,31 @@ export const updateReview = async (req, res) => {
           console.log("Existing images from request body:", existingProductImages.length, existingProductImages)
           console.log("ORIGINAL review images in DB (before any modifications):", originalProductImages.length, originalProductImages)
           console.log("Current review.productImages (may have been modified):", (review.productImages || []).length, review.productImages)
-          
+
           // CRITICAL: Determine which images to preserve
           // Priority: 1) Use existingProductImages if provided and non-empty, 2) Fallback to ORIGINAL review images
-          let imagesToPreserve = [];
-          const hasExistingProductImages = existingProductImages && Array.isArray(existingProductImages) && existingProductImages.length > 0;
-          
+          let imagesToPreserve = []
+          const hasExistingProductImages = existingProductImages && Array.isArray(existingProductImages) && existingProductImages.length > 0
+
           if (hasExistingProductImages) {
             // Use the provided existing images from frontend
-            imagesToPreserve = existingProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '');
+            imagesToPreserve = existingProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
             console.log("✅ Using existingProductImages from request:", imagesToPreserve.length, imagesToPreserve)
-            console.log("✅ Each URL type check:", imagesToPreserve.map(url => ({
-              url: url.substring(0, 60) + '...',
-              isString: typeof url === 'string',
-              trimmed: url.trim() !== ''
-            })))
-            
+            console.log(
+              "✅ Each URL type check:",
+              imagesToPreserve.map((url) => ({
+                url: url.substring(0, 60) + "...",
+                isString: typeof url === "string",
+                trimmed: url.trim() !== "",
+              })),
+            )
+
             // CRITICAL VALIDATION: If filtering removed all URLs, something is wrong - use original as fallback
             if (imagesToPreserve.length === 0 && existingProductImages.length > 0) {
               console.error("❌ CRITICAL: Filtering removed all URLs! Using originalProductImages as fallback")
               console.error("existingProductImages that were filtered out:", existingProductImages)
               if (originalProductImages.length > 0) {
-                imagesToPreserve = originalProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '');
+                imagesToPreserve = originalProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
                 console.log("Using originalProductImages as fallback:", imagesToPreserve.length)
               }
             }
@@ -627,7 +534,7 @@ export const updateReview = async (req, res) => {
             // This ensures we NEVER lose existing images when adding new ones
             // Use originalProductImages, not review.productImages (which may have been cleared)
             if (originalProductImages.length > 0) {
-              imagesToPreserve = originalProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '');
+              imagesToPreserve = originalProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
               console.log("⚠️ No existingProductImages provided (or empty), using ORIGINAL review images as fallback:", imagesToPreserve.length, imagesToPreserve)
             } else {
               console.log("❌ CRITICAL: No existing images to preserve! This will cause data loss!")
@@ -635,16 +542,19 @@ export const updateReview = async (req, res) => {
               console.log("existingProductImages:", existingProductImages)
             }
           }
-          
+
           // FINAL SAFEGUARD: If still empty but we have original images, use them
           if (imagesToPreserve.length === 0 && originalProductImages.length > 0) {
             console.error("❌ CRITICAL: imagesToPreserve is empty but originalProductImages exist! Using originalProductImages")
-            imagesToPreserve = originalProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '');
+            imagesToPreserve = originalProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
           }
-          
+
           console.log("Final images to preserve:", imagesToPreserve.length, imagesToPreserve)
-          console.log("imagesToPreserve details:", imagesToPreserve.map((url, idx) => `${idx + 1}: ${typeof url} - ${url.substring(0, 60)}...`))
-          
+          console.log(
+            "imagesToPreserve details:",
+            imagesToPreserve.map((url, idx) => `${idx + 1}: ${typeof url} - ${url.substring(0, 60)}...`),
+          )
+
           // CRITICAL: If we have new files but no images to preserve, this is a problem
           if (imagesToPreserve.length === 0 && req.files.productImages && req.files.productImages.length > 0) {
             console.error("❌ CRITICAL ERROR: Uploading new files but NO images to preserve!")
@@ -652,102 +562,99 @@ export const updateReview = async (req, res) => {
             console.error("originalProductImages:", originalProductImages)
             console.error("existingProductImages:", existingProductImages)
           }
-          
+
           // Create a normalized comparison function to handle URL variations
           const normalizeUrlForComparison = (url) => {
-            if (!url || typeof url !== 'string') return '';
+            if (!url || typeof url !== "string") return ""
             // Remove protocol variations and trailing slashes for comparison
-            return url.replace(/^https?:\/\//, '').replace(/\/$/, '').toLowerCase().trim();
-          };
-          
-          const normalizedPreserveUrls = new Set(
-            imagesToPreserve.map(url => normalizeUrlForComparison(url))
-          );
-          
+            return url
+              .replace(/^https?:\/\//, "")
+              .replace(/\/$/, "")
+              .toLowerCase()
+              .trim()
+          }
+
+          const normalizedPreserveUrls = new Set(imagesToPreserve.map((url) => normalizeUrlForComparison(url)))
+
           console.log("Normalized preserve URLs:", Array.from(normalizedPreserveUrls))
-          
+
           // Delete old images from Cloudinary that are NOT in the preserve list
           // Use ORIGINAL images for comparison, not current review.productImages (which may have been modified)
           for (const oldImage of originalProductImages) {
-            if (!oldImage || typeof oldImage !== 'string') continue;
-            
+            if (!oldImage || typeof oldImage !== "string") continue
+
             // Normalize both URLs for comparison
-            const normalizedOldImage = normalizeUrlForComparison(oldImage);
-            const shouldPreserve = normalizedPreserveUrls.has(normalizedOldImage);
-            
+            const normalizedOldImage = normalizeUrlForComparison(oldImage)
+            const shouldPreserve = normalizedPreserveUrls.has(normalizedOldImage)
+
             // Only delete if it's not in the preserve list AND it's a cloudinary image
             if (!shouldPreserve && oldImage.includes("cloudinary")) {
               console.log("🗑️ Deleting old image (not in preserve list):", oldImage)
-              const publicId = oldImage.split("/").slice(-2).join("/").split(".")[0]
-              try {
-                await cloudinary.uploader.destroy(publicId)
-                console.log("✅ Deleted from Cloudinary:", publicId)
-              } catch (destroyError) {
-                console.error("❌ Error deleting old product image:", destroyError)
-              }
+              await tenantCloudinaryDestroyByUrl(cloudWebsiteId, oldImage)
+              console.log("✅ Deleted from Cloudinary (tenant):", oldImage.substring(0, 80))
             } else {
               console.log("✅ Keeping existing image:", oldImage.substring(0, 60) + "...", shouldPreserve ? "(in preserve list)" : "(not cloudinary)")
             }
           }
-          
+
           // Upload new files
           const filesToUpload = req.files.productImages.slice(0, 6)
-          const uploadPromises = filesToUpload.map(file => 
-            cloudinary.uploader.upload(file.path, {
-              folder: "photuprint/reviews/products",
-            })
-          )
-          const results = await Promise.all(uploadPromises)
-          const newImageUrls = results.map(result => result.secure_url)
-          // Clean up local files after successful upload
+          const newImageUrls = []
+          for (const file of filesToUpload) {
+            const url = await tenantCloudinaryUpload(cloudWebsiteId, file, { folder: "photuprint/reviews/products" })
+            if (url) newImageUrls.push(url)
+          }
           removeLocalFiles(filesToUpload)
           console.log("✅ New image URLs uploaded:", newImageUrls.length, newImageUrls)
-          
+
           // Combine preserved images with new ones, limit to 6 total
           // IMPORTANT: Preserve existing images first, then add new ones
           // Remove any duplicates (in case a preserved image was re-uploaded)
           console.log("=== BEFORE MERGE ===")
           console.log("imagesToPreserve:", imagesToPreserve.length, imagesToPreserve)
           console.log("newImageUrls:", newImageUrls.length, newImageUrls)
-          
-          const allImageUrls = [...imagesToPreserve, ...newImageUrls];
+
+          const allImageUrls = [...imagesToPreserve, ...newImageUrls]
           console.log("allImageUrls (before dedupe):", allImageUrls.length, allImageUrls)
-          
-          const uniqueImageUrls = [];
-          const seenNormalized = new Set();
-          
+
+          const uniqueImageUrls = []
+          const seenNormalized = new Set()
+
           for (const url of allImageUrls) {
-            if (!url || typeof url !== 'string') {
+            if (!url || typeof url !== "string") {
               console.warn("Skipping invalid URL:", url, typeof url)
               continue
             }
-            const normalized = normalizeUrlForComparison(url);
+            const normalized = normalizeUrlForComparison(url)
             if (!seenNormalized.has(normalized)) {
-              seenNormalized.add(normalized);
-              uniqueImageUrls.push(url);
-              console.log("Added unique URL:", url.substring(0, 60) + '...')
+              seenNormalized.add(normalized)
+              uniqueImageUrls.push(url)
+              console.log("Added unique URL:", url.substring(0, 60) + "...")
             } else {
-              console.log("Skipped duplicate URL:", url.substring(0, 60) + '...')
+              console.log("Skipped duplicate URL:", url.substring(0, 60) + "...")
             }
           }
-          
-          const finalProductImages = uniqueImageUrls.slice(0, 6);
-          review.productImages = finalProductImages;
-          
+
+          const finalProductImages = uniqueImageUrls.slice(0, 6)
+          review.productImages = finalProductImages
+
           console.log("=== FINAL IMAGE MERGE ===")
           console.log("Preserved images:", imagesToPreserve.length, imagesToPreserve)
           console.log("New uploaded images:", newImageUrls.length, newImageUrls)
           console.log("Final productImages array:", finalProductImages.length, finalProductImages)
           console.log("Final count:", finalProductImages.length, "= preserved:", imagesToPreserve.length, "+ new:", newImageUrls.length, "- duplicates:", allImageUrls.length - uniqueImageUrls.length)
-          console.log("Final URLs:", finalProductImages.map((url, idx) => `${idx + 1}: ${url.substring(0, 60)}...`))
+          console.log(
+            "Final URLs:",
+            finalProductImages.map((url, idx) => `${idx + 1}: ${url.substring(0, 60)}...`),
+          )
           console.log("========================")
-          
+
           // CRITICAL VALIDATION: Ensure we didn't lose preserved images
           if (imagesToPreserve.length > 0 && finalProductImages.length < imagesToPreserve.length) {
             console.error("❌ CRITICAL ERROR: Lost preserved images!")
             console.error("Expected at least", imagesToPreserve.length, "images but got", finalProductImages.length)
           }
-          
+
           // Set first image as productImage for backward compatibility
           if (review.productImages.length > 0) {
             review.productImage = review.productImages[0]
@@ -756,19 +663,19 @@ export const updateReview = async (req, res) => {
           }
         } else if (existingProductImages && Array.isArray(existingProductImages) && existingProductImages.length > 0) {
           // No new files, but existing images are being kept
-          review.productImages = existingProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '').slice(0, 6)
+          review.productImages = existingProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "").slice(0, 6)
           review.productImage = review.productImages.length > 0 ? review.productImages[0] : null
           console.log("No new files uploaded, preserving existing images:", review.productImages.length)
         } else if (originalProductImages.length > 0) {
           // No new files and no existingProductImages provided, keep ORIGINAL images
-          review.productImages = originalProductImages;
-          review.productImage = originalProductImages.length > 0 ? originalProductImages[0] : null;
+          review.productImages = originalProductImages
+          review.productImage = originalProductImages.length > 0 ? originalProductImages[0] : null
           console.log("No new files and no existingProductImages, keeping ORIGINAL review images:", review.productImages.length)
         }
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
         console.error("⚠️ Falling back to local storage - MUST preserve existing images!")
-        
+
         // Fallback to local storage
         if (req.files.avatar && req.files.avatar[0]) {
           review.avatar = `/uploads/${req.files.avatar[0].filename}`
@@ -780,49 +687,52 @@ export const updateReview = async (req, res) => {
         if (req.files.productImages && Array.isArray(req.files.productImages)) {
           // CRITICAL: Preserve existing images when falling back to local storage
           // Get existing images to preserve (from existingProductImages or originalProductImages)
-          let imagesToPreserveInFallback = [];
+          let imagesToPreserveInFallback = []
           if (existingProductImages && Array.isArray(existingProductImages) && existingProductImages.length > 0) {
-            imagesToPreserveInFallback = existingProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '');
+            imagesToPreserveInFallback = existingProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
             console.log("Fallback: Using existingProductImages:", imagesToPreserveInFallback.length)
           } else if (originalProductImages.length > 0) {
-            imagesToPreserveInFallback = originalProductImages.filter(url => url && typeof url === 'string' && url.trim() !== '');
+            imagesToPreserveInFallback = originalProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
             console.log("Fallback: Using originalProductImages:", imagesToPreserveInFallback.length)
           }
-          
+
           // Convert existing URLs to relative paths if they're absolute localhost URLs
-          const normalizedExistingUrls = imagesToPreserveInFallback.map(url => {
-            if (url.startsWith('http://localhost:8080/') || url.startsWith('https://localhost:8080/')) {
-              return url.replace(/^https?:\/\/localhost:8080/, '');
+          const normalizedExistingUrls = imagesToPreserveInFallback.map((url) => {
+            if (url.startsWith("http://localhost:8080/") || url.startsWith("https://localhost:8080/")) {
+              return url.replace(/^https?:\/\/localhost:8080/, "")
             }
-            return url;
-          });
-          
+            return url
+          })
+
           // Upload new files to local storage
-          const newLocalImageUrls = req.files.productImages.slice(0, 6).map(file => `/uploads/${file.filename}`)
-          
+          const newLocalImageUrls = req.files.productImages.slice(0, 6).map((file) => `/uploads/${file.filename}`)
+
           // Merge: existing images + new local images
-          const allLocalImages = [...normalizedExistingUrls, ...newLocalImageUrls];
-          
+          const allLocalImages = [...normalizedExistingUrls, ...newLocalImageUrls]
+
           // Remove duplicates
-          const uniqueLocalImages = [];
-          const seenLocal = new Set();
+          const uniqueLocalImages = []
+          const seenLocal = new Set()
           for (const url of allLocalImages) {
-            const normalized = url.replace(/^https?:\/\/[^/]+/, '').replace(/\/$/, '').toLowerCase();
+            const normalized = url
+              .replace(/^https?:\/\/[^/]+/, "")
+              .replace(/\/$/, "")
+              .toLowerCase()
             if (!seenLocal.has(normalized)) {
-              seenLocal.add(normalized);
-              uniqueLocalImages.push(url);
+              seenLocal.add(normalized)
+              uniqueLocalImages.push(url)
             }
           }
-          
-          review.productImages = uniqueLocalImages.slice(0, 6);
-          
+
+          review.productImages = uniqueLocalImages.slice(0, 6)
+
           console.log("Fallback merge result:", {
             existingCount: normalizedExistingUrls.length,
             newCount: newLocalImageUrls.length,
             finalCount: review.productImages.length,
-            finalImages: review.productImages
-          });
-          
+            finalImages: review.productImages,
+          })
+
           if (review.productImages.length > 0) {
             review.productImage = review.productImages[0]
           }
@@ -856,13 +766,13 @@ export const updateReview = async (req, res) => {
     }
 
     const updatedReview = await review.save()
-    
+
     console.log("Review saved to database. productImages:", updatedReview.productImages)
     console.log("Review saved. productImages count:", updatedReview.productImages?.length || 0)
 
     // Populate references before sending response
     const populatedReview = await Review.findById(updatedReview._id).populate("categoryId", "name categoryId").populate("subCategoryId", "name subcategoryId").populate("productId", "name productId images")
-    
+
     console.log("Populated review. productImages:", populatedReview.productImages)
     console.log("Populated review. productImages count:", populatedReview.productImages?.length || 0)
 
@@ -926,8 +836,8 @@ export const updateReviewStatus = async (req, res) => {
 export const deleteReview = async (req, res) => {
   try {
     // Multi-tenant: Filter by website if available
-    const websiteId = req.websiteId || req.tenant?._id;
-    const query = websiteId ? { _id: req.params.id, website: websiteId } : { _id: req.params.id };
+    const websiteId = req.websiteId || req.tenant?._id
+    const query = websiteId ? { _id: req.params.id, website: websiteId } : { _id: req.params.id }
 
     const review = await Review.findOne(query)
     if (!review) {
@@ -953,21 +863,12 @@ export const hardDeleteReview = async (req, res) => {
       return res.status(404).json({ msg: "Review not found" })
     }
 
-    // Delete images from Cloudinary if they exist
-    if (review.avatar && review.avatar.includes("cloudinary")) {
-      try {
-        const publicId = review.avatar.split("/").slice(-2).join("/").split(".")[0]
-        await cloudinary.uploader.destroy(publicId)
-      } catch (destroyError) {
-        console.error("Error deleting avatar from Cloudinary:", destroyError)
-      }
-    }
-    if (review.productImage && review.productImage.includes("cloudinary")) {
-      try {
-        const publicId = review.productImage.split("/").slice(-2).join("/").split(".")[0]
-        await cloudinary.uploader.destroy(publicId)
-      } catch (destroyError) {
-        console.error("Error deleting product image from Cloudinary:", destroyError)
+    const wid = review.website
+    await tenantCloudinaryDestroyByUrl(wid, review.avatar)
+    await tenantCloudinaryDestroyByUrl(wid, review.productImage)
+    if (review.productImages && Array.isArray(review.productImages)) {
+      for (const img of review.productImages) {
+        await tenantCloudinaryDestroyByUrl(wid, img)
       }
     }
 

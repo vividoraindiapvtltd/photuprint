@@ -3,7 +3,6 @@
 import { Suspense } from "react"
 import Link from "next/link"
 import { useSearchParams } from "next/navigation"
-import TopBar from "../../components/TopBar"
 import NavigationBar from "../../components/NavigationBar"
 import Footer from "../../components/Footer"
 
@@ -26,7 +25,6 @@ function ThankYouInner() {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-50 w-full">
-        <TopBar />
         <NavigationBar />
       </header>
       <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">

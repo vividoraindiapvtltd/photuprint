@@ -1,5 +1,5 @@
 import Category from '../models/category.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Get all categories
 export const getCategories = async (req, res) => {
@@ -153,20 +153,8 @@ export const createCategory = async (req, res) => {
     // Handle image upload
     let imageUrl = null;
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/categories',
-        });
-        imageUrl = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image uploaded to Cloudinary:', imageUrl);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        imageUrl = `/uploads/${req.file.filename}`;
-      }
+      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/categories' });
+      if (imageUrl) console.log('Category image stored:', imageUrl);
     }
 
     const category = new Category({
@@ -280,21 +268,8 @@ export const updateCategory = async (req, res) => {
 
     // Handle image update/removal
     if (req.file) {
-      // New image file uploaded
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/categories',
-        });
-        category.image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image updated in Cloudinary:', category.image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        category.image = `/uploads/${req.file.filename}`;
-      }
+      category.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/categories' });
+      if (category.image) console.log('Category image updated:', category.image);
     } else if (req.body.image !== undefined) {
       // Image field explicitly set (could be null to remove image)
       if (req.body.image === null || req.body.image === '') {

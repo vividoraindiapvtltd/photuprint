@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 
-const backendBase = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+const backendBase = process.env.API_URL || "http://localhost:8080/api"
 
 /**
  * Public proxy for GET product by slug (no auth).

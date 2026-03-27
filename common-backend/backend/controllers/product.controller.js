@@ -1,7 +1,7 @@
 import Product from "../models/product.model.js"
 import sanitizeHtml from "sanitize-html"
 import mongoose from "mongoose"
-import { removeLocalFile } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 
 // Helper function to sanitize HTML
 function sanitizeHTML(html) {
@@ -90,84 +90,39 @@ export const createProduct = async (req, res) => {
       }
     }
 
+    if (!req.websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+
     // Main image is optional for draft saves (tab-by-tab saving)
     // It will be required when saving from the Media tab or final submission
 
     // Handle main image upload (optional for draft saves)
     let mainImageUrl = ""
     if (req.files && req.files.mainImage && req.files.mainImage.length > 0) {
-      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
-      if (isCloudinaryConfigured()) {
-        try {
-          const result = await cloudinary.uploader.upload(req.files.mainImage[0].path, {
-            folder: "photuprint/products",
-          })
-          mainImageUrl = result.secure_url
-          removeLocalFile(req.files.mainImage[0].path)
-          console.log("Main image uploaded to Cloudinary:", mainImageUrl)
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          // Fallback to local storage
-          mainImageUrl = `/uploads/${req.files.mainImage[0].filename}`
-        }
-      } else {
-        // Cloudinary not configured, use local storage
-        mainImageUrl = `/uploads/${req.files.mainImage[0].filename}`
-      }
+      mainImageUrl =
+        (await tenantCloudinaryUpload(req.websiteId, req.files.mainImage[0], { folder: "photuprint/products" })) || ""
+      if (mainImageUrl) console.log("Main image stored:", mainImageUrl)
     }
 
     // Handle additional images uploads
     let imageUrls = []
     if (req.files.images && req.files.images.length > 0) {
-      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
-      if (isCloudinaryConfigured()) {
-        try {
-          for (const file of req.files.images) {
-            const result = await cloudinary.uploader.upload(file.path, {
-              folder: "photuprint/products",
-            })
-            imageUrls.push(result.secure_url)
-            removeLocalFile(file.path)
-          }
-          console.log("Additional images uploaded to Cloudinary:", imageUrls)
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          // Fallback to local storage
-          imageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
-        }
-      } else {
-        // Cloudinary not configured, use local storage
-        imageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
+      for (const file of req.files.images) {
+        const url = await tenantCloudinaryUpload(req.websiteId, file, { folder: "photuprint/products" })
+        if (url) imageUrls.push(url)
       }
+      console.log("Additional images stored:", imageUrls)
     }
 
     // Handle video upload
     let videoUrl = null
     if (req.files.video && req.files.video.length > 0) {
-      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
-      if (isCloudinaryConfigured()) {
-        try {
-          const result = await cloudinary.uploader.upload(req.files.video[0].path, {
-            folder: "photuprint/products/videos",
-            resource_type: "video",
-          })
-          videoUrl = result.secure_url
-          removeLocalFile(req.files.video[0].path)
-          console.log("Video uploaded to Cloudinary:", videoUrl)
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          // Fallback to local storage
-          videoUrl = `/uploads/${req.files.video[0].filename}`
-        }
-      } else {
-        // Cloudinary not configured, use local storage
-        videoUrl = `/uploads/${req.files.video[0].filename}`
-      }
-    }
-
-    // Validate tenant context
-    if (!req.websiteId) {
-      return res.status(400).json({ msg: "Website context is required" })
+      videoUrl = await tenantCloudinaryUpload(req.websiteId, req.files.video[0], {
+        folder: "photuprint/products/videos",
+        resource_type: "video",
+      })
+      if (videoUrl) console.log("Video stored:", videoUrl)
     }
 
     // Prepare product data
@@ -518,71 +473,29 @@ export const updateProduct = async (req, res) => {
     // Handle main image upload (if provided)
     let mainImageUrl = null
     if (req.files.mainImage && req.files.mainImage.length > 0) {
-      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
-      if (isCloudinaryConfigured()) {
-        try {
-          const result = await cloudinary.uploader.upload(req.files.mainImage[0].path, {
-            folder: "photuprint/products",
-          })
-          mainImageUrl = result.secure_url
-          removeLocalFile(req.files.mainImage[0].path)
-          console.log("Main image uploaded to Cloudinary:", mainImageUrl)
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          // Fallback to local storage
-          mainImageUrl = `/uploads/${req.files.mainImage[0].filename}`
-        }
-      } else {
-        // Cloudinary not configured, use local storage
-        mainImageUrl = `/uploads/${req.files.mainImage[0].filename}`
-      }
+      mainImageUrl =
+        (await tenantCloudinaryUpload(req.websiteId, req.files.mainImage[0], { folder: "photuprint/products" })) || ""
+      if (mainImageUrl) console.log("Main image updated:", mainImageUrl)
     }
 
     // Handle additional/gallery images uploads (same pattern as main image: check Cloudinary config first)
     let newImageUrls = []
     if (req.files.images && req.files.images.length > 0) {
-      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
-      if (isCloudinaryConfigured()) {
-        try {
-          for (const file of req.files.images) {
-            const result = await cloudinary.uploader.upload(file.path, {
-              folder: "photuprint/products",
-            })
-            newImageUrls.push(result.secure_url)
-            removeLocalFile(file.path)
-          }
-          console.log("New additional images uploaded to Cloudinary:", newImageUrls)
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          newImageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
-        }
-      } else {
-        newImageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
+      for (const file of req.files.images) {
+        const url = await tenantCloudinaryUpload(req.websiteId, file, { folder: "photuprint/products" })
+        if (url) newImageUrls.push(url)
       }
+      console.log("New additional images stored:", newImageUrls)
     }
 
     // Handle video upload (if provided)
     let videoUrl = null
     if (req.files.video && req.files.video.length > 0) {
-      const { default: cloudinary, isCloudinaryConfigured } = await import("../utils/cloudinary.js")
-      if (isCloudinaryConfigured()) {
-        try {
-          const result = await cloudinary.uploader.upload(req.files.video[0].path, {
-            folder: "photuprint/products/videos",
-            resource_type: "video",
-          })
-          videoUrl = result.secure_url
-          removeLocalFile(req.files.video[0].path)
-          console.log("Video uploaded to Cloudinary:", videoUrl)
-        } catch (uploadError) {
-          console.error("Cloudinary upload failed:", uploadError)
-          // Fallback to local storage
-          videoUrl = `/uploads/${req.files.video[0].filename}`
-        }
-      } else {
-        // Cloudinary not configured, use local storage
-        videoUrl = `/uploads/${req.files.video[0].filename}`
-      }
+      videoUrl = await tenantCloudinaryUpload(req.websiteId, req.files.video[0], {
+        folder: "photuprint/products/videos",
+        resource_type: "video",
+      })
+      if (videoUrl) console.log("Video updated:", videoUrl)
     }
 
     // Prepare update data

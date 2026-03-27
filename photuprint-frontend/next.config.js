@@ -1,6 +1,26 @@
 /** @type {import('next').NextConfig} */
 const path = require("path")
 
+/**
+ * Google reCAPTCHA v2 global test keys (always pass verification; OK for localhost).
+ * https://developers.google.com/recaptcha/docs/faq
+ *
+ * Production site keys (e.g. in .env.production) are domain-locked and show
+ * "Localhost is not in the list of supported domains" during `npm run dev` if they
+ * end up in process.env. We override in development unless opted out.
+ */
+const RECAPTCHA_V2_TEST_SITE_KEY = "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+const RECAPTCHA_V2_TEST_SECRET_KEY = "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
+
+const useRecaptchaTestKeysInDev =
+  process.env.NODE_ENV === "development" &&
+  process.env.RECAPTCHA_USE_PRODUCTION_IN_DEV !== "true"
+
+if (useRecaptchaTestKeysInDev) {
+  process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY = RECAPTCHA_V2_TEST_SITE_KEY
+  process.env.RECAPTCHA_SECRET_KEY = RECAPTCHA_V2_TEST_SECRET_KEY
+}
+
 const withBundleAnalyzer = require("@next/bundle-analyzer")({
   enabled: process.env.ANALYZE === "true",
 })
@@ -11,22 +31,47 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
 
+<<<<<<< Updated upstream
+=======
+  // Silence "multiple lockfiles" warning — use photuprint-frontend as the trace root
+  outputFileTracingRoot: path.join(__dirname),
+
+  // Allow dev requests from 127.0.0.1 (e.g. when accessing via IP)
+  allowedDevOrigins: ["127.0.0.1", "localhost"],
+
+>>>>>>> Stashed changes
   compiler: {
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
   },
 
   env: {
-    NEXT_PUBLIC_API_URL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api",
-    NEXT_PUBLIC_GOOGLE_CLIENT_ID: process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || process.env.REACT_APP_GOOGLE_CLIENT_ID,
-    NEXT_PUBLIC_WEBSITE_ID: process.env.NEXT_PUBLIC_WEBSITE_ID,
+    ...(useRecaptchaTestKeysInDev
+      ? { NEXT_PUBLIC_RECAPTCHA_SITE_KEY: RECAPTCHA_V2_TEST_SITE_KEY }
+      : {}),
   },
 
   async rewrites() {
+<<<<<<< Updated upstream
+=======
+    // Use API_URL (server-only) so /api/* is proxied to the real backend. Client never sees
+    // admin.photuprint.com; all requests in Network tab stay on the frontend origin (e.g. testing.photuprint.com).
+    const backendOrigin = process.env.API_URL
+      ? process.env.API_URL.replace(/\/api\/?$/, "")
+      : "http://127.0.0.1:8080"
+>>>>>>> Stashed changes
     return {
       afterFiles: [
         {
           source: "/api/:path*",
+<<<<<<< Updated upstream
           destination: "http://localhost:8080/api/:path*",
+=======
+          destination: `${backendOrigin}/api/:path*`,
+        },
+        {
+          source: "/uploads/:path*",
+          destination: `${backendOrigin}/uploads/:path*`,
+>>>>>>> Stashed changes
         },
       ],
     }
@@ -89,6 +134,21 @@ const nextConfig = {
         pathname: "/uploads/**",
       },
       {
+        protocol: "http",
+        hostname: "testing.photuprint.com",
+        pathname: "/uploads/**",
+      },
+      {
+        protocol: "https",
+        hostname: "testing.photuprint.com",
+        pathname: "/uploads/**",
+      },
+      {
+        protocol: "https",
+        hostname: "admin.photuprint.com",
+        pathname: "/uploads/**",
+      },
+      {
         protocol: "https",
         hostname: "res.cloudinary.com",
         pathname: "/**",
@@ -104,3 +164,4 @@ const nextConfig = {
 }
 
 module.exports = withBundleAnalyzer(nextConfig)
+

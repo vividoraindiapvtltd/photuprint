@@ -1,7 +1,6 @@
 import FooterSection from "../models/footerSection.model.js"
 import FooterTheme from "../models/footerTheme.model.js"
-import cloudinary, { isCloudinaryConfigured } from "../utils/cloudinary.js"
-import { removeLocalFile } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 
 /**
  * Footer Section Controller
@@ -306,21 +305,12 @@ export const uploadLogo = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ msg: "No file uploaded" })
     }
-    if (isCloudinaryConfigured()) {
-      try {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/footer",
-          resource_type: "auto",
-        })
-        removeLocalFile(req.file.path)
-        return res.json({ logoUrl: result.secure_url })
-      } catch (uploadError) {
-        console.error("Footer logo Cloudinary upload failed:", uploadError)
-      }
-    }
-    // Cloudinary not configured or upload failed: keep local file and return URL
-    const fallbackUrl = `/uploads/${req.file.filename}`
-    return res.json({ logoUrl: fallbackUrl })
+    const websiteId = req.websiteId || req.tenant?._id
+    const logoUrl = await tenantCloudinaryUpload(websiteId, req.file, {
+      folder: "photuprint/footer",
+      resource_type: "auto",
+    })
+    return res.json({ logoUrl: logoUrl || `/uploads/${req.file.filename}` })
   } catch (error) {
     console.error("Error uploading footer logo:", error)
     res.status(500).json({ msg: "Server error", error: error.message })
@@ -335,20 +325,12 @@ export const uploadLinkIcon = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ msg: "No file uploaded" })
     }
-    if (isCloudinaryConfigured()) {
-      try {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/footer/link-icons",
-          resource_type: "auto",
-        })
-        removeLocalFile(req.file.path)
-        return res.json({ iconUrl: result.secure_url })
-      } catch (uploadError) {
-        console.error("Footer link icon Cloudinary upload failed:", uploadError)
-      }
-    }
-    const fallbackUrl = `/uploads/${req.file.filename}`
-    return res.json({ iconUrl: fallbackUrl })
+    const websiteId = req.websiteId || req.tenant?._id
+    const iconUrl = await tenantCloudinaryUpload(websiteId, req.file, {
+      folder: "photuprint/footer/link-icons",
+      resource_type: "auto",
+    })
+    return res.json({ iconUrl: iconUrl || `/uploads/${req.file.filename}` })
   } catch (error) {
     console.error("Error uploading footer link icon:", error)
     res.status(500).json({ msg: "Server error", error: error.message })

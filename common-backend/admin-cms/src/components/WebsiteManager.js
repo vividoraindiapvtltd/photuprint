@@ -36,6 +36,7 @@ const WebsiteManager = () => {
     isActive: true,
     razorpayKeyId: "",
     razorpayKeySecret: "",
+    cloudinaryUrl: "",
     cloudinaryCloudName: "",
     cloudinaryApiKey: "",
     cloudinaryApiSecret: "",
@@ -124,6 +125,9 @@ const WebsiteManager = () => {
       if (formData.cloudinaryApiSecret?.trim()) {
         websiteData.cloudinaryApiSecret = formData.cloudinaryApiSecret.trim()
       }
+      if (formData.cloudinaryUrl?.trim()) {
+        websiteData.cloudinaryUrl = formData.cloudinaryUrl.trim()
+      }
 
       if (editingId) {
         await api.put(`/websites/${editingId}`, websiteData)
@@ -172,11 +176,21 @@ const WebsiteManager = () => {
       isActive: website.isActive !== undefined ? website.isActive : true,
       razorpayKeyId: website.razorpayKeyId || "",
       razorpayKeySecret: "",
+      cloudinaryUrl: "",
       cloudinaryCloudName: website.cloudinaryCloudName || "",
       cloudinaryApiKey: website.cloudinaryApiKey || "",
       cloudinaryApiSecret: "",
     })
-    setShowCredentials(!!(website.razorpayKeyId || website.razorpayKeySecret || website.cloudinaryCloudName || website.cloudinaryApiKey || website.cloudinaryApiSecret))
+    setShowCredentials(
+      !!(
+        website.razorpayKeyId ||
+        website.razorpayKeySecret ||
+        website.cloudinaryUrl ||
+        website.cloudinaryCloudName ||
+        website.cloudinaryApiKey ||
+        website.cloudinaryApiSecret
+      )
+    )
     setEditingId(website._id || website.id)
     setError("")
     setSuccess("")
@@ -481,6 +495,19 @@ const WebsiteManager = () => {
                 </div>
 
                 <h4 className="font16 fontSemiBold appendBottom12 paddingTop16">Cloudinary</h4>
+                <p className="font13 grayText appendBottom12">
+                  Use either a single <strong>CLOUDINARY_URL</strong> (<code className="text-xs">cloudinary://...</code>) or the three fields below. URL is preferred when both are set. Leave blank to use server environment variables.
+                </p>
+                <div className="makeFlex column appendBottom16 fullWidth">
+                  <FormField
+                    type="password"
+                    name="cloudinaryUrl"
+                    label="Cloudinary URL (optional)"
+                    value={formData.cloudinaryUrl}
+                    onChange={handleChange}
+                    placeholder={editingId ? "(unchanged — enter new URL to replace)" : "cloudinary://API_KEY:API_SECRET@CLOUD_NAME"}
+                  />
+                </div>
                 <div className="makeFlex row gap10">
                   <div className="fullWidth">
                     <FormField type="text" name="cloudinaryCloudName" label="Cloud Name" value={formData.cloudinaryCloudName} onChange={handleChange} placeholder="e.g. dxxxxxx" />
@@ -579,7 +606,11 @@ const WebsiteManager = () => {
                           </div>
                           <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
                             <span className="detailLabel font14 fontSemiBold grayText textUppercase">Cloudinary:</span>
-                            <span className={`detailValue font14 ${website.cloudinaryCloudName ? "greenText" : "grayText"} appendLeft6`}>{website.cloudinaryCloudName ? "Custom Cloud" : "Global (env)"}</span>
+                            <span
+                              className={`detailValue font14 ${website.cloudinaryUrl || website.cloudinaryCloudName ? "greenText" : "grayText"} appendLeft6`}
+                            >
+                              {website.cloudinaryUrl ? "Custom URL" : website.cloudinaryCloudName ? "Custom (name/key)" : "Global (env)"}
+                            </span>
                           </div>
                         </>
                       )

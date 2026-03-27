@@ -31,8 +31,14 @@ router.post("/create-super-admin", async (req, res) => {
       return res.status(400).json({ msg: "Email is required" })
     }
 
-    if (!password || password.length < 6) {
-      return res.status(400).json({ msg: "Password is required and must be at least 6 characters" })
+    if (!password || password.length < 8) {
+      return res.status(400).json({ msg: "Password must be at least 8 characters" })
+    }
+    if (!/[A-Z]/.test(password)) {
+      return res.status(400).json({ msg: "Password must contain at least 1 uppercase letter" })
+    }
+    if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?]/.test(password)) {
+      return res.status(400).json({ msg: "Password must contain at least 1 special character" })
     }
 
     const emailLower = email.toLowerCase().trim()

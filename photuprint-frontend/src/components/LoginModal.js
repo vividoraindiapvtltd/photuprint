@@ -1,10 +1,12 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { useGoogleLogin } from "@react-oauth/google"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
+import ReCAPTCHA from "react-google-recaptcha"
+import { validatePassword, PASSWORD_RULES } from "../utils/passwordValidation"
 
 export default function LoginModal() {
   const pathname = usePathname()
@@ -28,6 +30,8 @@ export default function LoginModal() {
   const [otp, setOtp] = useState("")
   const [sendOtpLoading, setSendOtpLoading] = useState(false)
   const [verifyOtpLoading, setVerifyOtpLoading] = useState(false)
+  const [captchaToken, setCaptchaToken] = useState(null)
+  const captchaRef = useRef(null)
 
   useEffect(() => {
     if (!loginModalOpen) {
@@ -35,6 +39,8 @@ export default function LoginModal() {
       setMode("signin")
       setVerificationSent(false)
       setResendMsg("")
+      setCaptchaToken(null)
+      captchaRef.current?.reset()
       setUnverifiedEmailLogin(false)
       setAuthMethod("password")
       setOtpStep("phone")
@@ -82,8 +88,9 @@ export default function LoginModal() {
       setError("All fields are required")
       return
     }
-    if (password.length < 6) {
-      setError("Password must be at least 6 characters long")
+    const pwError = validatePassword(password)
+    if (pwError) {
+      setError(pwError)
       return
     }
     if (password !== confirmPassword) {
@@ -95,9 +102,13 @@ export default function LoginModal() {
       setError("Please enter a valid email address")
       return
     }
+    if (!captchaToken) {
+      setError("Please complete the CAPTCHA verification")
+      return
+    }
     setLoading(true)
     try {
-      const res = await api.post("/auth/register", { name, email, password, returnPath: loginReturnPath || "/" })
+      const res = await api.post("/auth/register", { name, email, password, captchaToken, returnPath: loginReturnPath || "/" })
       const data = res.data || {}
 
       // Backend sends verification email and returns msg/email (no user+token) when verification required
@@ -117,6 +128,8 @@ export default function LoginModal() {
       }
     } catch (err) {
       setError(err.response?.data?.msg || err.message || "Registration failed. Please try again.")
+      setCaptchaToken(null)
+      captchaRef.current?.reset()
     } finally {
       setLoading(false)
     }
@@ -419,7 +432,8 @@ export default function LoginModal() {
                     <label htmlFor="modal-reg-password" className="sr-only">
                       Password
                     </label>
-                    <input id="modal-reg-password" type="password" autoComplete="new-password" required placeholder="Password (min 6 characters)" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm" />
+                    <input id="modal-reg-password" type="password" autoComplete="new-password" required placeholder="Min 8 chars, 1 uppercase, 1 special" value={password} onChange={(e) => setPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm" />
+                    <p className="mt-1 text-xs text-gray-500">{PASSWORD_RULES}</p>
                   </div>
                   <div>
                     <label htmlFor="modal-confirm-password" className="sr-only">
@@ -427,7 +441,12 @@ export default function LoginModal() {
                     </label>
                     <input id="modal-confirm-password" type="password" autoComplete="new-password" required placeholder="Confirm password" value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent sm:text-sm" />
                   </div>
-                  <button type="submit" disabled={loading} className="w-full py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed">
+                  {process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY && (
+                    <div className="flex justify-center" style={{ transform: "scale(0.9)", transformOrigin: "center" }}>
+                      <ReCAPTCHA ref={captchaRef} sitekey={process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY} onChange={(token) => setCaptchaToken(token)} onExpired={() => setCaptchaToken(null)} />
+                    </div>
+                  )}
+                  <button type="submit" disabled={loading || !captchaToken} className="w-full py-2 px-4 rounded-lg text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-60 disabled:cursor-not-allowed">
                     {loading ? "Creating account..." : "Create account"}
                   </button>
                 </form>

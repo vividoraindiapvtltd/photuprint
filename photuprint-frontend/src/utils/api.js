@@ -1,14 +1,46 @@
 import axios from "axios"
 
-// Use backend URL directly so Authorization and other headers are sent correctly
-// (Next.js rewrites can strip headers when proxying; direct call ensures token is sent)
 const getBaseURL = () => {
-  return process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
+  // Browser: use relative "/api" so requests stay same-origin (no CORS)
+  // and go through Next.js rewrites which proxy to the backend.
+  if (typeof window !== "undefined") {
+    return "/api"
+  }
+  // Server (SSR): use internal backend URL directly.
+  return process.env.API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080/api"
 }
 
 const api = axios.create({
   baseURL: getBaseURL(),
 })
+
+/** Set by POST /api/website-handoff (e.g. Vividora). Must match app/api/website-handoff/route.js */
+const WEBSITE_ID_COOKIE = "photuprint_x_website_id"
+
+function readWebsiteIdFromCookie() {
+  if (typeof document === "undefined") return null
+  try {
+    const match = document.cookie.match(
+      new RegExp(`(?:^|;\\s*)${WEBSITE_ID_COOKIE}=([^;]*)`),
+    )
+    const raw = match?.[1]
+    return raw ? decodeURIComponent(raw) : null
+  } catch {
+    return null
+  }
+}
+
+function getWebsiteIdForRequest() {
+  if (typeof window !== "undefined") {
+    return (
+      readWebsiteIdFromCookie() ||
+      process.env.NEXT_PUBLIC_WEBSITE_ID ||
+      window.__NEXT_DATA__?.env?.NEXT_PUBLIC_WEBSITE_ID ||
+      null
+    )
+  }
+  return process.env.NEXT_PUBLIC_WEBSITE_ID
+}
 
 // Add request interceptor for authentication and website ID
 // Backend auth response: { user: { id, name, email, role, ... }, token: "..." }
@@ -36,22 +68,15 @@ api.interceptors.request.use(
 )
 
 api.interceptors.request.use((config) => {
-  // For authentication-related routes (e.g., register, login, verify-email), the backend does not require
-  // a website context, because these actions are not tied to a specific website/tenant—they are global.
-  // Therefore, we intentionally do NOT send the X-Website-Id header for any /auth/ route, or if explicitly skipped.
-  const isAuthRoute = config.url?.includes("/auth/")
-  if (config.skipWebsiteId === true || isAuthRoute) {
+  // Skip website ID only when explicitly requested.
+  // Auth routes like /auth/google and /auth/register DO need website context
+  // so the backend can associate the user with the correct website.
+  if (config.skipWebsiteId === true) {
     delete config.skipWebsiteId
     return config
   }
 
-  // Add X-Website-Id header from environment variable
-  let websiteId = null
-  if (typeof window !== "undefined") {
-    websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID || window.__NEXT_DATA__?.env?.NEXT_PUBLIC_WEBSITE_ID
-  } else {
-    websiteId = process.env.NEXT_PUBLIC_WEBSITE_ID
-  }
+  const websiteId = getWebsiteIdForRequest()
 
   if (websiteId) {
     config.headers["x-website-id"] = websiteId

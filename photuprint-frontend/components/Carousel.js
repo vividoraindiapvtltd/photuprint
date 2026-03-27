@@ -306,13 +306,7 @@ export default function Carousel({ carouselKey = "hero" }) {
               {currentSlides.map((slide) => (
                 <SlideLink key={slide._id} slide={slide}>
                   <div className="relative block rounded-lg overflow-hidden bg-white/5">
-                    <div className="relative w-full aspect-[4/3] rounded-t-lg overflow-hidden">
-                      {resolveImageUrl(slide.imageUrl) ? (
-                        <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`${imgFit} rounded-t-lg`} sizes="(max-width: 768px) 100vw, 33vw" />
-                      ) : (
-                        <div className="w-full h-full bg-gray-800 rounded-t-lg" />
-                      )}
-                    </div>
+                    <div className="relative w-full aspect-[4/3] rounded-t-lg overflow-hidden">{resolveImageUrl(slide.imageUrl) ? <Image src={resolveImageUrl(slide.imageUrl)} alt={slide.title || ""} fill className={`${imgFit} rounded-t-lg`} sizes="(max-width: 768px) 100vw, 33vw" /> : <div className="w-full h-full bg-gray-800 rounded-t-lg" />}</div>
                     <Caption slide={slide} fullWidth={false} />
                   </div>
                 </SlideLink>

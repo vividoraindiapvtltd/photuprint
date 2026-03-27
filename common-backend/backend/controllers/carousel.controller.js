@@ -1,7 +1,6 @@
 import CarouselSlide from "../models/carouselSlide.model.js"
 import CarouselSetting, { CAROUSEL_KEYS_LIST } from "../models/carouselSetting.model.js"
-import cloudinary, { isCloudinaryConfigured } from "../utils/cloudinary.js"
-import { removeLocalFile } from "../utils/fileCleanup.js"
+import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 
 const CAROUSEL_KEYS = CAROUSEL_KEYS_LIST || ["hero", "featured", "promotions"]
 
@@ -326,20 +325,12 @@ export const uploadImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ msg: "No file uploaded" })
     }
-    if (isCloudinaryConfigured()) {
-      try {
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: "photuprint/carousel",
-          resource_type: "auto",
-        })
-        removeLocalFile(req.file.path)
-        return res.json({ imageUrl: result.secure_url })
-      } catch (uploadError) {
-        console.error("Carousel image Cloudinary upload failed:", uploadError)
-      }
-    }
-    const fallbackUrl = `/uploads/${req.file.filename}`
-    return res.json({ imageUrl: fallbackUrl })
+    const websiteId = req.websiteId || req.tenant?._id
+    const imageUrl = await tenantCloudinaryUpload(websiteId, req.file, {
+      folder: "photuprint/carousel",
+      resource_type: "auto",
+    })
+    return res.json({ imageUrl: imageUrl || `/uploads/${req.file.filename}` })
   } catch (error) {
     console.error("Error uploading carousel image:", error)
     res.status(500).json({ msg: "Server error", error: error.message })

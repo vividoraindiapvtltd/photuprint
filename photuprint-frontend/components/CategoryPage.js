@@ -1,10 +1,11 @@
 "use client"
 
-import { useEffect, useState, useMemo } from "react"
+import { useEffect, useState, useMemo, useRef, useCallback } from "react"
+import { createPortal } from "react-dom"
 import Link from "next/link"
 import api from "../src/utils/api"
+import { useMediaQuery } from "../src/hooks/useMediaQuery"
 import { ProductCard, GridLayout } from "./FeaturedProductSection"
-import TopBar from "./TopBar"
 import NavigationBar from "./NavigationBar"
 import Footer from "./Footer"
 
@@ -99,6 +100,111 @@ function ProductCardShimmer() {
   )
 }
 
+/** Shared filter column / sheet body (desktop sidebar + mobile bottom sheet). */
+function CategoryFiltersPanel({
+  showTitle = true,
+  filterOptions,
+  subcategoryOptions,
+  subcategorySearch,
+  setSubcategorySearch,
+  colorSearch,
+  setColorSearch,
+  sizeSearch,
+  setSizeSearch,
+  themeSearch,
+  setThemeSearch,
+  brandSearch,
+  setBrandSearch,
+  tagSearch,
+  setTagSearch,
+  selectedSubcategories,
+  selectedColors,
+  selectedSizes,
+  selectedThemes,
+  selectedBrands,
+  selectedTags,
+  minPrice,
+  maxPrice,
+  toggleSubcategory,
+  toggleColor,
+  toggleSize,
+  toggleTheme,
+  toggleBrand,
+  toggleTag,
+  setMinPrice,
+  setMaxPrice,
+}) {
+  return (
+    <>
+      {showTitle ? (
+        <h2 className="text-lg font-bold text-gray-900 mb-4 uppercase tracking-wide">Filters</h2>
+      ) : null}
+
+      <FilterBlock
+        title="Brand"
+        searchPlaceholder="Search brand..."
+        options={filterOptions.brands}
+        selectedValues={selectedBrands}
+        onToggle={toggleBrand}
+        searchQuery={brandSearch}
+        onSearchChange={setBrandSearch}
+      />
+
+      <FilterBlock
+        title="Subcategory"
+        searchPlaceholder="Search subcategory..."
+        options={subcategoryOptions}
+        selectedValues={selectedSubcategories}
+        onToggle={toggleSubcategory}
+        searchQuery={subcategorySearch}
+        onSearchChange={setSubcategorySearch}
+      />
+
+      <FilterBlock
+        title="Color"
+        searchPlaceholder="Search color..."
+        options={filterOptions.colors}
+        selectedValues={selectedColors}
+        onToggle={toggleColor}
+        searchQuery={colorSearch}
+        onSearchChange={setColorSearch}
+      />
+
+      <FilterBlock
+        title="Size"
+        searchPlaceholder="Search size..."
+        options={filterOptions.sizes}
+        selectedValues={selectedSizes}
+        onToggle={toggleSize}
+        searchQuery={sizeSearch}
+        onSearchChange={setSizeSearch}
+      />
+
+      <PriceFilter minPrice={minPrice} maxPrice={maxPrice} onMinChange={setMinPrice} onMaxChange={setMaxPrice} />
+
+      <FilterBlock
+        title="Theme"
+        searchPlaceholder="Search theme..."
+        options={filterOptions.themes}
+        selectedValues={selectedThemes}
+        onToggle={toggleTheme}
+        searchQuery={themeSearch}
+        onSearchChange={setThemeSearch}
+      />
+
+      <FilterBlock
+        title="Tags"
+        searchPlaceholder="Search tag..."
+        options={filterOptions.tags}
+        selectedValues={selectedTags}
+        onToggle={toggleTag}
+        searchQuery={tagSearch}
+        onSearchChange={setTagSearch}
+      />
+    </>
+  )
+}
+
 export default function CategoryPage({ categoryId, initialCategoryName = null, initialProducts = null, initialSubcategories = null }) {
   const [category, setCategory] = useState(initialCategoryName ? { name: initialCategoryName, _id: categoryId } : null)
   const [subcategories, setSubcategories] = useState(initialSubcategories || [])
@@ -125,6 +231,79 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
   const [minPrice, setMinPrice] = useState("")
   const [maxPrice, setMaxPrice] = useState("")
   const [sortBy, setSortBy] = useState("")
+
+  const isMd = useMediaQuery("(min-width: 768px)")
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false)
+  const [sheetDragY, setSheetDragY] = useState(0)
+  const sheetDragYRef = useRef(0)
+  const touchStartY = useRef(null)
+  const [portalReady, setPortalReady] = useState(false)
+
+  useEffect(() => {
+    setPortalReady(true)
+  }, [])
+
+  const activeFilterCount = useMemo(() => {
+    let n =
+      selectedSubcategories.length +
+      selectedColors.length +
+      selectedSizes.length +
+      selectedThemes.length +
+      selectedBrands.length +
+      selectedTags.length
+    if (minPrice !== "" || maxPrice !== "") n += 1
+    return n
+  }, [
+    selectedSubcategories,
+    selectedColors,
+    selectedSizes,
+    selectedThemes,
+    selectedBrands,
+    selectedTags,
+    minPrice,
+    maxPrice,
+  ])
+
+  const closeMobileFilters = useCallback(() => {
+    setMobileFiltersOpen(false)
+    setSheetDragY(0)
+    sheetDragYRef.current = 0
+    touchStartY.current = null
+  }, [])
+
+  useEffect(() => {
+    if (!mobileFiltersOpen || isMd) return
+    const prev = document.body.style.overflow
+    document.body.style.overflow = "hidden"
+    const onKey = (e) => {
+      if (e.key === "Escape") closeMobileFilters()
+    }
+    window.addEventListener("keydown", onKey)
+    return () => {
+      document.body.style.overflow = prev
+      window.removeEventListener("keydown", onKey)
+    }
+  }, [mobileFiltersOpen, isMd, closeMobileFilters])
+
+  const onSheetTouchStart = (e) => {
+    touchStartY.current = e.touches[0].clientY
+  }
+  const onSheetTouchMove = (e) => {
+    if (touchStartY.current == null) return
+    const dy = e.touches[0].clientY - touchStartY.current
+    if (dy > 0) {
+      sheetDragYRef.current = dy
+      setSheetDragY(dy)
+    }
+  }
+  const onSheetTouchEnd = () => {
+    if (sheetDragYRef.current > 100) closeMobileFilters()
+    else {
+      setSheetDragY(0)
+      sheetDragYRef.current = 0
+    }
+    touchStartY.current = null
+  }
 
   // Fetch category name if we only have id
   useEffect(() => {
@@ -442,10 +621,42 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
     }
   }, [products, sortBy])
 
+  const filterPanelProps = {
+    filterOptions,
+    subcategoryOptions,
+    subcategorySearch,
+    setSubcategorySearch,
+    colorSearch,
+    setColorSearch,
+    sizeSearch,
+    setSizeSearch,
+    themeSearch,
+    setThemeSearch,
+    brandSearch,
+    setBrandSearch,
+    tagSearch,
+    setTagSearch,
+    selectedSubcategories,
+    selectedColors,
+    selectedSizes,
+    selectedThemes,
+    selectedBrands,
+    selectedTags,
+    minPrice,
+    maxPrice,
+    toggleSubcategory,
+    toggleColor,
+    toggleSize,
+    toggleTheme,
+    toggleBrand,
+    toggleTag,
+    setMinPrice,
+    setMaxPrice,
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-50 w-full">
-        <TopBar />
         <NavigationBar />
       </header>
 
@@ -459,93 +670,52 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
           <span className="text-gray-900 font-medium">{loading ? "..." : (category?.name || (categoryId ? "Category" : "All Products"))}</span>
         </nav>
 
-        <div className="flex flex-col lg:flex-row gap-8">
-          {/* Left: Filters */}
-          <aside className="lg:w-64 flex-shrink-0">
-            <div className="bg-white rounded-lg border border-gray-200 p-4 sticky top-24">
-              <h2 className="text-lg font-bold text-gray-900 mb-4 uppercase tracking-wide">Filters</h2>
+        <div className="flex flex-col gap-8 lg:flex-row">
+          {/* Desktop (md+): filters in sidebar — not mounted on narrow viewports */}
+          {isMd ? (
+            <aside className="w-full flex-shrink-0 lg:w-64">
+              <div className="sticky top-24 rounded-lg border border-gray-200 bg-white p-4">
+                <CategoryFiltersPanel showTitle {...filterPanelProps} />
+              </div>
+            </aside>
+          ) : null}
 
-              <FilterBlock
-                title="Brand"
-                searchPlaceholder="Search brand..."
-                options={filterOptions.brands}
-                selectedValues={selectedBrands}
-                onToggle={toggleBrand}
-                searchQuery={brandSearch}
-                onSearchChange={setBrandSearch}
-              />
-
-              <FilterBlock
-                title="Subcategory"
-                searchPlaceholder="Search subcategory..."
-                options={subcategoryOptions}
-                selectedValues={selectedSubcategories}
-                onToggle={toggleSubcategory}
-                searchQuery={subcategorySearch}
-                onSearchChange={setSubcategorySearch}
-              />
-
-              <FilterBlock
-                title="Color"
-                searchPlaceholder="Search color..."
-                options={filterOptions.colors}
-                selectedValues={selectedColors}
-                onToggle={toggleColor}
-                searchQuery={colorSearch}
-                onSearchChange={setColorSearch}
-              />
-
-              <FilterBlock
-                title="Size"
-                searchPlaceholder="Search size..."
-                options={filterOptions.sizes}
-                selectedValues={selectedSizes}
-                onToggle={toggleSize}
-                searchQuery={sizeSearch}
-                onSearchChange={setSizeSearch}
-              />
-
-              <PriceFilter
-                minPrice={minPrice}
-                maxPrice={maxPrice}
-                onMinChange={setMinPrice}
-                onMaxChange={setMaxPrice}
-              />
-
-              <FilterBlock
-                title="Theme"
-                searchPlaceholder="Search theme..."
-                options={filterOptions.themes}
-                selectedValues={selectedThemes}
-                onToggle={toggleTheme}
-                searchQuery={themeSearch}
-                onSearchChange={setThemeSearch}
-              />
-
-              <FilterBlock
-                title="Tags"
-                searchPlaceholder="Search tag..."
-                options={filterOptions.tags}
-                selectedValues={selectedTags}
-                onToggle={toggleTag}
-                searchQuery={tagSearch}
-                onSearchChange={setTagSearch}
-              />
-            </div>
-          </aside>
-
-          {/* Right: Products */}
-          <main className="flex-1 min-w-0">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4">
-              <h1 className="text-xl font-bold text-gray-900 uppercase tracking-wide">
+          {/* Products */}
+          <main className="min-w-0 flex-1">
+            <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <h1 className="text-xl font-bold uppercase tracking-wide text-gray-900">
                 {loading ? "..." : (category?.name || (categoryId ? "Category" : "All Products"))}
               </h1>
-              <div className="flex items-center gap-3 flex-wrap">
+              <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+                {!isMd ? (
+                  <button
+                    type="button"
+                    onClick={() => setMobileFiltersOpen(true)}
+                    className="inline-flex min-h-[44px] min-w-[44px] items-center justify-center gap-2 rounded-lg border-2 border-gray-900 px-4 py-2 text-sm font-semibold text-gray-900 transition-colors hover:bg-gray-900 hover:text-white"
+                    aria-expanded={mobileFiltersOpen}
+                    aria-controls="pp-mobile-filters-sheet"
+                  >
+                    <svg className="h-5 w-5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth={2}
+                        d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"
+                      />
+                    </svg>
+                    Filters
+                    {activeFilterCount > 0 ? (
+                      <span className="rounded-full bg-gray-900 px-2 py-0.5 text-xs font-bold text-white tabular-nums">
+                        {activeFilterCount}
+                      </span>
+                    ) : null}
+                  </button>
+                ) : null}
                 <span className="text-sm text-gray-500">{products.length} products</span>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
-                  className="text-sm border border-gray-300 rounded-lg px-3 py-2 bg-white text-gray-700 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 min-w-[200px]"
+                  className="min-h-[44px] min-w-0 flex-1 rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:ring-2 focus:ring-blue-500 sm:min-w-[200px] sm:flex-none"
                 >
                   {SORT_OPTIONS.map((opt) => (
                     <option key={opt.value || "default"} value={opt.value}>
@@ -589,6 +759,67 @@ export default function CategoryPage({ categoryId, initialCategoryName = null, i
           </main>
         </div>
       </div>
+
+      {portalReady &&
+        !isMd &&
+        mobileFiltersOpen &&
+        createPortal(
+          <div className="fixed inset-0 z-[60] md:hidden" role="presentation">
+            <button
+              type="button"
+              className="absolute inset-0 bg-black/50 animate-pp-backdrop-in"
+              onClick={closeMobileFilters}
+              aria-label="Close filters"
+            />
+            <div
+              id="pp-mobile-filters-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="pp-mobile-filters-title"
+              className="absolute bottom-0 left-0 right-0 flex max-h-[90vh] flex-col rounded-t-2xl bg-white shadow-[0_-8px_30px_rgba(0,0,0,0.12)] animate-pp-sheet-up"
+              style={
+                sheetDragY > 0
+                  ? { transform: `translateY(${sheetDragY}px)`, transition: "none" }
+                  : undefined
+              }
+              onTouchStart={onSheetTouchStart}
+              onTouchMove={onSheetTouchMove}
+              onTouchEnd={onSheetTouchEnd}
+            >
+              <div className="flex shrink-0 flex-col items-center border-b border-gray-100 px-4 pt-2 pb-1">
+                <div className="mb-2 h-1 w-10 rounded-full bg-gray-300" aria-hidden />
+                <div className="flex w-full items-center justify-between py-2">
+                  <h2 id="pp-mobile-filters-title" className="text-base font-bold uppercase tracking-wide text-gray-900">
+                    Filters
+                  </h2>
+                  <button
+                    type="button"
+                    onClick={closeMobileFilters}
+                    className="rounded-lg p-2 text-gray-600 hover:bg-gray-100"
+                    aria-label="Close filters"
+                  >
+                    <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden>
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
+                </div>
+              </div>
+              <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
+                <CategoryFiltersPanel showTitle={false} {...filterPanelProps} />
+              </div>
+              <div className="shrink-0 border-t border-gray-200 bg-white p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+                <button
+                  type="button"
+                  onClick={closeMobileFilters}
+                  className="w-full rounded-lg bg-gray-900 py-3 text-sm font-semibold text-white"
+                >
+                  Apply
+                </button>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )}
 
       <Footer />
     </div>

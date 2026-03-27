@@ -1,6 +1,6 @@
 import Template from "../models/template.model.js"
 import Category from "../models/category.model.js"
-import cloudinary from "../utils/cloudinary.js"
+import { getCloudinaryForWebsite } from "../utils/cloudinary.js"
 import { removeLocalFile } from "../utils/fileCleanup.js"
 import fs from "fs"
 import path from "path"
@@ -204,6 +204,7 @@ export const createTemplate = async (req, res) => {
 
     if (req.files) {
       console.log("Files received:", Object.keys(req.files))
+      const cl = await getCloudinaryForWebsite(req.websiteId)
 
       // Helper function to upload files to Cloudinary
       const uploadFiles = async (files, folder) => {
@@ -212,7 +213,7 @@ export const createTemplate = async (req, res) => {
         for (const file of filesArray) {
           if (file && file.path) {
             try {
-              const result = await cloudinary.uploader.upload(file.path, {
+              const result = await cl.uploader.upload(file.path, {
                 folder: `templates/${folder}`,
                 resource_type: "auto",
               })
@@ -252,7 +253,7 @@ export const createTemplate = async (req, res) => {
 
         if (previewFile && previewFile.path) {
           try {
-            const result = await cloudinary.uploader.upload(previewFile.path, {
+            const result = await cl.uploader.upload(previewFile.path, {
               folder: "templates/previews",
               resource_type: "image",
             })
@@ -485,6 +486,8 @@ export const updateTemplate = async (req, res) => {
     let existingLogoImages = template.logoImages || []
     let previewImageUrl = template.previewImage
 
+    const cl = await getCloudinaryForWebsite(req.websiteId)
+
     // Helper function to delete files from Cloudinary
     const deleteFilesFromCloudinary = async (fileUrls) => {
       for (const fileUrl of fileUrls) {
@@ -497,7 +500,7 @@ export const updateTemplate = async (req, res) => {
               const versionIndex = pathAfterUpload.findIndex((part) => part.startsWith("v"))
               const publicIdParts = versionIndex !== -1 ? pathAfterUpload.slice(versionIndex + 1) : pathAfterUpload
               const publicId = publicIdParts.join("/").split(".")[0]
-              await cloudinary.uploader.destroy(publicId).catch(() => {})
+              await cl.uploader.destroy(publicId).catch(() => {})
               console.log("Deleted file from Cloudinary:", publicId)
             }
           } catch (err) {
@@ -514,7 +517,7 @@ export const updateTemplate = async (req, res) => {
       for (const file of filesArray) {
         if (file && file.path) {
           try {
-            const result = await cloudinary.uploader.upload(file.path, {
+            const result = await cl.uploader.upload(file.path, {
               folder: `templates/${folder}`,
               resource_type: "auto",
             })
@@ -581,7 +584,7 @@ export const updateTemplate = async (req, res) => {
         if (template.previewImage && template.previewImage.includes("cloudinary.com")) {
           try {
             const publicId = template.previewImage.split("/").slice(-2).join("/").split(".")[0]
-            await cloudinary.uploader.destroy(publicId).catch(() => {})
+            await cl.uploader.destroy(publicId).catch(() => {})
             console.log("Deleted old preview from Cloudinary:", publicId)
           } catch (err) {
             console.error("Error deleting old preview from Cloudinary:", err)
@@ -591,7 +594,7 @@ export const updateTemplate = async (req, res) => {
         const file = previewFile
         if (file && file.path) {
           try {
-            const result = await cloudinary.uploader.upload(file.path, {
+            const result = await cl.uploader.upload(file.path, {
               folder: "templates/previews",
               resource_type: "image",
             })
@@ -702,6 +705,7 @@ export const deleteTemplate = async (req, res) => {
     console.log("Template found:", template.name)
 
     if (permanent === "true") {
+      const cl = await getCloudinaryForWebsite(req.websiteId)
       // Hard delete - remove files from Cloudinary
       // Delete all background images from Cloudinary
       if (template.backgroundImages && template.backgroundImages.length > 0) {
@@ -715,7 +719,7 @@ export const deleteTemplate = async (req, res) => {
                 const versionIndex = pathAfterUpload.findIndex((part) => part.startsWith("v"))
                 const publicIdParts = versionIndex !== -1 ? pathAfterUpload.slice(versionIndex + 1) : pathAfterUpload
                 const publicId = publicIdParts.join("/").split(".")[0]
-                await cloudinary.uploader.destroy(publicId).catch(() => {})
+                await cl.uploader.destroy(publicId).catch(() => {})
                 console.log("Deleted background image from Cloudinary:", publicId)
               }
             } catch (err) {
@@ -737,7 +741,7 @@ export const deleteTemplate = async (req, res) => {
                 const versionIndex = pathAfterUpload.findIndex((part) => part.startsWith("v"))
                 const publicIdParts = versionIndex !== -1 ? pathAfterUpload.slice(versionIndex + 1) : pathAfterUpload
                 const publicId = publicIdParts.join("/").split(".")[0]
-                await cloudinary.uploader.destroy(publicId).catch(() => {})
+                await cl.uploader.destroy(publicId).catch(() => {})
                 console.log("Deleted logo image from Cloudinary:", publicId)
               }
             } catch (err) {
@@ -751,7 +755,7 @@ export const deleteTemplate = async (req, res) => {
       if (template.previewImage && template.previewImage.includes("cloudinary.com")) {
         try {
           const publicId = template.previewImage.split("/").slice(-2).join("/").split(".")[0]
-          await cloudinary.uploader.destroy(publicId).catch(() => {})
+          await cl.uploader.destroy(publicId).catch(() => {})
           console.log("Deleted preview image from Cloudinary:", publicId)
         } catch (err) {
           console.error("Error deleting preview image from Cloudinary:", err)

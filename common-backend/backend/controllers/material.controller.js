@@ -1,5 +1,5 @@
 import Material from '../models/material.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Get all materials
 export const getMaterials = async (req, res) => {
@@ -86,20 +86,7 @@ export const createMaterial = async (req, res) => {
     // Handle image upload if present
     let image = null;
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/materials',
-        });
-        image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image uploaded to Cloudinary:', image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        image = `/uploads/${req.file.filename}`;
-      }
+      image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/materials' });
     }
 
     // Parse isActive - it might come as string 'true'/'false' from FormData
@@ -165,20 +152,7 @@ export const updateMaterial = async (req, res) => {
 
     // Handle image upload if present
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/materials',
-        });
-        material.image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image updated in Cloudinary:', material.image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        material.image = `/uploads/${req.file.filename}`;
-      }
+      material.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/materials' });
     }
 
     // Update fields

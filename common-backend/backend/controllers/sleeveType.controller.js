@@ -1,5 +1,5 @@
 import SleeveType from '../models/sleeveType.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Get all sleeve types
 export const getSleeveTypes = async (req, res) => {
@@ -90,18 +90,7 @@ export const createSleeveType = async (req, res) => {
     // Handle image upload if present
     let image = null;
     if (req.file) {
-      try {
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/sleeve-types',
-        });
-        image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image uploaded to Cloudinary:', image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        image = `/uploads/${req.file.filename}`; // Fallback to local storage
-      }
+      image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/sleeve-types' });
     }
 
     const sleeveType = new SleeveType({
@@ -176,18 +165,7 @@ export const updateSleeveType = async (req, res) => {
 
     // Handle image upload if present
     if (req.file) {
-      try {
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/sleeve-types',
-        });
-        sleeveType.image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image updated in Cloudinary:', sleeveType.image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        sleeveType.image = `/uploads/${req.file.filename}`; // Fallback to local storage
-      }
+      sleeveType.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/sleeve-types' });
     } else if (req.body.image !== undefined) {
       // Allow setting image URL directly (for keeping existing image when no new file)
       // Only update if explicitly provided in body

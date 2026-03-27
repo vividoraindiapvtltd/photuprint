@@ -1,18 +1,19 @@
-import TopBar from "./TopBar"
 import NavigationBar from "./NavigationBar"
 import { FeaturedProductSections } from "./FeaturedProductSection"
 import Footer from "./Footer"
 import HomeHeavySections from "./HomeHeavySections"
+import CategoriesSection from "./CategoriesSection"
 
-export default function HomePage({ initialSections = [], fallbackProducts = [], initialFooterSections = [], initialFooterTheme = {} } = {}) {
+export default function HomePage({ initialSections = [], fallbackProducts = [], initialFooterSections = [], initialFooterTheme = {}, initialCategories = [] } = {}) {
   return (
     <div className="min-h-screen bg-gray-50">
       <header className="sticky top-0 z-50 w-full">
-        <TopBar />
         <NavigationBar />
       </header>
 
-      <HomeHeavySections />
+      <HomeHeavySections>
+        <CategoriesSection initialCategories={initialCategories} />
+      </HomeHeavySections>
 
       <FeaturedProductSections initialSections={initialSections} fallbackProducts={fallbackProducts} />
 

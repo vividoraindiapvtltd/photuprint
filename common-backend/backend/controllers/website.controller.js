@@ -4,6 +4,7 @@ import { evictCredentialsCache } from '../utils/websiteCredentials.js';
 const CREDENTIAL_FIELDS = [
   'razorpayKeyId',
   'razorpayKeySecret',
+  'cloudinaryUrl',
   'cloudinaryCloudName',
   'cloudinaryApiKey',
   'cloudinaryApiSecret',
@@ -23,6 +24,7 @@ function sanitizeWebsiteForAdmin(doc) {
   const obj = typeof doc.toObject === 'function' ? doc.toObject() : { ...doc };
   obj.razorpayKeyId = obj.razorpayKeyId || null;
   obj.razorpayKeySecret = maskSecret(obj.razorpayKeySecret);
+  obj.cloudinaryUrl = maskSecret(obj.cloudinaryUrl);
   obj.cloudinaryCloudName = obj.cloudinaryCloudName || null;
   obj.cloudinaryApiKey = obj.cloudinaryApiKey || null;
   obj.cloudinaryApiSecret = maskSecret(obj.cloudinaryApiSecret);

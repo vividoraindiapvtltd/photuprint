@@ -1,5 +1,5 @@
 import Pattern from '../models/pattern.model.js';
-import { removeLocalFile } from '../utils/fileCleanup.js';
+import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
 
 // Get all patterns
 export const getPatterns = async (req, res) => {
@@ -82,20 +82,7 @@ export const createPattern = async (req, res) => {
     // Handle image upload if present
     let image = null;
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/patterns',
-        });
-        image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image uploaded to Cloudinary:', image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        image = `/uploads/${req.file.filename}`;
-      }
+      image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/patterns' });
     }
 
     // Parse isActive - it might come as string 'true'/'false' from FormData
@@ -158,20 +145,7 @@ export const updatePattern = async (req, res) => {
 
     // Handle image upload if present
     if (req.file) {
-      try {
-        // Upload to Cloudinary
-        const cloudinary = (await import('../utils/cloudinary.js')).default;
-        const result = await cloudinary.uploader.upload(req.file.path, {
-          folder: 'photuprint/patterns',
-        });
-        pattern.image = result.secure_url;
-        removeLocalFile(req.file.path);
-        console.log('Image updated in Cloudinary:', pattern.image);
-      } catch (uploadError) {
-        console.error('Cloudinary upload failed:', uploadError);
-        // Fallback to local storage
-        pattern.image = `/uploads/${req.file.filename}`;
-      }
+      pattern.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/patterns' });
     }
 
     // Update fields

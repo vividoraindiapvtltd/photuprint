@@ -11,7 +11,8 @@ function resolveUrl(url) {
 }
 
 export default function ProductImageCarousel({ images = [], alt = "Product", badgeText, className = "" }) {
-  const thumbRef = useRef(null)
+  const thumbRefVertical = useRef(null)
+  const thumbRefHorizontal = useRef(null)
   const [selectedIndex, setSelectedIndex] = useState(0)
   const [canThumbUp, setCanThumbUp] = useState(false)
   const [canThumbDown, setCanThumbDown] = useState(false)
@@ -20,7 +21,7 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
   const hasMultiple = list.length > 1
 
   const updateThumbButtons = () => {
-    const el = thumbRef.current
+    const el = thumbRefVertical.current
     if (!el) return
     const { scrollTop, scrollHeight, clientHeight } = el
     setCanThumbUp(scrollTop > 2)
@@ -28,7 +29,7 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
   }
 
   useEffect(() => {
-    const el = thumbRef.current
+    const el = thumbRefVertical.current
     if (!el) return
     updateThumbButtons()
     el.addEventListener("scroll", updateThumbButtons, { passive: true })
@@ -45,12 +46,14 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
     if (selectedIndex >= list.length) setSelectedIndex(Math.max(0, list.length - 1))
   }, [list.length, selectedIndex])
 
-  // Scroll active thumbnail into view in vertical strip
+  // Scroll active thumbnail into view (desktop: vertical strip; mobile: horizontal strip)
   useEffect(() => {
-    const el = thumbRef.current
-    if (!el || !hasMultiple) return
-    const thumb = el.querySelector(`[data-thumb-index="${selectedIndex}"]`)
-    if (thumb) thumb.scrollIntoView({ block: "nearest", behavior: "smooth" })
+    if (!hasMultiple) return
+    const isMd = typeof window !== "undefined" && window.matchMedia("(min-width: 768px)").matches
+    const container = isMd ? thumbRefVertical.current : thumbRefHorizontal.current
+    if (!container) return
+    const thumb = container.querySelector(`[data-thumb-index="${selectedIndex}"]`)
+    if (thumb) thumb.scrollIntoView({ block: "nearest", inline: "nearest", behavior: "smooth" })
   }, [selectedIndex, hasMultiple])
 
   const goMain = (delta) => {
@@ -59,7 +62,7 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
   }
 
   const scrollThumb = (dir) => {
-    const el = thumbRef.current
+    const el = thumbRefVertical.current
     if (!el) return
     const thumbHeight = el.firstElementChild?.offsetHeight ?? 80
     const step = (thumbHeight + THUMB_GAP) * 1
@@ -81,46 +84,49 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
 
   const mainSrc = resolveUrl(list[selectedIndex])
 
+  const thumbBtnClass = (isActive) =>
+    `relative shrink-0 overflow-hidden rounded-lg border-2 transition-all ${isActive ? "border-gray-800 shadow-md ring-2 ring-gray-400" : "border-gray-200 hover:border-gray-400"}`
+
   return (
-    <div className={`flex gap-3 h-full min-h-0 ${className}`}>
-      {/* Left: vertical thumbnail strip with up/down arrows */}
+    <div className={`flex h-full min-h-0 flex-col gap-2 md:flex-row md:gap-3 ${className}`}>
+      {/* md+: vertical thumbnails + scroll arrows */}
       {hasMultiple && (
-        <div className="flex flex-col flex-shrink-0 w-[20%] max-w-[100px] min-w-[72px]">
-          <button type="button" onClick={() => scrollThumb(-1)} disabled={!canThumbUp} className="flex-shrink-0 w-8 h-8 mx-auto rounded-full bg-white border border-gray-200 shadow flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed" aria-label="Previous thumbnails">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <div className="hidden w-[20%] min-w-[72px] max-w-[100px] shrink-0 flex-col md:flex">
+          <button type="button" onClick={() => scrollThumb(-1)} disabled={!canThumbUp} className="mx-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Previous thumbnails">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
             </svg>
           </button>
-          <div ref={thumbRef} className="flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-[8px] py-1 scroll-smooth [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
+          <div ref={thumbRefVertical} className="flex flex-1 flex-col gap-[8px] overflow-y-auto overflow-x-hidden py-1 [scrollbar-width:none] [-ms-overflow-style:none] scroll-smooth [&::-webkit-scrollbar]:hidden">
             {list.map((src, idx) => {
               const isActive = idx === selectedIndex
               return (
-                <button key={`${idx}-${resolveUrl(src)}`} type="button" data-thumb-index={idx} onClick={() => setSelectedIndex(idx)} className={`relative flex-shrink-0 w-full aspect-square rounded-lg overflow-hidden border-2 transition-all ${isActive ? "border-gray-800 ring-2 ring-gray-400 shadow-md" : "border-gray-200 hover:border-gray-400"}`} aria-label={`View image ${idx + 1}`}>
+                <button key={`d-${idx}-${resolveUrl(src)}`} type="button" data-thumb-index={idx} onClick={() => setSelectedIndex(idx)} className={`${thumbBtnClass(isActive)} aspect-square w-full`} aria-label={`View image ${idx + 1}`}>
                   <Image src={resolveUrl(src)} alt="" fill sizes="100px" className="object-cover" loading={idx < 4 ? "eager" : "lazy"} />
                 </button>
               )
             })}
           </div>
-          <button type="button" onClick={() => scrollThumb(1)} disabled={!canThumbDown} className="flex-shrink-0 w-8 h-8 mx-auto rounded-full bg-white border border-gray-200 shadow flex items-center justify-center text-gray-600 hover:bg-gray-50 disabled:opacity-30 disabled:cursor-not-allowed" aria-label="Next thumbnails">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <button type="button" onClick={() => scrollThumb(1)} disabled={!canThumbDown} className="mx-auto flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-gray-200 bg-white text-gray-600 shadow hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-30" aria-label="Next thumbnails">
+            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
             </svg>
           </button>
         </div>
       )}
 
-      {/* Right: main image with left/right arrows and optional badge */}
-      <div className="relative flex-1 min-w-0 bg-gray-50 rounded-lg overflow-hidden flex items-center justify-center">
+      {/* Main image */}
+      <div className="relative order-first flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-gray-50 md:order-none">
         {badgeText && <div className="absolute top-3 left-3 z-10 px-2.5 py-1 rounded-md bg-gray-900/80 text-white text-xs font-medium uppercase tracking-wide">{badgeText}</div>}
         {hasMultiple && (
           <>
-            <button type="button" onClick={() => goMain(-1)} className="absolute left-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/90 border border-gray-200 shadow flex items-center justify-center text-gray-700 hover:bg-white" aria-label="Previous image">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button type="button" onClick={() => goMain(-1)} className="absolute left-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md hover:bg-white sm:left-2 sm:h-10 sm:w-10" aria-label="Previous image">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" />
               </svg>
             </button>
-            <button type="button" onClick={() => goMain(1)} className="absolute right-2 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-white/90 border border-gray-200 shadow flex items-center justify-center text-gray-700 hover:bg-white" aria-label="Next image">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <button type="button" onClick={() => goMain(1)} className="absolute right-1 top-1/2 z-10 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full border border-gray-200 bg-white/95 text-gray-700 shadow-md hover:bg-white sm:right-2 sm:h-10 sm:w-10" aria-label="Next image">
+              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
               </svg>
             </button>
@@ -128,6 +134,20 @@ export default function ProductImageCarousel({ images = [], alt = "Product", bad
         )}
         <Image src={mainSrc} alt={alt} fill className="object-contain" sizes="(max-width: 768px) 100vw, 50vw" priority={list.length > 0} data-main-image />
       </div>
+
+      {/* Mobile: horizontal thumbnail strip (full-width main above) */}
+      {hasMultiple && (
+        <div ref={thumbRefHorizontal} className="flex snap-x snap-mandatory gap-2 overflow-x-auto px-0.5 pb-1 [-ms-overflow-style:none] [scrollbar-width:thin] md:hidden [&::-webkit-scrollbar]:h-1.5">
+          {list.map((src, idx) => {
+            const isActive = idx === selectedIndex
+            return (
+              <button key={`m-${idx}-${resolveUrl(src)}`} type="button" data-thumb-index={idx} onClick={() => setSelectedIndex(idx)} className={`${thumbBtnClass(isActive)} h-16 w-16 snap-start`} aria-label={`View image ${idx + 1}`}>
+                <Image src={resolveUrl(src)} alt="" fill sizes="64px" className="object-cover" loading={idx < 4 ? "eager" : "lazy"} />
+              </button>
+            )
+          })}
+        </div>
+      )}
     </div>
   )
 }
