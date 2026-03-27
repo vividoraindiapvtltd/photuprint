@@ -264,7 +264,6 @@ export const createLead = async (req, res) => {
 }
 
 /**
->>>>>>> Stashed changes
  * Create a new client
  */
 export const createClient = async (req, res) => {

@@ -475,17 +475,12 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
 
   if (sections.length === 0) {
     return (
-
-      <footer className="bg-gray-900 text-white py-8 border-t border-gray-200">
-        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm">© {new Date().getFullYear()} All rights reserved.</div>
-
-        <footer className="border-t border-gray-200 bg-gray-900 py-5 text-white sm:py-8">
-          <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm" suppressHydrationWarning>
-            © {new Date().getFullYear()} All rights reserved.
-          </div>
->>>>>>> Stashed changes
-        </footer>
-        )
+      <footer className="border-t border-gray-200 bg-gray-900 py-5 text-white sm:py-8">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm" suppressHydrationWarning>
+          © {new Date().getFullYear()} All rights reserved.
+        </div>
+      </footer>
+    )
   }
 
   const mainSections = sections.filter((s) => s.type !== "copyright")
