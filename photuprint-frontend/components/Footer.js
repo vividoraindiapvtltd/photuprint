@@ -475,31 +475,31 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
 
   if (sections.length === 0) {
     return (
-<<<<<<< Updated upstream
+
       <footer className="bg-gray-900 text-white py-8 border-t border-gray-200">
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm">© {new Date().getFullYear()} All rights reserved.</div>
-=======
-      <footer className="border-t border-gray-200 bg-gray-900 py-5 text-white sm:py-8">
-        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm" suppressHydrationWarning>
-          © {new Date().getFullYear()} All rights reserved.
-        </div>
+
+        <footer className="border-t border-gray-200 bg-gray-900 py-5 text-white sm:py-8">
+          <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 text-center text-gray-500 text-sm" suppressHydrationWarning>
+            © {new Date().getFullYear()} All rights reserved.
+          </div>
 >>>>>>> Stashed changes
-      </footer>
-    )
+        </footer>
+        )
   }
 
   const mainSections = sections.filter((s) => s.type !== "copyright")
   const copyrightSection = sections.find((s) => s.type === "copyright")
-  const mergedTheme = { ...defaultTheme, ...theme }
+        const mergedTheme = {...defaultTheme, ...theme }
 
   // Sort main sections by order (displayOrder or order)
   const sortedMain = [...mainSections].sort((a, b) => (a.displayOrder ?? a.order ?? 0) - (b.displayOrder ?? b.order ?? 0))
 
   const getSectionSpan = (displayLayout) => {
     const layout = displayLayout || "cols4"
-    const span =
-      {
-        fullWidth: "col-span-12",
+        const span =
+        {
+          fullWidth: "col-span-12",
         // Mobile: two columns (6+6); scale up at lg for 3–4 column desktop layouts
         cols4: "col-span-6 lg:col-span-3",
         cols3: "col-span-6 md:col-span-4 lg:col-span-4",
@@ -507,24 +507,24 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
         cols1: "col-span-12",
         cols1rows2: "col-span-12",
       }[layout] || "col-span-6 lg:col-span-3"
-    return span
+        return span
   }
 
   const isFullWidth = (section) => (section.displayLayout || "").toLowerCase() === "fullwidth"
 
-  // Build rows: fullWidth sections each get their own row; consecutive column sections share one row.
-  // Within a row, group sections by columnIndex/column so one grid cell can contain multiple sections (ordered by displayOrder).
-  const rows = []
-  let i = 0
-  while (i < sortedMain.length) {
+        // Build rows: fullWidth sections each get their own row; consecutive column sections share one row.
+        // Within a row, group sections by columnIndex/column so one grid cell can contain multiple sections (ordered by displayOrder).
+        const rows = []
+        let i = 0
+        while (i < sortedMain.length) {
     const section = sortedMain[i]
-    if (isFullWidth(section)) {
-      rows.push({ type: "fullWidth", sections: [section] })
+        if (isFullWidth(section)) {
+          rows.push({ type: "fullWidth", sections: [section] })
       i += 1
     } else {
       const columnSections = []
-      while (i < sortedMain.length && !isFullWidth(sortedMain[i])) {
-        columnSections.push(sortedMain[i])
+        while (i < sortedMain.length && !isFullWidth(sortedMain[i])) {
+          columnSections.push(sortedMain[i])
         i += 1
       }
       if (columnSections.length > 0) {
@@ -532,61 +532,61 @@ export default function Footer({ initialSections = [], initialTheme = {} } = {})
         const columnMap = new Map()
         columnSections.forEach((s, idx) => {
           const colKey = s.columnIndex ?? s.column ?? idx
-          if (!columnMap.has(colKey)) columnMap.set(colKey, [])
-          columnMap.get(colKey).push(s)
+        if (!columnMap.has(colKey)) columnMap.set(colKey, [])
+        columnMap.get(colKey).push(s)
         })
         // Sort columns by key, keep sections within column already in displayOrder (sortedMain order)
         const columns = Array.from(columnMap.entries())
           .sort((a, b) => Number(a[0]) - Number(b[0]))
           .map(([, secs]) => secs)
-        rows.push({ type: "columns", columns })
+        rows.push({type: "columns", columns })
       }
     }
   }
 
-  const footerStyle = { backgroundColor: mergedTheme.backgroundColor || defaultTheme.backgroundColor }
-  const dividerThickness = mergedTheme.dividerThickness || defaultTheme.dividerThickness
-  const dividerStyle = {
-    borderBottomColor: mergedTheme.dividerColor || defaultTheme.dividerColor,
-    borderBottomWidth: dividerThickness,
-    borderBottomStyle: "solid",
+        const footerStyle = {backgroundColor: mergedTheme.backgroundColor || defaultTheme.backgroundColor }
+        const dividerThickness = mergedTheme.dividerThickness || defaultTheme.dividerThickness
+        const dividerStyle = {
+          borderBottomColor: mergedTheme.dividerColor || defaultTheme.dividerColor,
+        borderBottomWidth: dividerThickness,
+        borderBottomStyle: "solid",
   }
-  const dividerStyleTop = {
-    borderTopColor: mergedTheme.dividerColor || defaultTheme.dividerColor,
-    borderTopWidth: dividerThickness,
-    borderTopStyle: "solid",
+        const dividerStyleTop = {
+          borderTopColor: mergedTheme.dividerColor || defaultTheme.dividerColor,
+        borderTopWidth: dividerThickness,
+        borderTopStyle: "solid",
   }
 
-  return (
-    <footer className="text-white" style={footerStyle}>
-      <div className="mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
-        {rows.map((row, rowIndex) => (
-          <div
-            key={rowIndex}
-            className={`grid grid-cols-12 gap-5 sm:gap-6 lg:gap-8 ${rowIndex < rows.length - 1 ? "mt-2 mb-2 border-b pb-4 sm:mt-4 sm:mb-4 sm:pb-6 lg:pb-8" : ""}`}
-            style={{ color: mergedTheme.bodyTextColor, ...(rowIndex < rows.length - 1 ? dividerStyle : {}) }}
-          >
-            {row.type === "fullWidth" ? (
-              <div className="col-span-12 min-w-0">{renderSection(row.sections[0], mergedTheme)}</div>
-            ) : (
-              row.columns.map((columnSections, colIdx) => (
-                <div key={colIdx} className={`min-w-0 ${getSectionSpan(columnSections[0]?.displayLayout)}`}>
-                  {columnSections.map((section, sectionIdx) => (
-                    <div key={section._id} className={sectionIdx > 0 ? "mt-4 sm:mt-6" : ""}>
-                      {renderSection(section, mergedTheme)}
+        return (
+        <footer className="text-white" style={footerStyle}>
+          <div className="mx-auto w-full px-4 py-5 sm:px-6 sm:py-8 lg:px-8 lg:py-10">
+            {rows.map((row, rowIndex) => (
+              <div
+                key={rowIndex}
+                className={`grid grid-cols-12 gap-5 sm:gap-6 lg:gap-8 ${rowIndex < rows.length - 1 ? "mt-2 mb-2 border-b pb-4 sm:mt-4 sm:mb-4 sm:pb-6 lg:pb-8" : ""}`}
+                style={{ color: mergedTheme.bodyTextColor, ...(rowIndex < rows.length - 1 ? dividerStyle : {}) }}
+              >
+                {row.type === "fullWidth" ? (
+                  <div className="col-span-12 min-w-0">{renderSection(row.sections[0], mergedTheme)}</div>
+                ) : (
+                  row.columns.map((columnSections, colIdx) => (
+                    <div key={colIdx} className={`min-w-0 ${getSectionSpan(columnSections[0]?.displayLayout)}`}>
+                      {columnSections.map((section, sectionIdx) => (
+                        <div key={section._id} className={sectionIdx > 0 ? "mt-4 sm:mt-6" : ""}>
+                          {renderSection(section, mergedTheme)}
+                        </div>
+                      ))}
                     </div>
-                  ))}
-                </div>
-              ))
+                  ))
+                )}
+              </div>
+            ))}
+            {copyrightSection && (
+              <div className="mt-4 border-t pt-4 sm:mt-6 sm:pt-6 md:mt-8 md:pt-8" style={dividerStyleTop}>
+                {renderSection(copyrightSection, mergedTheme)}
+              </div>
             )}
           </div>
-        ))}
-        {copyrightSection && (
-          <div className="mt-4 border-t pt-4 sm:mt-6 sm:pt-6 md:mt-8 md:pt-8" style={dividerStyleTop}>
-            {renderSection(copyrightSection, mergedTheme)}
-          </div>
-        )}
-      </div>
-    </footer>
-  )
+        </footer>
+        )
 }

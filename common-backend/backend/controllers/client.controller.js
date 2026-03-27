@@ -24,11 +24,11 @@ import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
 export const getClients = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const {
       status,
       priority,
@@ -44,51 +44,51 @@ export const getClients = async (req, res) => {
       page = 1,
       limit = 20,
     } = req.query
-    
+
     // Build query
     const query = { website: websiteId }
-    
+
     // Status filter
     if (status && status !== "all") {
       query.status = status
     }
-    
+
     // Priority filter
     if (priority && priority !== "all") {
       query.priority = priority
     }
-    
+
     // Assigned user filter
     if (assignedTo) {
       query.assignedTo = assignedTo
     }
-    
+
     // Tags filter
     if (tags) {
       const tagArray = tags.split(",").map(t => t.trim().toLowerCase())
       query.tags = { $in: tagArray }
     }
-    
+
     // Company filter
     if (company) {
       query.company = { $regex: company, $options: "i" }
     }
-    
+
     // Source filter
     if (source && source !== "all") {
       query.source = source
     }
-    
+
     // Include inactive filter
     if (showInactive !== "true") {
       query.isActive = true
     }
-    
+
     // Include deleted filter
     if (includeDeleted !== "true") {
       query.deleted = false
     }
-    
+
     // Search filter
     if (search) {
       query.$or = [
@@ -100,14 +100,14 @@ export const getClients = async (req, res) => {
         { clientId: { $regex: search, $options: "i" } },
       ]
     }
-    
+
     // Build sort
     const sort = {}
     sort[sortBy] = sortOrder === "desc" ? -1 : 1
-    
+
     // Pagination
     const skip = (parseInt(page) - 1) * parseInt(limit)
-    
+
     // Execute query
     const [clients, total] = await Promise.all([
       Client.find(query)
@@ -119,7 +119,7 @@ export const getClients = async (req, res) => {
         .lean(),
       Client.countDocuments(query),
     ])
-    
+
     res.json({
       clients,
       pagination: {
@@ -142,11 +142,11 @@ export const getClientById = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     const { id } = req.params
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const client = await Client.findOne({
       _id: id,
       website: websiteId,
@@ -154,11 +154,11 @@ export const getClientById = async (req, res) => {
       .populate("assignedTo", "name email phone")
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
-    
+
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
     }
-    
+
     // Get recent interactions
     const recentInteractions = await Interaction.find({
       client: id,
@@ -169,7 +169,7 @@ export const getClientById = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(10)
       .lean()
-    
+
     res.json({
       client,
       recentInteractions,
@@ -181,8 +181,7 @@ export const getClientById = async (req, res) => {
 }
 
 /**
-<<<<<<< Updated upstream
-=======
+
  * Create a lead from public website form (bulk product enquiry, contact, etc.)
  * No auth required. Uses tenant from X-Website-Id or domain.
  * Duplicate email allowed (multiple enquiries from same contact).
@@ -272,11 +271,11 @@ export const createClient = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     const userId = req.user?._id
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const {
       firstName,
       lastName,
@@ -302,7 +301,7 @@ export const createClient = async (req, res) => {
       socialProfiles,
       isActive = true,
     } = req.body
-    
+
     // Check for duplicate email if provided
     if (email) {
       const existingClient = await Client.findOne({
@@ -310,12 +309,12 @@ export const createClient = async (req, res) => {
         email: email.toLowerCase().trim(),
         deleted: false,
       })
-      
+
       if (existingClient) {
         return res.status(400).json({ msg: "A client with this email already exists" })
       }
     }
-    
+
     // Handle avatar upload
     let avatarUrl = null
     if (req.file) {
@@ -327,13 +326,13 @@ export const createClient = async (req, res) => {
         ],
       })
     }
-    
+
     // Parse tags if string
     let parsedTags = tags
     if (typeof tags === "string") {
       parsedTags = tags.split(",").map(t => t.trim().toLowerCase()).filter(Boolean)
     }
-    
+
     // Create client
     const client = new Client({
       firstName: firstName.trim(),
@@ -364,9 +363,9 @@ export const createClient = async (req, res) => {
       createdBy: userId,
       updatedBy: userId,
     })
-    
+
     await client.save()
-    
+
     // Create initial interaction for client creation
     await Interaction.create({
       client: client._id,
@@ -378,12 +377,12 @@ export const createClient = async (req, res) => {
       website: websiteId,
       createdBy: userId,
     })
-    
+
     // Populate and return
     const populatedClient = await Client.findById(client._id)
       .populate("assignedTo", "name email")
       .populate("createdBy", "name email")
-    
+
     res.status(201).json({
       msg: "Client created successfully",
       client: populatedClient,
@@ -402,20 +401,20 @@ export const updateClient = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const userId = req.user?._id
     const { id } = req.params
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const client = await Client.findOne({
       _id: id,
       website: websiteId,
     })
-    
+
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
     }
-    
+
     const {
       firstName,
       lastName,
@@ -443,7 +442,7 @@ export const updateClient = async (req, res) => {
       isActive,
       deleted,
     } = req.body
-    
+
     // Check for duplicate email if changing
     if (email && email.toLowerCase().trim() !== client.email) {
       const existingClient = await Client.findOne({
@@ -452,15 +451,15 @@ export const updateClient = async (req, res) => {
         _id: { $ne: id },
         deleted: false,
       })
-      
+
       if (existingClient) {
         return res.status(400).json({ msg: "A client with this email already exists" })
       }
     }
-    
+
     // Track status change
     const oldStatus = client.status
-    
+
     // Handle avatar upload
     if (req.file) {
       client.avatar = await tenantCloudinaryUpload(websiteId, req.file, {
@@ -497,7 +496,7 @@ export const updateClient = async (req, res) => {
     if (socialProfiles !== undefined) client.socialProfiles = { ...client.socialProfiles, ...socialProfiles }
     if (isActive !== undefined) client.isActive = isActive
     if (deleted !== undefined) client.deleted = deleted
-    
+
     // Handle tags
     if (tags !== undefined) {
       if (typeof tags === "string") {
@@ -506,11 +505,11 @@ export const updateClient = async (req, res) => {
         client.tags = tags || []
       }
     }
-    
+
     client.updatedBy = userId
-    
+
     await client.save()
-    
+
     // Log status change interaction
     if (status !== undefined && status !== oldStatus) {
       await Interaction.create({
@@ -528,13 +527,13 @@ export const updateClient = async (req, res) => {
         createdBy: userId,
       })
     }
-    
+
     // Populate and return
     const populatedClient = await Client.findById(client._id)
       .populate("assignedTo", "name email")
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
-    
+
     res.json({
       msg: "Client updated successfully",
       client: populatedClient,
@@ -553,26 +552,26 @@ export const deleteClient = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const userId = req.user?._id
     const { id } = req.params
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const client = await Client.findOne({
       _id: id,
       website: websiteId,
     })
-    
+
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
     }
-    
+
     client.deleted = true
     client.isActive = false
     client.updatedBy = userId
-    
+
     await client.save()
-    
+
     res.json({ msg: "Client deleted successfully" })
   } catch (error) {
     console.error("Error deleting client:", error)
@@ -588,21 +587,21 @@ export const restoreClient = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const userId = req.user?._id
     const { id } = req.params
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const client = await Client.findOne({
       _id: id,
       website: websiteId,
       deleted: true,
     })
-    
+
     if (!client) {
       return res.status(404).json({ msg: "Deleted client not found" })
     }
-    
+
     // Check for email conflict
     if (client.email) {
       const existingClient = await Client.findOne({
@@ -611,20 +610,20 @@ export const restoreClient = async (req, res) => {
         _id: { $ne: id },
         deleted: false,
       })
-      
+
       if (existingClient) {
         return res.status(400).json({
           msg: "Cannot restore: A client with this email already exists",
         })
       }
     }
-    
+
     client.deleted = false
     client.isActive = true
     client.updatedBy = userId
-    
+
     await client.save()
-    
+
     res.json({ msg: "Client restored successfully", client })
   } catch (error) {
     console.error("Error restoring client:", error)
@@ -639,27 +638,27 @@ export const hardDeleteClient = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     const { id } = req.params
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     // Delete all interactions first
     await Interaction.deleteMany({
       client: id,
       website: websiteId,
     })
-    
+
     // Delete client
     const result = await Client.deleteOne({
       _id: id,
       website: websiteId,
     })
-    
+
     if (result.deletedCount === 0) {
       return res.status(404).json({ msg: "Client not found" })
     }
-    
+
     res.json({ msg: "Client permanently deleted" })
   } catch (error) {
     console.error("Error hard deleting client:", error)
@@ -680,32 +679,32 @@ export const updateClientStatus = async (req, res) => {
     const userId = req.user?._id
     const { id } = req.params
     const { status, reason } = req.body
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const validStatuses = ["lead", "prospect", "active", "inactive", "closed", "lost"]
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ msg: "Invalid status" })
     }
-    
+
     const client = await Client.findOne({
       _id: id,
       website: websiteId,
       deleted: false,
     })
-    
+
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
     }
-    
+
     const oldStatus = client.status
     client.status = status
     client.updatedBy = userId
-    
+
     await client.save()
-    
+
     // Log status change
     await Interaction.create({
       client: id,
@@ -718,7 +717,7 @@ export const updateClientStatus = async (req, res) => {
       website: websiteId,
       createdBy: userId,
     })
-    
+
     res.json({
       msg: `Client status updated to ${status}`,
       client,
@@ -738,27 +737,27 @@ export const assignClient = async (req, res) => {
     const userId = req.user?._id
     const { id } = req.params
     const { assignedTo, notes } = req.body
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const client = await Client.findOne({
       _id: id,
       website: websiteId,
       deleted: false,
     })
-    
+
     if (!client) {
       return res.status(404).json({ msg: "Client not found" })
     }
-    
+
     const oldAssignee = client.assignedTo
     client.assignedTo = assignedTo
     client.updatedBy = userId
-    
+
     await client.save()
-    
+
     // Log assignment change
     await Interaction.create({
       client: id,
@@ -770,10 +769,10 @@ export const assignClient = async (req, res) => {
       website: websiteId,
       createdBy: userId,
     })
-    
+
     const populatedClient = await Client.findById(id)
       .populate("assignedTo", "name email")
-    
+
     res.json({
       msg: "Client assigned successfully",
       client: populatedClient,
@@ -792,15 +791,15 @@ export const bulkAssignClients = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const userId = req.user?._id
     const { clientIds, assignedTo } = req.body
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     if (!clientIds || !Array.isArray(clientIds) || clientIds.length === 0) {
       return res.status(400).json({ msg: "Client IDs array is required" })
     }
-    
+
     const result = await Client.updateMany(
       {
         _id: { $in: clientIds },
@@ -812,7 +811,7 @@ export const bulkAssignClients = async (req, res) => {
         updatedBy: userId,
       }
     )
-    
+
     res.json({
       msg: `${result.modifiedCount} clients assigned`,
       modifiedCount: result.modifiedCount,
@@ -831,20 +830,20 @@ export const bulkUpdateStatus = async (req, res) => {
     const websiteId = req.websiteId || req.tenant?._id
     const userId = req.user?._id
     const { clientIds, status } = req.body
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     if (!clientIds || !Array.isArray(clientIds) || clientIds.length === 0) {
       return res.status(400).json({ msg: "Client IDs array is required" })
     }
-    
+
     const validStatuses = ["lead", "prospect", "active", "inactive", "closed", "lost"]
     if (!validStatuses.includes(status)) {
       return res.status(400).json({ msg: "Invalid status" })
     }
-    
+
     const result = await Client.updateMany(
       {
         _id: { $in: clientIds },
@@ -856,7 +855,7 @@ export const bulkUpdateStatus = async (req, res) => {
         updatedBy: userId,
       }
     )
-    
+
     res.json({
       msg: `${result.modifiedCount} clients updated`,
       modifiedCount: result.modifiedCount,
@@ -877,20 +876,20 @@ export const bulkUpdateStatus = async (req, res) => {
 export const getClientStats = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const now = new Date()
     const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate())
     const weekStart = new Date(now)
     weekStart.setDate(now.getDate() - 7)
     const monthStart = new Date(now)
     monthStart.setMonth(now.getMonth() - 1)
-    
+
     const baseQuery = { website: websiteId, deleted: false }
-    
+
     const [
       total,
       active,
@@ -934,7 +933,7 @@ export const getClientStats = async (req, res) => {
         { $group: { _id: null, total: { $sum: "$estimatedValue" } } },
       ]),
     ])
-    
+
     res.json({
       total,
       active,
@@ -970,31 +969,31 @@ export const getUpcomingFollowUps = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     const { days = 7, assignedTo } = req.query
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const now = new Date()
     const future = new Date()
     future.setDate(future.getDate() + parseInt(days))
-    
+
     const query = {
       website: websiteId,
       isActive: true,
       deleted: false,
       nextFollowUp: { $gte: now, $lte: future },
     }
-    
+
     if (assignedTo) {
       query.assignedTo = assignedTo
     }
-    
+
     const clients = await Client.find(query)
       .populate("assignedTo", "name email")
       .sort({ nextFollowUp: 1 })
       .lean()
-    
+
     res.json(clients)
   } catch (error) {
     console.error("Error fetching upcoming follow-ups:", error)
@@ -1009,11 +1008,11 @@ export const getRecentClients = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     const { limit = 10 } = req.query
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const clients = await Client.find({
       website: websiteId,
       deleted: false,
@@ -1022,7 +1021,7 @@ export const getRecentClients = async (req, res) => {
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
       .lean()
-    
+
     res.json(clients)
   } catch (error) {
     console.error("Error fetching recent clients:", error)
@@ -1037,15 +1036,15 @@ export const searchClients = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
     const { q, limit = 10 } = req.query
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     if (!q || q.length < 2) {
       return res.json([])
     }
-    
+
     const clients = await Client.find({
       website: websiteId,
       deleted: false,
@@ -1061,7 +1060,7 @@ export const searchClients = async (req, res) => {
       .select("firstName lastName email company phone clientId status")
       .limit(parseInt(limit))
       .lean()
-    
+
     res.json(clients)
   } catch (error) {
     console.error("Error searching clients:", error)
@@ -1075,16 +1074,16 @@ export const searchClients = async (req, res) => {
 export const getTags = async (req, res) => {
   try {
     const websiteId = req.websiteId || req.tenant?._id
-    
+
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-    
+
     const tags = await Client.distinct("tags", {
       website: websiteId,
       deleted: false,
     })
-    
+
     res.json(tags.filter(Boolean).sort())
   } catch (error) {
     console.error("Error fetching tags:", error)

@@ -31,15 +31,11 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
 
-<<<<<<< Updated upstream
-=======
   // Silence "multiple lockfiles" warning — use photuprint-frontend as the trace root
   outputFileTracingRoot: path.join(__dirname),
 
   // Allow dev requests from 127.0.0.1 (e.g. when accessing via IP)
   allowedDevOrigins: ["127.0.0.1", "localhost"],
-
->>>>>>> Stashed changes
   compiler: {
     removeConsole: process.env.NODE_ENV === "production" ? { exclude: ["error", "warn"] } : false,
   },
@@ -51,27 +47,20 @@ const nextConfig = {
   },
 
   async rewrites() {
-<<<<<<< Updated upstream
-=======
     // Use API_URL (server-only) so /api/* is proxied to the real backend. Client never sees
     // admin.photuprint.com; all requests in Network tab stay on the frontend origin (e.g. testing.photuprint.com).
     const backendOrigin = process.env.API_URL
       ? process.env.API_URL.replace(/\/api\/?$/, "")
       : "http://127.0.0.1:8080"
->>>>>>> Stashed changes
     return {
       afterFiles: [
         {
           source: "/api/:path*",
-<<<<<<< Updated upstream
-          destination: "http://localhost:8080/api/:path*",
-=======
           destination: `${backendOrigin}/api/:path*`,
         },
         {
           source: "/uploads/:path*",
           destination: `${backendOrigin}/uploads/:path*`,
->>>>>>> Stashed changes
         },
       ],
     }

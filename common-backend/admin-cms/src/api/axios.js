@@ -53,15 +53,7 @@ api.interceptors.request.use(
       console.error("Error parsing adminUser from localStorage:", error)
     }
 
-<<<<<<< Updated upstream
-  // Multi-tenant: Add X-Website-Id header for admin/CMS requests
-  try {
-    const selectedWebsiteStr = localStorage.getItem("selectedWebsite")
-    if (selectedWebsiteStr) {
-      const selectedWebsite = JSON.parse(selectedWebsiteStr)
-      if (selectedWebsite?._id) {
-        config.headers['X-Website-Id'] = selectedWebsite._id
-=======
+
     // Multi-tenant: Add X-Website-Id header for admin/CMS requests
     // Allow per-request override: config.skipWebsiteId = true (omit header), config.websiteId = id (use specific website)
     try {
@@ -79,19 +71,12 @@ api.interceptors.request.use(
             config.headers["X-Website-Id"] = selectedWebsite._id
           }
         }
->>>>>>> Stashed changes
       }
       delete config.skipWebsiteId
       delete config.websiteId
     } catch (error) {
       console.warn("Failed to get selected website for tenant context:", error)
     }
-<<<<<<< Updated upstream
-  } catch (error) {
-    console.warn("Failed to get selected website for tenant context:", error)
-  }
-=======
->>>>>>> Stashed changes
 
     // Don't override Content-Type for FormData - let axios set it automatically with boundary
     if (config.data instanceof FormData) {

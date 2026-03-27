@@ -15,14 +15,8 @@ function sanitizeHtml(html) {
   if (typeof sanitize === "function") return sanitize.call(purifier, html)
   return html.replace(/<[^>]+>/g, " ")
 }
-<<<<<<< Updated upstream
-import ColorSelector from "../src/components/product/ColorSelector"
-import ProductImageCarousel from "../src/components/product/ProductImageCarousel"
-import TopBar from "./TopBar"
-=======
 const ColorSelector = dynamic(() => import("../src/components/product/ColorSelector"), { ssr: false })
 const ProductImageCarousel = dynamic(() => import("../src/components/product/ProductImageCarousel"), { ssr: false })
->>>>>>> Stashed changes
 import NavigationBar from "./NavigationBar"
 import Footer from "./Footer"
 import { useAuth } from "../src/context/AuthContext"
@@ -73,8 +67,6 @@ export default function ProductDetailsClient({ initialProduct }) {
   const [relatedProducts, setRelatedProducts] = useState([])
   const productImageRef = useRef(null)
   const runFlyToCart = useFlyToCart()
-<<<<<<< Updated upstream
-=======
   const [quantity, setQuantity] = useState(1)
   const [enquiryOpen, setEnquiryOpen] = useState(false)
   const [enquirySubmitting, setEnquirySubmitting] = useState(false)
@@ -142,7 +134,6 @@ export default function ProductDetailsClient({ initialProduct }) {
       enquirySheetDragYRef.current = 0
     }
   }, [isMdUp])
->>>>>>> Stashed changes
 
   const categoryId = product?.category?._id || product?.categoryId?._id || product?.categoryId || product?.category
   const displayMode = product?.displayMode || "both"
@@ -401,13 +392,6 @@ export default function ProductDetailsClient({ initialProduct }) {
 
         <div className="mb-8 grid gap-6 lg:mb-10 lg:grid-cols-2 lg:gap-8">
           <div className="lg:col-span-1">
-<<<<<<< Updated upstream
-            <div className="sticky top-24">
-              <div className="bg-white rounded-lg border-2 border-gray-300 shadow-lg overflow-hidden">
-                <div className="bg-gray-50 border-b border-gray-200 px-4 py-3 flex items-center justify-between">
-                  <h3 className="text-sm font-semibold text-gray-700">Product Preview</h3>
-                  {showCustomizedView && activeTemplate && <span className="text-xs text-gray-500">{activeTemplate.name}</span>}
-=======
             <div className="lg:sticky lg:top-24">
               <div className="overflow-hidden rounded-xl border-2 border-gray-300 bg-white shadow-lg sm:rounded-lg">
                 <div className="flex items-center justify-between border-b border-gray-200 bg-gray-50 px-3 py-2.5 sm:px-4 sm:py-3">
@@ -417,7 +401,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                       Editing: {activeTemplate.name}
                     </span>
                   )}
->>>>>>> Stashed changes
                 </div>
 
                 <div
@@ -512,17 +495,6 @@ export default function ProductDetailsClient({ initialProduct }) {
             </div>
           </div>
 
-<<<<<<< Updated upstream
-          <div className="lg:col-span-1">
-            <h1 className="text-2xl sm:text-3xl font-bold text-gray-900 mb-3 leading-tight">{product?.name}</h1>
-            {isAuthenticated && (
-              <button onClick={toggleWishlist} className={`mb-3 p-2 rounded-full transition-all ${isInWishlist ? "bg-red-50 text-red-500" : "bg-gray-100 text-gray-400 hover:bg-red-50 hover:text-red-500"}`} title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}>
-                <svg className="w-6 h-6" fill={isInWishlist ? "currentColor" : "none"} stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z" />
-                </svg>
-              </button>
-            )}
-=======
           <div className="min-w-0 lg:col-span-1" suppressHydrationWarning>
             <div className="mb-3 flex items-start gap-3">
               <h1 className="min-w-0 flex-1 text-xl font-bold leading-tight text-gray-900 sm:text-2xl md:text-3xl">{product?.name}</h1>
@@ -540,7 +512,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                 </button>
               )}
             </div>
->>>>>>> Stashed changes
 
             {product?.price && (
               <p className="mb-4 text-xl font-bold text-gray-900 sm:text-2xl">
@@ -549,9 +520,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                 {product.discountPercentage && <span className="ml-2 text-sm text-green-600 font-medium">({product.discountPercentage}% off)</span>}
               </p>
             )}
-<<<<<<< Updated upstream
-            {product?.description && <div className="text-gray-700 mb-6 prose prose-sm max-w-none" dangerouslySetInnerHTML={{ __html: sanitizeHtml(product.description) }} />}
-=======
             {product?.description && (
               <div
                 className="prose prose-sm mb-6 max-w-none break-words text-gray-700 prose-p:text-[15px] prose-p:leading-relaxed sm:prose-p:text-base"
@@ -559,7 +527,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                 suppressHydrationWarning
               />
             )}
->>>>>>> Stashed changes
 
             <ColorSelector variants={variants} selectedId={selected?._id} onChange={(_, v) => setSelected(v)} />
 
@@ -609,9 +576,6 @@ export default function ProductDetailsClient({ initialProduct }) {
               </div>
             )}
 
-<<<<<<< Updated upstream
-            <div className="mt-6 flex flex-col sm:flex-row gap-3">
-=======
             <div className="mt-6 space-y-4 rounded-xl border border-gray-200 bg-gray-50 p-4 sm:rounded-lg">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:gap-4">
                 <span className="text-sm font-medium text-gray-700">Quantity</span>
@@ -650,7 +614,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                 Bulk product enquiry
               </button>
               <div className="flex flex-col gap-3 pt-1 sm:flex-row">
->>>>>>> Stashed changes
               <button
                 type="button"
                 onClick={() => {
@@ -683,8 +646,6 @@ export default function ProductDetailsClient({ initialProduct }) {
                 Go to bag
               </Link>
             </div>
-<<<<<<< Updated upstream
-=======
             </div>
 
             {enquiryOpen && (
@@ -891,7 +852,6 @@ export default function ProductDetailsClient({ initialProduct }) {
               </>
             )}
 
->>>>>>> Stashed changes
             {addToCartSuccess && (
               <p className="mt-3 text-sm text-green-600 font-medium">
                 Added to bag.{" "}
