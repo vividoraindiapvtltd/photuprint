@@ -56,6 +56,8 @@ export const setupRoutes = async () => {
     const statusRoutes = (await import("./routes/status.routes.js")).default
     const collarStyleRoutes = (await import("./routes/collarStyle.routes.js")).default
     const fitTypeRoutes = (await import("./routes/fitType.routes.js")).default
+    const capacityRoutes = (await import("./routes/capacity.routes.js")).default
+    const gsmRoutes = (await import("./routes/gsm.routes.js")).default
     const countryRoutes = (await import("./routes/country.routes.js")).default
     const pinCodeRoutes = (await import("./routes/pinCode.routes.js")).default
     const templateRoutes = (await import("./routes/template.routes.js")).default
@@ -68,6 +70,8 @@ export const setupRoutes = async () => {
     const widthRoutes = (await import("./routes/width.routes.js")).default
     const patternRoutes = (await import("./routes/pattern.routes.js")).default
     const printingTypeRoutes = (await import("./routes/printingType.routes.js")).default
+    const printSideRoutes = (await import("./routes/printSide.routes.js")).default
+    const productAddonRoutes = (await import("./routes/productAddon.routes.js")).default
     const sleeveTypeRoutes = (await import("./routes/sleeveType.routes.js")).default
     const couponRoutes = (await import("./routes/coupon.routes.js")).default
     const orderRoutes = (await import("./routes/order.routes.js")).default
@@ -97,6 +101,8 @@ export const setupRoutes = async () => {
     const userAccessRoutes = (await import("./routes/userAccess.routes.js")).default
     const recentlyViewedProductRoutes = (await import("./routes/recentlyViewedProduct.routes.js")).default
     const wishlistRoutes = (await import("./routes/wishlist.routes.js")).default
+    const walletRoutes = (await import("./routes/wallet.routes.js")).default
+    const cashbackRuleRoutes = (await import("./routes/cashbackRule.routes.js")).default
 
     // Register auth routes first (before any tenant middleware)
     app.use("/api/auth", authRoutes)
@@ -139,6 +145,8 @@ export const setupRoutes = async () => {
     app.use("/api/status", statusRoutes)
     app.use("/api/collar-styles", collarStyleRoutes)
     app.use("/api/fit-types", fitTypeRoutes)
+    app.use("/api/capacities", capacityRoutes)
+    app.use("/api/gsms", gsmRoutes)
     app.use("/api/countries", countryRoutes)
     app.use("/api/pin-codes", pinCodeRoutes)
     app.use("/api/templates", templateRoutes)
@@ -151,6 +159,8 @@ export const setupRoutes = async () => {
     app.use("/api/widths", widthRoutes)
     app.use("/api/patterns", patternRoutes)
     app.use("/api/printing-types", printingTypeRoutes)
+    app.use("/api/print-sides", printSideRoutes)
+    app.use("/api/product-addons", productAddonRoutes)
     app.use("/api/sleeve-types", sleeveTypeRoutes)
     app.use("/api/coupons", couponRoutes)
     app.use("/api/gst-slabs", gstSlabRoutes)
@@ -172,6 +182,8 @@ export const setupRoutes = async () => {
     app.use("/api/interactions", interactionRoutes)
     app.use("/api/recently-viewed-products", recentlyViewedProductRoutes)
     app.use("/api/wishlist", wishlistRoutes)
+    app.use("/api/wallet", walletRoutes)
+    app.use("/api/cashback-rules", cashbackRuleRoutes)
     app.use("/api", productVariantRoutes)
     app.use("/api", variationSettingRoutes)
     // user-access routes moved to earlier in the file (before /api routes with router.use tenant middleware)

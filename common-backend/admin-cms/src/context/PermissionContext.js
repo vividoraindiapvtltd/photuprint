@@ -47,8 +47,8 @@ const PERMISSION_MENU_MAP = {
   homepage_manage: [34, 54],
   
   // Collar Style
-  attributes_view: [3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 16, 26, 27],
-  attributes_manage: [3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 16, 26, 27],
+  attributes_view: [3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 16, 26, 27, 66, 67],
+  attributes_manage: [3, 4, 5, 6, 7, 8, 9, 10, 13, 14, 16, 26, 27, 66, 67],
   
   // Reviews
   reviews_view: [12],
@@ -76,9 +76,9 @@ const PERMISSION_MENU_MAP = {
   clients_manage: [35],
   
   // Orders
-  orders_view: [21, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52],
+  orders_view: [21, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 63, 64, 65],
   orders_edit: [21],
-  orders_manage: [21, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52],
+  orders_manage: [21, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 63, 64, 65],
   
   // Shipping
   shipping_view: [22, 27],
@@ -102,6 +102,9 @@ const PERMISSION_MENU_MAP = {
 
   // Reports
   reports_view: [37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52],
+  // Wallet & cashback (same as orders for RBAC)
+  wallet_view: [63, 64, 65],
+  wallet_manage: [63, 64, 65],
 
   // Company
   company_view: [24],
@@ -149,9 +152,21 @@ const MENU_PERMISSION_MAP = {
   
   // Fit Type Manager
   6: ['attributes_view', 'attributes_manage'],
+
+  // Capacity Manager
+  66: ['attributes_view', 'attributes_manage'],
+
+  // GSM Manager
+  67: ['attributes_view', 'attributes_manage'],
   
   // Printing Type Manager
   27: ['attributes_view', 'attributes_manage'],
+
+  // Print Side Manager
+  61: ['attributes_view', 'attributes_manage'],
+
+  // Product Add-ons Manager
+  62: ['attributes_view', 'attributes_manage'],
   
   // Height Manager
   7: ['attributes_view', 'attributes_manage'],
@@ -200,6 +215,11 @@ const MENU_PERMISSION_MAP = {
   
   // Order Manager
   21: ['orders_view', 'orders_manage'],
+
+  // Wallet & cashback
+  63: ['orders_view', 'orders_manage', 'wallet_view', 'wallet_manage'],
+  64: ['orders_view', 'orders_manage', 'wallet_view', 'wallet_manage'],
+  65: ['orders_view', 'orders_manage', 'wallet_view', 'wallet_manage'],
   
   // Shipping Manager
   22: ['shipping_view', 'shipping_manage'],
@@ -270,7 +290,11 @@ export const ROUTE_PERMISSION_MAP = {
   '/dashboard/addcolor': ['attributes_view', 'attributes_manage'],
   '/dashboard/addcountryoforigin': ['attributes_view', 'attributes_manage'],
   '/dashboard/addfittype': ['attributes_view', 'attributes_manage'],
+  '/dashboard/addcapacity': ['attributes_view', 'attributes_manage'],
+  '/dashboard/addgsm': ['attributes_view', 'attributes_manage'],
   '/dashboard/addprintingtype': ['attributes_view', 'attributes_manage'],
+  '/dashboard/addprintside': ['attributes_view', 'attributes_manage'],
+  '/dashboard/addproductaddon': ['attributes_view', 'attributes_manage'],
   '/dashboard/addheight': ['attributes_view', 'attributes_manage'],
   '/dashboard/addlength': ['attributes_view', 'attributes_manage'],
   '/dashboard/addmaterial': ['attributes_view', 'attributes_manage'],
@@ -298,6 +322,9 @@ export const ROUTE_PERMISSION_MAP = {
   '/dashboard/pixelcraft/element-images': ['pixelcraft_view', 'pixelcraft_manage'],
   '/dashboard/pixelcraft/dimensions': ['pixelcraft_view', 'pixelcraft_manage'],
   '/dashboard/pixelcraft/image-to-vector': ['pixelcraft_view', 'pixelcraft_manage'],
+  '/dashboard/wallet-cashback': ['orders_view', 'orders_manage', 'wallet_view', 'wallet_manage'],
+  '/dashboard/wallet-cashback/rules': ['orders_view', 'orders_manage', 'wallet_view', 'wallet_manage'],
+  '/dashboard/wallet-cashback/ledger': ['orders_view', 'orders_manage', 'wallet_view', 'wallet_manage'],
 };
 
 export const PermissionProvider = ({ children }) => {

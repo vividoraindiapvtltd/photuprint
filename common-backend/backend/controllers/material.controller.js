@@ -1,5 +1,5 @@
-import Material from '../models/material.model.js';
-import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
+import Material from "../models/material.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all materials
 export const getMaterials = async (req, res) => {
@@ -83,10 +83,16 @@ export const createMaterial = async (req, res) => {
       return res.status(400).json({ msg: 'Material name already exists' });
     }
 
-    // Handle image upload if present
-    let image = null;
+    let image = null
     if (req.file) {
-      image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/materials' });
+      try {
+        image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/materials" })
+        console.log("Image uploaded to Cloudinary:", image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     // Parse isActive - it might come as string 'true'/'false' from FormData
@@ -150,9 +156,15 @@ export const updateMaterial = async (req, res) => {
       }
     }
 
-    // Handle image upload if present
     if (req.file) {
-      material.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/materials' });
+      try {
+        material.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/materials" })
+        console.log("Image updated in Cloudinary:", material.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     // Update fields

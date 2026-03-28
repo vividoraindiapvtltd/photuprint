@@ -25,6 +25,44 @@
     box-sizing: border-box;
   }
 
+  .passwordFieldWrap {
+    position: relative;
+    width: 100%;
+    margin: 8px 0;
+    box-sizing: border-box;
+  }
+
+  .passwordFieldWrap .inputStyle {
+    margin: 0;
+    padding-right: 44px;
+  }
+
+  .passwordToggleBtn {
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    background: none;
+    border: none;
+    cursor: pointer;
+    padding: 6px;
+    color: #666;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 4px;
+  }
+
+  .passwordToggleBtn:hover {
+    color: #333;
+    background: rgba(0, 0, 0, 0.05);
+  }
+
+  .passwordToggleBtn:focus-visible {
+    outline: 2px solid #007bff;
+    outline-offset: 2px;
+  }
+
   .buttonStyle {
     width: 100%;
     padding: 12px;

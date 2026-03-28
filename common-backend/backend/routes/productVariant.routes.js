@@ -16,6 +16,18 @@ import upload from "../middlewares/upload.middleware.js"
 
 const router = express.Router()
 
+/** Only run multer for multipart uploads. JSON PUTs (e.g. clear primaryImage, replace images[]) must skip multer or req.body stays empty. */
+function variantUpdateUpload(req, res, next) {
+  const ct = (req.headers["content-type"] || "").toLowerCase()
+  if (ct.includes("multipart/form-data")) {
+    return upload.fields([
+      { name: "primaryImage", maxCount: 1 },
+      { name: "images", maxCount: 9 },
+    ])(req, res, next)
+  }
+  next()
+}
+
 // Apply tenant resolution middleware to all routes
 router.use(resolveTenantFromHeader)
 
@@ -30,15 +42,7 @@ router.put("/products/:productId/variants/bulk", requireTenant, bulkUpdateVarian
 
 // Individual variant routes
 router.get("/variants/:variantId", requireTenant, getVariantById)
-router.put(
-  "/variants/:variantId",
-  requireTenant,
-  upload.fields([
-    { name: "primaryImage", maxCount: 1 },
-    { name: "images", maxCount: 5 }
-  ]),
-  updateVariant
-)
+router.put("/variants/:variantId", requireTenant, variantUpdateUpload, updateVariant)
 router.patch("/variants/:variantId/stock", requireTenant, updateVariantStock)
 router.patch("/variants/:variantId/status", requireTenant, updateVariantStatus)
 router.delete("/variants/:variantId", requireTenant, deleteVariant)

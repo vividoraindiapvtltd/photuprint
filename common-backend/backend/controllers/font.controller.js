@@ -1,4 +1,6 @@
 import Font from "../models/font.model.js"
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
+import { removeLocalFile } from "../utils/fileCleanup.js"
 
 const parseWeights = (weights) => {
   if (!weights) return null
@@ -353,7 +355,19 @@ export const uploadFont = async (req, res) => {
     }
 
     const ext = (req.file.originalname || "").split(".").pop()?.toLowerCase() || null
-    const fileUrl = `/uploads/${req.file.filename}`
+    let fileUrl
+    try {
+      fileUrl = await uploadLocalFileToCloudinary(req.file.path, {
+        folder: "photuprint/fonts",
+        resource_type: "raw",
+      })
+    } catch (uploadError) {
+      console.error("Font Cloudinary upload failed:", uploadError)
+      removeLocalFile(req.file.path)
+      return res.status(503).json({
+        message: uploadError.message || "Font upload failed. Configure Cloudinary.",
+      })
+    }
 
     const font = new Font({
       name: trimmedName,

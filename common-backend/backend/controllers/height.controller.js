@@ -1,5 +1,5 @@
 import Height from "../models/height.model.js"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all heights
 export const getHeights = async (req, res) => {
@@ -90,13 +90,19 @@ export const createHeight = async (req, res) => {
       return res.status(400).json({ msg: `Height value ${name.trim()} with unit ${unit || 'centimeters'} already exists` })
     }
 
-    // Handle image upload
     let imageUrl = null
     if (req.file) {
-      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, {
-        folder: "photuprint/heights",
-        resource_type: "auto",
-      })
+      try {
+        imageUrl = await uploadLocalFileToCloudinary(req.file.path, {
+          folder: "photuprint/heights",
+          resource_type: "auto",
+        })
+        console.log("Image uploaded to Cloudinary:", imageUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const height = new Height({
@@ -212,12 +218,18 @@ export const updateHeight = async (req, res) => {
       height.deleted = req.body.deleted
     }
 
-    // Handle image upload
     if (req.file) {
-      height.image = await tenantCloudinaryUpload(req.websiteId, req.file, {
-        folder: "photuprint/heights",
-        resource_type: "auto",
-      })
+      try {
+        height.image = await uploadLocalFileToCloudinary(req.file.path, {
+          folder: "photuprint/heights",
+          resource_type: "auto",
+        })
+        console.log("Image updated in Cloudinary:", height.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const updatedHeight = await height.save()

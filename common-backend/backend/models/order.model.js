@@ -94,7 +94,7 @@ const orderSchema = new mongoose.Schema(
     },
     paymentMethod: {
       type: String,
-      enum: ["credit_card", "debit_card", "paypal", "cash_on_delivery", "bank_transfer", "other"],
+      enum: ["credit_card", "debit_card", "paypal", "cash_on_delivery", "bank_transfer", "wallet", "wallet_split", "other"],
       default: "credit_card"
     },
     paymentStatus: { 
@@ -161,6 +161,16 @@ const orderSchema = new mongoose.Schema(
       trim: true,
       lowercase: true
     },
+    /** Partial payment: amount settled from customer wallet at checkout */
+    walletAmountApplied: { type: Number, default: 0, min: 0 },
+    /** Remainder paid via gateway / COD (optional audit; totalAmount ≈ wallet + other for prepaid) */
+    otherPaymentAmount: { type: Number, default: null, min: 0 },
+    /** Cashback credited after delivery (idempotent ledger) */
+    cashbackCreditedAmount: { type: Number, default: 0, min: 0 },
+    cashbackCreditedAt: { type: Date, default: null },
+    cashbackExpiresAt: { type: Date, default: null },
+    /** Client-supplied key for wallet debit idempotency (order create) */
+    walletDebitIdempotencyKey: { type: String, default: null, sparse: true },
     isActive: {
       type: Boolean,
       default: true

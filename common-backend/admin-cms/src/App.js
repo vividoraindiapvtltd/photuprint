@@ -23,7 +23,11 @@ import HeightManager from "./components/HeightManager"
 import LengthManager from "./components/LengthManager"
 import PatternManager from "./components/PatternManager"
 import PrintingTypeManager from "./components/PrintingTypeManager"
+import PrintSideManager from "./components/PrintSideManager"
+import ProductAddonManager from "./components/ProductAddonManager"
 import FitTypeManager from "./components/FitTypeManager"
+import CapacityManager from "./components/CapacityManager"
+import GSMManager from "./components/GSMManager"
 import SleeveTypeManager from "./components/SleeveTypeManager"
 import CollarStyleManager from "./components/CollarStyleManager"
 import CountryOfOriginManager from "./components/CountryOfOriginManager"
@@ -56,6 +60,9 @@ import ClientManager from "./components/ClientManager"
 import UserAccessManager from "./components/UserAccessManager"
 import Reports from "./pages/Reports"
 import ProductCostCalculator from "./pages/ProductCostCalculator"
+import WalletCashbackOverview from "./components/WalletCashbackOverview"
+import CashbackRulesManager from "./components/CashbackRulesManager"
+import WalletLedgerAdmin from "./components/WalletLedgerAdmin"
 
 export default function App() {
   const [media, setMedia] = useState([])
@@ -300,10 +307,42 @@ export default function App() {
               }
             />
             <Route
+              path="addprintside"
+              element={
+                <PrivateRoute>
+                  <PrintSideManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="addproductaddon"
+              element={
+                <PrivateRoute>
+                  <ProductAddonManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
               path="addfittype"
               element={
                 <PrivateRoute>
                   <FitTypeManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="addcapacity"
+              element={
+                <PrivateRoute>
+                  <CapacityManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="addgsm"
+              element={
+                <PrivateRoute>
+                  <GSMManager />
                 </PrivateRoute>
               }
             />
@@ -450,6 +489,30 @@ export default function App() {
               <Route path="fonts" element={<FontStyleManager />} />
               <Route path="image-to-vector" element={<ImageToVector />} />
             </Route>
+            <Route
+              path="wallet-cashback"
+              element={
+                <PrivateRoute>
+                  <WalletCashbackOverview />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="wallet-cashback/rules"
+              element={
+                <PrivateRoute>
+                  <CashbackRulesManager />
+                </PrivateRoute>
+              }
+            />
+            <Route
+              path="wallet-cashback/ledger"
+              element={
+                <PrivateRoute>
+                  <WalletLedgerAdmin />
+                </PrivateRoute>
+              }
+            />
           </Route>
 
           {/* Catch-all route - redirect any unknown route */}

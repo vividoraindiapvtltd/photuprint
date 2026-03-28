@@ -12,6 +12,7 @@
   "dependencies": {
     "@react-oauth/google": "^0.13.4",
     "axios": "^1.11.0",
+    "fabric": "^7.2.0",
     "isomorphic-dompurify": "^3.0.0-rc.2",
     "next": "^15.0.0",
     "react": "^19.1.1",

@@ -6,7 +6,10 @@
   "main": "index.js",
   "scripts": {
     "dev": "nodemon backend/index.js",
-    "migrate:carousel": "node backend/scripts/migrate-carousel-keys.js"
+    "migrate:carousel": "node backend/scripts/migrate-carousel-keys.js",
+    "seed:cashback": "node backend/scripts/seed-dummy-cashback-rule.js",
+    "seed:order-cashback": "node backend/scripts/seed-dummy-order-with-cashback.js",
+    "test": "node --test 'backend/tests/**/*.test.js'"
   },
   "keywords": [
     "Photuprint",

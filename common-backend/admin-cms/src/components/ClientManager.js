@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, useRef } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import api from '../api/axios';
 import { 
   PageHeader, 
@@ -9,10 +9,10 @@ import {
   ActionButtons,
   SearchField,
   StatusFilter,
-  calculateStandardStatusCounts,
-  filterEntitiesByStatus,
+  EntityCard,
   DeleteConfirmationPopup,
 } from '../common';
+import { usePermissions } from '../context/PermissionContext';
 
 /**
  * Client Management System
@@ -36,6 +36,18 @@ const STATUS_OPTIONS = [
   { value: "lost", label: "Lost", color: "#dc3545" },
 ];
 
+const STATUS_DESCRIPTIONS = {
+  lead: "New contact or enquiry. Not yet qualified or in active sales process.",
+  prospect: "Qualified lead showing interest. Following up for conversion.",
+  active: "Current customer or deal in progress. Active relationship.",
+  inactive: "No recent activity. May need re-engagement or follow-up.",
+  closed: "Deal won or relationship concluded successfully.",
+  lost: "Opportunity lost or contact no longer pursuing.",
+};
+
+/** Pipeline shortcuts after entity pills (lead = "Active Leads" on entity row) */
+const PIPELINE_QUICK_FILTER_KEYS = ["prospect", "closed", "lost"];
+
 // Priority options
 const PRIORITY_OPTIONS = [
   { value: "low", label: "Low", color: "#6c757d" },
@@ -58,6 +70,84 @@ const SOURCE_OPTIONS = [
 ];
 
 // Interaction types
+function getClientWebsiteLabel(client, websiteList = []) {
+  if (!client?.website) return ""
+  const w = client.website
+  if (typeof w === "object" && w !== null && !Array.isArray(w)) {
+    const label = (w.name || w.domain || "").trim()
+    if (label) return label
+    const oid = w._id != null ? String(w._id) : ""
+    if (oid && websiteList.length) {
+      const found = websiteList.find((sw) => String(sw._id) === oid)
+      if (found) return (found.name || found.domain || "").trim() || ""
+    }
+    return ""
+  }
+  const idStr = typeof w === "string" ? w : ""
+  if (idStr && websiteList.length) {
+    const found = websiteList.find((sw) => String(sw._id) === idStr)
+    if (found) return (found.name || found.domain || "").trim() || ""
+  }
+  return ""
+}
+
+function truncateNotes(text, maxLen = 220) {
+  if (!text || typeof text !== "string") return ""
+  const t = text.trim()
+  if (t.length <= maxLen) return t
+  return `${t.slice(0, maxLen)}…`
+}
+
+const WEBSITE_NAME_DISPLAY_MAX = 20
+
+function truncateWebsiteName(label, maxLen = WEBSITE_NAME_DISPLAY_MAX) {
+  if (!label || typeof label !== "string") return ""
+  const t = label.trim()
+  if (t.length <= maxLen) return t
+  return `${t.slice(0, maxLen)}...`
+}
+
+/**
+ * Lead list entity tabs: "Active Leads" = pipeline `lead`; Inactive = pipeline `inactive`.
+ * Deleted uses the soft-delete flag.
+ */
+function filterLeadListByEntityTab(entities, statusFilter) {
+  if (statusFilter === "all") return entities
+  if (statusFilter === "deleted") return entities.filter((e) => e.deleted)
+  if (statusFilter === "lead") return entities.filter((e) => e.status === "lead" && !e.deleted)
+  if (statusFilter === "inactive") return entities.filter((e) => e.status === "inactive" && !e.deleted)
+  return entities
+}
+
+/** Same rules as the visible list; used for tab counts and filteredClients. */
+function applyClientFilters(clients, websiteList, { statusFilter, pipelineFilter, priorityFilter, searchQuery }) {
+  let filtered = clients
+  filtered = filterLeadListByEntityTab(filtered, statusFilter)
+  if (pipelineFilter !== "all") {
+    filtered = filtered.filter((c) => c.status === pipelineFilter)
+  }
+  if (priorityFilter !== "all") {
+    filtered = filtered.filter((c) => c.priority === priorityFilter)
+  }
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase().trim()
+    filtered = filtered.filter(
+      (client) =>
+        client.firstName?.toLowerCase().includes(query) ||
+        client.lastName?.toLowerCase().includes(query) ||
+        client.email?.toLowerCase().includes(query) ||
+        client.phone?.includes(query) ||
+        client.company?.toLowerCase().includes(query) ||
+        client.clientId?.toLowerCase().includes(query) ||
+        client.productName?.toLowerCase().includes(query) ||
+        client.location?.toLowerCase().includes(query) ||
+        client.notes?.toLowerCase().includes(query) ||
+        getClientWebsiteLabel(client, websiteList)?.toLowerCase().includes(query)
+    )
+  }
+  return filtered
+}
+
 const INTERACTION_TYPES = [
   { value: "call_outbound", label: "📞 Outbound Call" },
   { value: "call_inbound", label: "📲 Inbound Call" },
@@ -71,6 +161,7 @@ const INTERACTION_TYPES = [
 ];
 
 const ClientManager = () => {
+  const { isSuperAdmin } = usePermissions();
   // State for clients
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -78,13 +169,14 @@ const ClientManager = () => {
   const [success, setSuccess] = useState("");
   const [editingId, setEditingId] = useState(null);
   const [stats, setStats] = useState(null);
-  
+  const [websites, setWebsites] = useState([]);
+
   // View and filter states
   const [viewMode, setViewMode] = useState('card');
   const [statusFilter, setStatusFilter] = useState('all');
   const [pipelineFilter, setPipelineFilter] = useState('all');
   const [searchQuery, setSearchQuery] = useState("");
-  const [priorityFilter, setPriorityFilter] = useState("all");
+  const [priorityFilter] = useState("all");
   
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
@@ -206,56 +298,77 @@ const ClientManager = () => {
     fetchStats();
   }, []);
 
+  useEffect(() => {
+    if (isSuperAdmin && websites.length === 0) {
+      api
+        .get('/websites?showInactive=true&includeDeleted=false', { skipWebsiteId: true })
+        .then((res) => {
+          setWebsites(Array.isArray(res.data) ? res.data : []);
+        })
+        .catch(() => setWebsites([]));
+    }
+  }, [isSuperAdmin, websites.length]);
+
   // ============================================================================
   // FILTERING AND PAGINATION
   // ============================================================================
 
   const filteredClients = useMemo(() => {
-    let filtered = clients;
-    
-    // Apply entity status filter (active/inactive/deleted)
-    filtered = filterEntitiesByStatus(filtered, statusFilter);
-    
-    // Apply pipeline status filter
-    if (pipelineFilter !== "all") {
-      filtered = filtered.filter(c => c.status === pipelineFilter);
-    }
-    
-    // Apply priority filter
-    if (priorityFilter !== "all") {
-      filtered = filtered.filter(c => c.priority === priorityFilter);
-    }
-    
-    // Apply search filter
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase().trim();
-      filtered = filtered.filter(client =>
-        client.firstName?.toLowerCase().includes(query) ||
-        client.lastName?.toLowerCase().includes(query) ||
-        client.email?.toLowerCase().includes(query) ||
-        client.phone?.includes(query) ||
-        client.company?.toLowerCase().includes(query) ||
-        client.clientId?.toLowerCase().includes(query)
-      );
-    }
-    
-    // Sort by createdAt descending
-    return filtered.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  }, [clients, searchQuery, statusFilter, pipelineFilter, priorityFilter]);
+    const filtered = applyClientFilters(clients, websites, {
+      statusFilter,
+      pipelineFilter,
+      priorityFilter,
+      searchQuery,
+    })
+    return [...filtered].sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
+  }, [clients, searchQuery, statusFilter, pipelineFilter, priorityFilter, websites])
 
-  // Calculate status counts
-  const statusCounts = useMemo(() => {
-    return calculateStandardStatusCounts(clients);
-  }, [clients]);
+  /**
+   * Entity tab counts: respect priority + search only.
+   * Do not apply pipelineFilter here — otherwise choosing Prospect/Lost zeros Active Leads / Inactive / Deleted pills.
+   */
+  const entityTabCounts = useMemo(() => {
+    const base = applyClientFilters(clients, websites, {
+      statusFilter: "all",
+      pipelineFilter: "all",
+      priorityFilter,
+      searchQuery,
+    })
+    return {
+      total: base.length,
+      lead: base.filter((c) => c.status === "lead" && !c.deleted).length,
+      inactive: base.filter((c) => c.status === "inactive" && !c.deleted).length,
+      deleted: base.filter((c) => c.deleted).length,
+    }
+  }, [clients, websites, priorityFilter, searchQuery])
 
-  // Pipeline status counts
-  const pipelineCounts = useMemo(() => {
-    const counts = { all: clients.filter(c => !c.deleted).length };
-    STATUS_OPTIONS.forEach(s => {
-      counts[s.value] = clients.filter(c => c.status === s.value && !c.deleted).length;
-    });
-    return counts;
-  }, [clients]);
+  /**
+   * Pipeline shortcut counts (Prospect / Closed / Lost): respect priority + search only.
+   * Do not apply statusFilter here — otherwise Active Leads tab makes Prospect/Lost pills all 0.
+   */
+  const pipelineTabCounts = useMemo(() => {
+    const base = applyClientFilters(clients, websites, {
+      statusFilter: "all",
+      pipelineFilter: "all",
+      priorityFilter,
+      searchQuery,
+    })
+    const counts = {}
+    PIPELINE_QUICK_FILTER_KEYS.forEach((key) => {
+      counts[key] = base.filter((c) => c.status === key).length
+    })
+    return counts
+  }, [clients, websites, priorityFilter, searchQuery])
+
+  const entityStatusFilterOptions = useMemo(
+    () => [
+      { key: "all", label: "All Stages", count: entityTabCounts.total, color: "black" },
+      { key: "lead", label: "Active Leads", count: entityTabCounts.lead, color: "green" },
+      { key: "inactive", label: "Inactive", count: entityTabCounts.inactive, color: "gray" },
+      { key: "deleted", label: "Deleted", count: entityTabCounts.deleted, color: "red" },
+    ],
+    [entityTabCounts],
+  )
 
   // Pagination
   const totalPages = Math.ceil(filteredClients.length / itemsPerPage);
@@ -743,6 +856,11 @@ const ClientManager = () => {
                 onChange={handleChange}
                 options={STATUS_OPTIONS}
               />
+              {formData.status && STATUS_DESCRIPTIONS[formData.status] && (
+                <p className="font12 grayText appendTop6" style={{ margin: 0, lineHeight: 1.4 }}>
+                  {STATUS_DESCRIPTIONS[formData.status]}
+                </p>
+              )}
             </div>
             <div className="flexOne">
               <FormField
@@ -840,43 +958,6 @@ const ClientManager = () => {
         </form>
       </div>
 
-      {/* Pipeline Status Tabs */}
-      <div className="pipelineTabs makeFlex gap8 appendBottom16" style={{ flexWrap: 'wrap' }}>
-        <button
-          className={`pipelineTab ${pipelineFilter === 'all' ? 'active' : ''}`}
-          onClick={() => setPipelineFilter('all')}
-          style={{
-            padding: '8px 16px',
-            border: `2px solid ${pipelineFilter === 'all' ? '#007bff' : '#e0e0e0'}`,
-            borderRadius: '20px',
-            backgroundColor: pipelineFilter === 'all' ? '#007bff' : '#fff',
-            color: pipelineFilter === 'all' ? '#fff' : '#333',
-            cursor: 'pointer',
-            fontSize: '14px',
-          }}
-        >
-          All ({pipelineCounts.all})
-        </button>
-        {STATUS_OPTIONS.map(status => (
-          <button
-            key={status.value}
-            className={`pipelineTab ${pipelineFilter === status.value ? 'active' : ''}`}
-            onClick={() => setPipelineFilter(status.value)}
-            style={{
-              padding: '8px 16px',
-              border: `2px solid ${pipelineFilter === status.value ? status.color : '#e0e0e0'}`,
-              borderRadius: '20px',
-              backgroundColor: pipelineFilter === status.value ? status.color : '#fff',
-              color: pipelineFilter === status.value ? '#fff' : '#333',
-              cursor: 'pointer',
-              fontSize: '14px',
-            }}
-          >
-            {status.label} ({pipelineCounts[status.value] || 0})
-          </button>
-        ))}
-      </div>
-
       {/* Clients List */}
       <div className="brandsListContainer paddingAll32">
         <div className="listHeader makeFlex spaceBetween end appendBottom24">
@@ -887,8 +968,41 @@ const ClientManager = () => {
             <StatusFilter
               statusFilter={statusFilter}
               onStatusChange={setStatusFilter}
-              counts={statusCounts}
+              statusOptions={entityStatusFilterOptions}
               disabled={loading}
+              suffix={(
+                <>
+                  {PIPELINE_QUICK_FILTER_KEYS.map((value) => {
+                    const status = STATUS_OPTIONS.find((s) => s.value === value)
+                    if (!status) return null
+                    const active = pipelineFilter === value
+                    const c = status.color
+                    return (
+                      <button
+                        key={value}
+                        type="button"
+                        className="statusFilterBtn"
+                        onClick={() => setPipelineFilter(value)}
+                        disabled={loading}
+                        title={`Filter by ${status.label} pipeline status`}
+                        style={{
+                          padding: "6px 12px",
+                          borderRadius: "4px",
+                          border: `1px solid ${c}`,
+                          background: active ? c : "#fff",
+                          color: active ? "#fff" : c,
+                          cursor: loading ? "not-allowed" : "pointer",
+                          fontSize: "12px",
+                          transition: "all 0.2s ease",
+                          opacity: loading ? 0.6 : 1,
+                        }}
+                      >
+                        {status.label} ({pipelineTabCounts[value] ?? 0})
+                      </button>
+                    )
+                  })}
+                </>
+              )}
             />
           </div>
           <div className="rightSection makeFlex end gap10">
@@ -914,42 +1028,71 @@ const ClientManager = () => {
           <>
             {/* Card View */}
             {viewMode === 'card' && (
-              <div className="brandsGrid" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))', gap: '20px' }}>
-                {displayedCards.map((client) => (
-                  <div
+              <div className="brandsGrid">
+                {displayedCards.map((client) => {
+                  const websiteLabel = getClientWebsiteLabel(client, websites)
+                  const websiteLabelDisplay = truncateWebsiteName(websiteLabel)
+                  return (
+                  <EntityCard
                     key={client._id}
-                    className="clientCard"
-                    style={{
-                      border: '1px solid #e0e0e0',
-                      borderRadius: '12px',
-                      overflow: 'hidden',
-                      backgroundColor: '#fff',
-                      boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
-                    }}
-                  >
-                    {/* Card Header */}
-                    <div style={{ padding: '16px', borderBottom: '1px solid #f0f0f0' }}>
-                      <div className="makeFlex spaceBetween alignCenter">
-                        <div className="makeFlex alignCenter gap12">
-                          <div
-                            style={{
-                              width: '48px',
-                              height: '48px',
-                              borderRadius: '50%',
-                              backgroundColor: getStatusColor(client.status),
-                              color: '#fff',
-                              display: 'flex',
-                              alignItems: 'center',
-                              justifyContent: 'center',
-                              fontWeight: 'bold',
-                              fontSize: '16px',
-                            }}
-                          >
-                            {getInitials(client)}
+                    entity={client}
+                    showImage={false}
+                    showId={false}
+                    size="normal"
+                    variant="detailed"
+                    className="brandCard"
+                    renderHeader={(client) => (
+                      <div
+                        className="entityCardHeader appendBottom16"
+                        style={{
+                          display: "flex",
+                          justifyContent: "space-between",
+                          alignItems: "flex-start",
+                        }}
+                      >
+                        <div className="makeFlex" style={{ minWidth: 0, flex: 1, alignItems: "flex-start" }}>
+                          <div style={{ paddingRight: "10px", flexShrink: 0, alignSelf: "flex-start" }}>
+                            <div
+                              style={{
+                                width: "48px",
+                                height: "48px",
+                                borderRadius: "50%",
+                                backgroundColor: getStatusColor(client.status),
+                                color: "#fff",
+                                display: "flex",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                fontWeight: "bold",
+                                fontSize: "16px",
+                              }}
+                            >
+                              {getInitials(client)}
+                            </div>
                           </div>
-                          <div>
+                          <div style={{ minWidth: 0, flex: 1 }}>
                             <div className="font16 fontBold">{getClientName(client)}</div>
                             <div className="font12 grayText">{client.company || "No company"}</div>
+                            {websiteLabel && (
+                              <div className="appendTop4" style={{ marginTop: "4px" }}>
+                                <span
+                                  title={websiteLabel}
+                                  style={{
+                                    display: "inline-block",
+                                    maxWidth: "100%",
+                                    verticalAlign: "top",
+                                    padding: "3px 10px",
+                                    borderRadius: "6px",
+                                    backgroundColor: "#e8f4ff",
+                                    color: "#0d47a1",
+                                    fontSize: "11px",
+                                    fontWeight: 600,
+                                    border: "1px solid #b8d4f0",
+                                  }}
+                                >
+                                  {websiteLabelDisplay}
+                                </span>
+                              </div>
+                            )}
                           </div>
                         </div>
                         <span
@@ -961,49 +1104,86 @@ const ClientManager = () => {
                             fontSize: '10px',
                             fontWeight: 'bold',
                             textTransform: 'uppercase',
+                            flexShrink: 0,
+                            marginLeft: '8px',
                           }}
                         >
                           {client.priority}
                         </span>
                       </div>
-                    </div>
-
-                    {/* Card Body */}
-                    <div style={{ padding: '16px' }}>
-                      {client.email && (
-                        <div className="makeFlex alignCenter gap8 appendBottom8">
-                          <span>📧</span>
-                          <span className="font14" style={{ wordBreak: 'break-all' }}>{client.email}</span>
+                    )}
+                    renderDetails={(client) => (
+                      <>
+                        {client.email && (
+                          <div
+                            className="makeFlex alignCenter appendBottom8"
+                            style={{ gap: "10px" }}
+                          >
+                            <span style={{ flexShrink: 0 }}>📧</span>
+                            <span className="font14" style={{ wordBreak: 'break-all', minWidth: 0 }}>{client.email}</span>
+                          </div>
+                        )}
+                        {client.phone && (
+                          <div
+                            className="makeFlex alignCenter appendBottom8"
+                            style={{ gap: "10px" }}
+                          >
+                            <span style={{ flexShrink: 0 }}>📞</span>
+                            <span className="font14" style={{ minWidth: 0 }}>{client.phone}</span>
+                          </div>
+                        )}
+                        {(client.notes || (isSuperAdmin && client.internalNotes)) && (
+                          <div className="appendTop8 appendBottom8" style={{ paddingTop: "8px", borderTop: "1px solid #eee" }}>
+                            {client.notes && (
+                              <div className="font12" style={{ lineHeight: 1.45, color: "#333" }}>
+                                <span className="grayText">Notes: </span>
+                                {truncateNotes(client.notes)}
+                              </div>
+                            )}
+                            {isSuperAdmin && client.internalNotes && (
+                              <div className="font12 appendTop6" style={{ lineHeight: 1.45, color: "#555" }}>
+                                <span className="grayText">Internal notes: </span>
+                                {truncateNotes(client.internalNotes)}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {(client.productName || client.quantity != null || client.location) && (
+                          <div className="appendTop8 appendBottom8" style={{ paddingTop: '8px', borderTop: '1px solid #eee' }}>
+                            {client.productName && <div className="font12"><span className="grayText">Product: </span>{client.productName}</div>}
+                            {client.quantity != null && client.quantity !== "" && <div className="font12"><span className="grayText">Qty: </span>{client.quantity}</div>}
+                            {client.location && <div className="font12"><span className="grayText">Location: </span>{client.location}</div>}
+                          </div>
+                        )}
+                        {(client.assignedTo && (client.assignedTo.name || client.assignedTo.email)) && (
+                          <div className="makeFlex alignCenter gap8 appendTop8">
+                            <span className="font12 grayText">Assigned to:</span>
+                            <span className="font12">{client.assignedTo.name || client.assignedTo.email}</span>
+                          </div>
+                        )}
+                        <div className="makeFlex spaceBetween appendTop8">
+                          <span className="font12 grayText">Status:</span>
+                          <select
+                            value={client.status}
+                            onChange={(e) => handleStatusChange(client._id, e.target.value)}
+                            style={{
+                              padding: '4px 8px',
+                              borderRadius: '4px',
+                              border: '1px solid #e0e0e0',
+                              backgroundColor: getStatusColor(client.status),
+                              color: '#fff',
+                              fontSize: '12px',
+                              cursor: 'pointer',
+                              flexBasis: 'content',
+                            }}
+                            disabled={client.deleted}
+                          >
+                            {STATUS_OPTIONS.map(s => (
+                              <option key={s.value} value={s.value}>{s.label}</option>
+                            ))}
+                          </select>
                         </div>
-                      )}
-                      {client.phone && (
-                        <div className="makeFlex alignCenter gap8 appendBottom8">
-                          <span>📞</span>
-                          <span className="font14">{client.phone}</span>
-                        </div>
-                      )}
-                      <div className="makeFlex spaceBetween appendTop8">
-                        <span className="font12 grayText">Status:</span>
-                        <select
-                          value={client.status}
-                          onChange={(e) => handleStatusChange(client._id, e.target.value)}
-                          style={{
-                            padding: '4px 8px',
-                            borderRadius: '4px',
-                            border: '1px solid #e0e0e0',
-                            backgroundColor: getStatusColor(client.status),
-                            color: '#fff',
-                            fontSize: '12px',
-                            cursor: 'pointer',
-                          }}
-                          disabled={client.deleted}
-                        >
-                          {STATUS_OPTIONS.map(s => (
-                            <option key={s.value} value={s.value}>{s.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      {client.nextFollowUp && (
+                        {client.nextFollowUp && (
                         <div className="makeFlex spaceBetween appendTop8">
                           <span className="font12 grayText">Follow-up:</span>
                           <span className="font12" style={{ color: new Date(client.nextFollowUp) < new Date() ? '#dc3545' : '#28a745' }}>
@@ -1015,9 +1195,9 @@ const ClientManager = () => {
                         <span className="font12 grayText">Interactions:</span>
                         <span className="font12">{client.interactionCount || 0}</span>
                       </div>
-                    </div>
-
-                    {/* Card Actions */}
+                    </>
+                  )}
+                  renderActions={(client) => (
                     <div style={{ padding: '12px 16px', borderTop: '1px solid #f0f0f0', backgroundColor: '#fafafa' }}>
                       <div className="makeFlex gap8 flexWrap">
                         {!client.deleted && (
@@ -1031,10 +1211,16 @@ const ClientManager = () => {
                               ✏️ Edit
                             </button>
                             <button
-                              className="btnSmall"
+                              className="btnSmall btnSecondary"
                               onClick={() => openInteractionModal(client)}
                               disabled={loading}
-                              style={{ fontSize: '12px', padding: '6px 10px', backgroundColor: '#17a2b8', color: '#fff', border: 'none' }}
+                              style={{
+                                fontSize: '12px',
+                                padding: '6px 10px',
+                                backgroundColor: '#17a2b8',
+                                color: '#fff',
+                                border: 'none',
+                              }}
                             >
                               💬 Log
                             </button>
@@ -1046,7 +1232,7 @@ const ClientManager = () => {
                           disabled={loading}
                           style={{ fontSize: '12px', padding: '6px 10px' }}
                         >
-                          🗑️
+                          🗑️ Delete
                         </button>
                         {client.deleted && (
                           <button
@@ -1060,8 +1246,10 @@ const ClientManager = () => {
                         )}
                       </div>
                     </div>
-                  </div>
-                ))}
+                  )}
+                />
+                  );
+                })}
               </div>
             )}
 
@@ -1084,6 +1272,10 @@ const ClientManager = () => {
                         <th style={{ padding: '12px', textAlign: 'left' }}>Client</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Contact</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Company</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Website</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Product</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Qty</th>
+                        <th style={{ padding: '12px', textAlign: 'left' }}>Location</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Status</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Priority</th>
                         <th style={{ padding: '12px', textAlign: 'left' }}>Follow-up</th>
@@ -1091,7 +1283,10 @@ const ClientManager = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {currentClients.map((client) => (
+                      {currentClients.map((client) => {
+                        const websiteLabel = getClientWebsiteLabel(client, websites)
+                        const websiteLabelDisplay = truncateWebsiteName(websiteLabel)
+                        return (
                         <tr key={client._id} style={{ borderBottom: '1px solid #e0e0e0' }}>
                           <td style={{ padding: '12px' }}>
                             <div className="makeFlex alignCenter gap8">
@@ -1122,6 +1317,29 @@ const ClientManager = () => {
                             <div className="font12 grayText">{client.phone || "-"}</div>
                           </td>
                           <td style={{ padding: '12px' }}>{client.company || "-"}</td>
+                          <td style={{ padding: '12px' }}>
+                            {websiteLabel ? (
+                              <span
+                                style={{
+                                  display: "inline-block",
+                                  padding: "2px 8px",
+                                  borderRadius: "6px",
+                                  backgroundColor: "#e8f4ff",
+                                  color: "#0d47a1",
+                                  fontSize: "12px",
+                                  fontWeight: 600,
+                                }}
+                                title={websiteLabel}
+                              >
+                                {websiteLabelDisplay}
+                              </span>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
+                          <td style={{ padding: '12px' }}>{client.productName || "-"}</td>
+                          <td style={{ padding: '12px' }}>{client.quantity != null && client.quantity !== "" ? client.quantity : "-"}</td>
+                          <td style={{ padding: '12px' }}>{client.location || "-"}</td>
                           <td style={{ padding: '12px' }}>
                             <span
                               style={{
@@ -1163,13 +1381,14 @@ const ClientManager = () => {
                               loading={loading}
                               size="small"
                               editText="✏️"
-                              deleteText="🗑️"
+                              deleteText="🗑️ Delete"
                               revertText="🔄"
                               editDisabled={client.deleted}
                             />
                           </td>
                         </tr>
-                      ))}
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react"
 import api from "../utils/api"
 
-const ProductReviews = ({ productId }) => {
+const ProductReviews = ({ productId, reloadKey = 0 }) => {
   const [reviews, setReviews] = useState([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
@@ -50,7 +50,7 @@ const ProductReviews = ({ productId }) => {
     const ac = new AbortController()
     fetchReviews(1, ac.signal).catch(() => {}) // ignore CanceledError when effect cleans up
     return () => ac.abort()
-  }, [productId])
+  }, [productId, reloadKey])
 
   const handlePageChange = (newPage) => {
     if (newPage >= 1 && newPage <= pagination.totalPages) {

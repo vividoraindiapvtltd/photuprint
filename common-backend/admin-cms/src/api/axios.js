@@ -78,16 +78,20 @@ api.interceptors.request.use(
       console.warn("Failed to get selected website for tenant context:", error)
     }
 
-    // Don't override Content-Type for FormData - let axios set it automatically with boundary
-    if (config.data instanceof FormData) {
+  // Don't set multipart Content-Type manually (missing boundary breaks multer). Let the runtime set it.
+  if (config.data instanceof FormData) {
+    if (config.headers && typeof config.headers.delete === "function") {
+      config.headers.delete("Content-Type")
+      config.headers.delete("content-type")
+    } else {
       delete config.headers["Content-Type"]
+      delete config.headers["content-type"]
     }
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
-  },
-)
+  }
+  return config
+}, (error) => {
+  return Promise.reject(error)
+})
 
 // Add response interceptor for error handling
 api.interceptors.response.use(

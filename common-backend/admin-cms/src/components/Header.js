@@ -1,6 +1,7 @@
 import React from 'react';
 import { useAuth } from '../context/AuthContext';
 import { MdLogout } from "react-icons/md";
+import WebsiteSwitcher from './WebsiteSwitcher';
 
 // Helper function to generate color from string
 const generateColor = (str) => {
@@ -32,6 +33,7 @@ const normalizeImageUrl = (imageUrl) => {
 
 const Header = () => {
     const { user, logout, selectedWebsite } = useAuth();
+    const isSuperAdmin = user?.user?.role === 'super_admin' || user?.user?.isSuperAdmin === true;
     
     // Get website logo URL
     const websiteLogoUrl = selectedWebsite?.logo ? normalizeImageUrl(selectedWebsite.logo) : null;
@@ -43,53 +45,61 @@ const Header = () => {
         <div className="headerWrapper">
             <div className="makeFlex alignCenter spaceBetween" style={{ width: '100%' }}>
                 <div className="makeFlex alignCenter gap16">
-                    {/* Website Logo and Name */}
+                    {/* Website Logo/Name - or WebsiteSwitcher dropdown for super admin */}
                     {selectedWebsite && (
                         <div className="makeFlex alignCenter gap10 paddingRight16 borderRight1px">
-                            {websiteLogoUrl ? (
-                                <img
-                                    src={websiteLogoUrl}
-                                    alt={websiteName}
-                                    style={{
-                                        width: '40px',
-                                        height: '40px',
-                                        borderRadius: '8px',
-                                        objectFit: 'cover',
-                                        border: '2px solid #e5e7eb'
-                                    }}
-                                    onError={(e) => {
-                                        e.target.style.display = 'none';
-                                        if (e.target.nextSibling) {
-                                            e.target.nextSibling.style.display = 'flex';
-                                        }
-                                    }}
-                                />
-                            ) : null}
-                            <div
-                                style={{
-                                    width: '40px',
-                                    height: '40px',
-                                    borderRadius: '8px',
-                                    backgroundColor: websiteColor,
-                                    color: 'white',
-                                    display: websiteLogoUrl ? 'none' : 'flex',
-                                    alignItems: 'center',
-                                    justifyContent: 'center',
-                                    fontSize: '18px',
-                                    fontWeight: 'bold',
-                                    border: '2px solid #e5e7eb'
-                                }}
-                            >
-                                {websiteInitial}
-                            </div>
-                            <div>
-                                <h3 className="font14 fontBold blackText" style={{ margin: 0, lineHeight: '1.2' }}>
-                                    {websiteName}
-                                </h3>
-                                <p className="font12 grayText" style={{ margin: 0, lineHeight: '1.2' }}>
-                                    {selectedWebsite.domain}
-                                </p>
-                            </div>
+                            {isSuperAdmin ? (
+                                <>
+                                    <WebsiteSwitcher />
+                                </>
+                            ) : (
+                                <>
+                                    {websiteLogoUrl ? (
+                                        <img
+                                            src={websiteLogoUrl}
+                                            alt={websiteName}
+                                            style={{
+                                                width: '40px',
+                                                height: '40px',
+                                                borderRadius: '8px',
+                                                objectFit: 'cover',
+                                                border: '2px solid #e5e7eb'
+                                            }}
+                                            onError={(e) => {
+                                                e.target.style.display = 'none';
+                                                if (e.target.nextSibling) {
+                                                    e.target.nextSibling.style.display = 'flex';
+                                                }
+                                            }}
+                                        />
+                                    ) : null}
+                                    <div
+                                        style={{
+                                            width: '40px',
+                                            height: '40px',
+                                            borderRadius: '8px',
+                                            backgroundColor: websiteColor,
+                                            color: 'white',
+                                            display: websiteLogoUrl ? 'none' : 'flex',
+                                            alignItems: 'center',
+                                            justifyContent: 'center',
+                                            fontSize: '18px',
+                                            fontWeight: 'bold',
+                                            border: '2px solid #e5e7eb'
+                                        }}
+                                    >
+                                        {websiteInitial}
+                                    </div>
+                                    <div>
+                                        <h3 className="font14 fontBold blackText" style={{ margin: 0, lineHeight: '1.2' }}>
+                                            {websiteName}
+                                        </h3>
+                                        <p className="font12 grayText" style={{ margin: 0, lineHeight: '1.2' }}>
+                                            {selectedWebsite.domain}
+                                        </p>
+                                    </div>
+                                </>
+                            )}
                         </div>
                     )}
                     

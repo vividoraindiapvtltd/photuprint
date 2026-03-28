@@ -10,6 +10,8 @@ import { syncGuestRecentlyViewedToBackend } from "../utils/guestRecentlyViewed"
 const defaultAuthValue = {
   user: null,
   isAuthenticated: false,
+  /** False until client has read localStorage — avoids treating "not yet loaded" as logged out. */
+  authHydrated: false,
   login: () => {},
   logout: () => {},
   loginModalOpen: false,
@@ -24,6 +26,7 @@ const AuthContext = createContext(defaultAuthValue)
 export const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null)
   const [isAuthenticated, setIsAuthenticated] = useState(false)
+  const [authHydrated, setAuthHydrated] = useState(false)
   const [loginModalOpen, setLoginModalOpen] = useState(false)
   const [loginReturnPath, setLoginReturnPath] = useState("/")
   const [loginModalMessage, setLoginModalMessage] = useState(null)
@@ -43,7 +46,16 @@ export const AuthProvider = ({ children }) => {
         // Ignore parse errors
       }
     }
+    setAuthHydrated(true)
   }, [])
+
+  /** Close login modal once we know the user is signed in (fixes race with account page opening modal before hydrate). */
+  useEffect(() => {
+    if (isAuthenticated) {
+      setLoginModalOpen(false)
+      setLoginModalMessage(null)
+    }
+  }, [isAuthenticated])
 
   // After logout, perform redirect if requested (e.g. from profile/account page)
   useEffect(() => {
@@ -97,6 +109,7 @@ export const AuthProvider = ({ children }) => {
         login,
         logout,
         isAuthenticated,
+        authHydrated,
         loginModalOpen,
         loginReturnPath,
         loginModalMessage,

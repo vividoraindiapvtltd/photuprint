@@ -32,6 +32,7 @@ import { MdCalculate } from "react-icons/md";
 import { MdExtension } from "react-icons/md";
 import { MdStraighten } from "react-icons/md";
 import { MdPrint } from "react-icons/md";
+import { MdLayers } from "react-icons/md";
 import { MdFormatQuote } from "react-icons/md";
 import { MdTransform } from "react-icons/md";
 import { MdDashboard } from "react-icons/md";
@@ -44,6 +45,9 @@ import { MdAdminPanelSettings } from "react-icons/md";
 import { MdVerticalAlignBottom } from "react-icons/md";
 import { MdPalette } from "react-icons/md";
 import { MdViewCarousel } from "react-icons/md";
+import { MdAttachMoney } from "react-icons/md";
+import { MdAssessment } from "react-icons/md";
+import { MdLocalDrink } from "react-icons/md";
 
 const iconMap = {
     FcGoogle,
@@ -78,6 +82,7 @@ const iconMap = {
     MdExtension,
     MdStraighten,
     MdPrint,
+    MdLayers,
     MdFormatQuote,
     MdTransform,
     MdDashboard,
@@ -89,7 +94,10 @@ const iconMap = {
     MdAdminPanelSettings,
     MdVerticalAlignBottom,
     MdPalette,
-    MdViewCarousel
+    MdViewCarousel,
+    MdAttachMoney,
+    MdAssessment,
+    MdLocalDrink
   };
   
   export default function IconMap({ name, size = 30 }) {

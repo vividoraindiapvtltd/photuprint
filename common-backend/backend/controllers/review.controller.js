@@ -1,6 +1,7 @@
 import Review from "../models/review.model.js"
-import { tenantCloudinaryUpload, tenantCloudinaryDestroyByUrl } from "../utils/cloudinary.js"
-import { removeLocalFiles } from "../utils/fileCleanup.js"
+import cloudinary from "../utils/cloudinary.js"
+import { cleanupRequestFiles } from "../utils/fileCleanup.js"
+import { uploadLocalFileToCloudinary, uploadMulterFilesToCloudinary } from "../utils/cloudinaryUpload.js"
 
 // Get all reviews (with admin and public filtering)
 export const getReviews = async (req, res) => {
@@ -247,23 +248,33 @@ export const createReview = async (req, res) => {
     const hasAnyFiles = hasAvatarFile || hasProductImageFile || hasProductImagesFiles
 
     if (hasAnyFiles) {
-      if (hasAvatarFile) {
-        avatar = await tenantCloudinaryUpload(uploadWebsiteId, req.files.avatar[0], { folder: "photuprint/reviews/avatars" })
-      }
-      if (hasProductImageFile) {
-        productImage = await tenantCloudinaryUpload(uploadWebsiteId, req.files.productImage[0], {
-          folder: "photuprint/reviews/products",
-        })
-        productImages = productImage ? [productImage] : []
-      }
-      if (hasProductImagesFiles) {
-        const filesToUpload = req.files.productImages.slice(0, 6)
-        productImages = []
-        for (const file of filesToUpload) {
-          const url = await tenantCloudinaryUpload(uploadWebsiteId, file, { folder: "photuprint/reviews/products" })
-          if (url) productImages.push(url)
+      try {
+        if (hasAvatarFile) {
+          avatar = await uploadLocalFileToCloudinary(req.files.avatar[0].path, {
+            folder: "photuprint/reviews/avatars",
+          })
         }
-        if (productImages.length > 0) productImage = productImages[0]
+        if (hasProductImageFile) {
+          productImage = await uploadLocalFileToCloudinary(req.files.productImage[0].path, {
+            folder: "photuprint/reviews/products",
+          })
+          productImages = [productImage]
+        }
+        if (hasProductImagesFiles) {
+          const filesToUpload = req.files.productImages.slice(0, 6)
+          productImages = await uploadMulterFilesToCloudinary(filesToUpload, {
+            folder: "photuprint/reviews/products",
+          })
+          if (productImages.length > 0) {
+            productImage = productImages[0]
+          }
+        }
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        cleanupRequestFiles(req)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary.",
+        })
       }
     }
 
@@ -479,19 +490,35 @@ export const updateReview = async (req, res) => {
     if (req.files) {
       try {
         if (req.files.avatar && req.files.avatar[0]) {
-          await tenantCloudinaryDestroyByUrl(cloudWebsiteId, review.avatar)
-          review.avatar = await tenantCloudinaryUpload(cloudWebsiteId, req.files.avatar[0], {
+          // Delete old avatar from Cloudinary if exists
+          if (review.avatar && review.avatar.includes("cloudinary")) {
+            const publicId = review.avatar.split("/").slice(-2).join("/").split(".")[0]
+            try {
+              await cloudinary.uploader.destroy(publicId)
+            } catch (destroyError) {
+              console.error("Error deleting old avatar:", destroyError)
+            }
+          }
+          review.avatar = await uploadLocalFileToCloudinary(req.files.avatar[0].path, {
             folder: "photuprint/reviews/avatars",
           })
         }
         // Handle single productImage upload (backward compatibility)
         if (req.files.productImage && req.files.productImage[0]) {
-          await tenantCloudinaryDestroyByUrl(cloudWebsiteId, review.productImage)
-          const url = await tenantCloudinaryUpload(cloudWebsiteId, req.files.productImage[0], {
+          // Delete old product image from Cloudinary if exists
+          if (review.productImage && review.productImage.includes("cloudinary")) {
+            const publicId = review.productImage.split("/").slice(-2).join("/").split(".")[0]
+            try {
+              await cloudinary.uploader.destroy(publicId)
+            } catch (destroyError) {
+              console.error("Error deleting old product image:", destroyError)
+            }
+          }
+          const productImageUrl = await uploadLocalFileToCloudinary(req.files.productImage[0].path, {
             folder: "photuprint/reviews/products",
           })
-          review.productImage = url
-          review.productImages = url ? [url] : []
+          review.productImage = productImageUrl
+          review.productImages = [productImageUrl]
         }
 
         // Handle multiple productImages upload (up to 6)
@@ -596,15 +623,11 @@ export const updateReview = async (req, res) => {
               console.log("✅ Keeping existing image:", oldImage.substring(0, 60) + "...", shouldPreserve ? "(in preserve list)" : "(not cloudinary)")
             }
           }
-
-          // Upload new files
+          
           const filesToUpload = req.files.productImages.slice(0, 6)
-          const newImageUrls = []
-          for (const file of filesToUpload) {
-            const url = await tenantCloudinaryUpload(cloudWebsiteId, file, { folder: "photuprint/reviews/products" })
-            if (url) newImageUrls.push(url)
-          }
-          removeLocalFiles(filesToUpload)
+          const newImageUrls = await uploadMulterFilesToCloudinary(filesToUpload, {
+            folder: "photuprint/reviews/products",
+          })
           console.log("✅ New image URLs uploaded:", newImageUrls.length, newImageUrls)
 
           // Combine preserved images with new ones, limit to 6 total
@@ -674,69 +697,10 @@ export const updateReview = async (req, res) => {
         }
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
-        console.error("⚠️ Falling back to local storage - MUST preserve existing images!")
-
-        // Fallback to local storage
-        if (req.files.avatar && req.files.avatar[0]) {
-          review.avatar = `/uploads/${req.files.avatar[0].filename}`
-        }
-        if (req.files.productImage && req.files.productImage[0]) {
-          review.productImage = `/uploads/${req.files.productImage[0].filename}`
-          review.productImages = [review.productImage]
-        }
-        if (req.files.productImages && Array.isArray(req.files.productImages)) {
-          // CRITICAL: Preserve existing images when falling back to local storage
-          // Get existing images to preserve (from existingProductImages or originalProductImages)
-          let imagesToPreserveInFallback = []
-          if (existingProductImages && Array.isArray(existingProductImages) && existingProductImages.length > 0) {
-            imagesToPreserveInFallback = existingProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
-            console.log("Fallback: Using existingProductImages:", imagesToPreserveInFallback.length)
-          } else if (originalProductImages.length > 0) {
-            imagesToPreserveInFallback = originalProductImages.filter((url) => url && typeof url === "string" && url.trim() !== "")
-            console.log("Fallback: Using originalProductImages:", imagesToPreserveInFallback.length)
-          }
-
-          // Convert existing URLs to relative paths if they're absolute localhost URLs
-          const normalizedExistingUrls = imagesToPreserveInFallback.map((url) => {
-            if (url.startsWith("http://localhost:8080/") || url.startsWith("https://localhost:8080/")) {
-              return url.replace(/^https?:\/\/localhost:8080/, "")
-            }
-            return url
-          })
-
-          // Upload new files to local storage
-          const newLocalImageUrls = req.files.productImages.slice(0, 6).map((file) => `/uploads/${file.filename}`)
-
-          // Merge: existing images + new local images
-          const allLocalImages = [...normalizedExistingUrls, ...newLocalImageUrls]
-
-          // Remove duplicates
-          const uniqueLocalImages = []
-          const seenLocal = new Set()
-          for (const url of allLocalImages) {
-            const normalized = url
-              .replace(/^https?:\/\/[^/]+/, "")
-              .replace(/\/$/, "")
-              .toLowerCase()
-            if (!seenLocal.has(normalized)) {
-              seenLocal.add(normalized)
-              uniqueLocalImages.push(url)
-            }
-          }
-
-          review.productImages = uniqueLocalImages.slice(0, 6)
-
-          console.log("Fallback merge result:", {
-            existingCount: normalizedExistingUrls.length,
-            newCount: newLocalImageUrls.length,
-            finalCount: review.productImages.length,
-            finalImages: review.productImages,
-          })
-
-          if (review.productImages.length > 0) {
-            review.productImage = review.productImages[0]
-          }
-        }
+        cleanupRequestFiles(req)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary.",
+        })
       }
     }
 

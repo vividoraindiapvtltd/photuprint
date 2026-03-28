@@ -1,9 +1,11 @@
 import React, { useState } from "react"
+import { FormField } from "../../common"
 
 const ProductTemplatesTab = ({
   formData,
   templates,
-  handleTemplateToggle
+  handleTemplateToggle,
+  handleInputChange,
 }) => {
   const [imagePopupUrl, setImagePopupUrl] = useState(null)
 
@@ -78,6 +80,107 @@ const ProductTemplatesTab = ({
           </div>
         )}
       </div>
+
+      {/* Customization settings — only on Templates tab (customized products) */}
+      {formData.productType === "customized" && handleInputChange && (
+        <div style={{ marginBottom: "30px" }}>
+          <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "20px", color: "#444444", borderBottom: "2px solid #444444", paddingBottom: "12px", paddingTop: "8px" }}>
+            Customization Settings
+          </h3>
+          <div style={{ marginBottom: "20px" }}>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <FormField
+                type="checkbox"
+                name="livePreviewEnabled"
+                checked={formData.livePreviewEnabled}
+                onChange={handleInputChange}
+              />
+              <span>Enable Live Preview (Frontend supports real-time preview)</span>
+            </label>
+          </div>
+          <div style={{ marginBottom: "20px", padding: "15px", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
+            <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "10px" }}>Text Customization</h4>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+              <FormField
+                type="checkbox"
+                name="textCustomization_enabled"
+                checked={formData.textCustomization.enabled}
+                onChange={handleInputChange}
+              />
+              <span>Enable Text Customization</span>
+            </label>
+            {formData.textCustomization.enabled && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px" }}>
+                <FormField
+                  type="number"
+                  name="textCustomization_maxCharacters"
+                  label="Max Characters"
+                  value={formData.textCustomization.maxCharacters}
+                  onChange={handleInputChange}
+                  min="1"
+                />
+                <FormField
+                  type="text"
+                  name="textCustomization_placeholder"
+                  label="Placeholder Text"
+                  value={formData.textCustomization.placeholder}
+                  onChange={handleInputChange}
+                />
+                <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <FormField
+                    type="checkbox"
+                    name="textCustomization_required"
+                    checked={formData.textCustomization.required}
+                    onChange={handleInputChange}
+                  />
+                  <span>Required</span>
+                </label>
+              </div>
+            )}
+          </div>
+          <div style={{ padding: "15px", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
+            <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "10px" }}>Image Upload Customization</h4>
+            <label style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
+              <FormField
+                type="checkbox"
+                name="imageUploadCustomization_enabled"
+                checked={formData.imageUploadCustomization.enabled}
+                onChange={handleInputChange}
+              />
+              <span>Enable Image Upload Customization</span>
+            </label>
+            {formData.imageUploadCustomization.enabled && (
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px" }}>
+                <FormField
+                  type="text"
+                  name="imageUploadCustomization_allowedFileTypes"
+                  label="Allowed File Types (comma-separated)"
+                  value={formData.imageUploadCustomization.allowedFileTypes.join(", ")}
+                  onChange={handleInputChange}
+                  placeholder="jpg, jpeg, png"
+                />
+                <FormField
+                  type="number"
+                  name="imageUploadCustomization_maxFileSize"
+                  label="Max File Size (MB)"
+                  value={formData.imageUploadCustomization.maxFileSize}
+                  onChange={handleInputChange}
+                  min="1"
+                />
+                <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <FormField
+                    type="checkbox"
+                    name="imageUploadCustomization_required"
+                    checked={formData.imageUploadCustomization.required}
+                    onChange={handleInputChange}
+                  />
+                  <span>Required</span>
+                </label>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Image popup: max 200px on longest side, min 200x200 area, proportional */}
       {imagePopupUrl && (

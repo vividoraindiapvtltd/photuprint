@@ -8,7 +8,8 @@ const StatusFilter = ({
   disabled = false,
   className = "",
   statusOptions = null, // Allow custom status options
-  showCounts = true // Option to hide counts
+  showCounts = true, // Option to hide counts
+  suffix = null, // optional controls rendered after the last status pill (e.g. pipeline shortcuts)
 }) => {
   // Use counts or statusCounts, whichever is provided
   const statusCountsData = counts || statusCounts || { total: 0, active: 0, inactive: 0, deleted: 0 };
@@ -49,7 +50,7 @@ const StatusFilter = ({
   };
 
   return (
-    <div className={`statusFilters makeFlex gap10 appendTop8 ${className}`}>
+    <div className={`statusFilters makeFlex gap10 appendTop8 flexWrap ${className}`}>
       {options.map(({ key, label, count, color }) => (
         <button
           key={key}
@@ -61,6 +62,7 @@ const StatusFilter = ({
           {label} {showCounts && `(${count})`}
         </button>
       ))}
+      {suffix}
     </div>
   );
 };

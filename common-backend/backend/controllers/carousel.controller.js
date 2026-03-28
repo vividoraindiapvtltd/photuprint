@@ -1,6 +1,7 @@
 import CarouselSlide from "../models/carouselSlide.model.js"
 import CarouselSetting, { CAROUSEL_KEYS_LIST } from "../models/carouselSetting.model.js"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
+import { removeLocalFile } from "../utils/fileCleanup.js"
 
 const CAROUSEL_KEYS = CAROUSEL_KEYS_LIST || ["hero", "featured", "promotions"]
 
@@ -325,14 +326,14 @@ export const uploadImage = async (req, res) => {
     if (!req.file) {
       return res.status(400).json({ msg: "No file uploaded" })
     }
-    const websiteId = req.websiteId || req.tenant?._id
-    const imageUrl = await tenantCloudinaryUpload(websiteId, req.file, {
+    const imageUrl = await uploadLocalFileToCloudinary(req.file.path, {
       folder: "photuprint/carousel",
       resource_type: "auto",
     })
-    return res.json({ imageUrl: imageUrl || `/uploads/${req.file.filename}` })
+    return res.json({ imageUrl })
   } catch (error) {
     console.error("Error uploading carousel image:", error)
-    res.status(500).json({ msg: "Server error", error: error.message })
+    if (req.file?.path) removeLocalFile(req.file.path)
+    res.status(500).json({ msg: error.message || "Upload failed. Configure Cloudinary." })
   }
 }

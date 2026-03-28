@@ -2,6 +2,7 @@
 
 import Link from "next/link"
 import { getProductSlug } from "../src/utils/slugify"
+import { resolveProductOfferPricing } from "../src/utils/productOfferPricing"
 
 export default function ProductSection({ title, products = [], showViewAll = true }) {
   // Mock products if none provided
@@ -36,6 +37,7 @@ export default function ProductSection({ title, products = [], showViewAll = tru
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3">
           {displayProducts.map((product) => {
             const slug = getProductSlug(product)
+            const offer = resolveProductOfferPricing(product)
             return (
             <Link key={product._id} href={slug ? `/products/${slug}` : "/products"} className="group bg-white rounded overflow-hidden hover:shadow-md transition-all duration-200">
               {/* Product Image */}
@@ -47,16 +49,19 @@ export default function ProductSection({ title, products = [], showViewAll = tru
                     <span className="text-gray-400 text-xs">No Image</span>
                   </div>
                 )}
-                {product.discountPercentage > 0 && <span className="absolute top-1.5 left-1.5 bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">{product.discountPercentage}% OFF</span>}
+                {offer.pctOff > 0 && (
+                  <span className="absolute top-1.5 left-1.5 bg-red-500 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">{offer.pctOff}% OFF</span>
+                )}
                 {product.tag && <span className="absolute top-1.5 right-1.5 bg-blue-600 text-white text-[10px] font-semibold px-1.5 py-0.5 rounded">{product.tag}</span>}
               </div>
 
               {/* Product Info */}
               <div className="p-2.5">
                 <h3 className="text-xs font-medium text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">{product.name}</h3>
-                <div className="flex items-center space-x-1.5">
-                  <span className="text-sm font-bold text-blue-600">₹{product.discountedPrice || product.price}</span>
-                  {product.discountedPrice && <span className="text-[10px] text-gray-400 line-through">₹{product.price}</span>}
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5">
+                  {offer.hasOffer && <span className="text-[10px] text-gray-400 line-through">₹{Math.round(offer.mrp)}</span>}
+                  <span className="text-sm font-bold text-blue-600">₹{Math.round(offer.sale)}</span>
+                  {offer.pctOff > 0 && <span className="text-[10px] text-red-600 font-medium">({offer.pctOff}% off)</span>}
                 </div>
                 {product.category && <p className="text-[10px] text-gray-500 mt-0.5">{product.category.name}</p>}
               </div>

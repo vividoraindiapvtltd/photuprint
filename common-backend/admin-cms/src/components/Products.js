@@ -34,6 +34,13 @@ const addCacheBuster = (url, cacheBuster) => {
   return `${url}${separator}v=${cacheBuster}`
 }
 
+/** Compare populated or raw Mongoose refs (ObjectId vs string) reliably */
+function refIdToString(ref) {
+  if (ref == null) return ""
+  if (typeof ref === "object" && ref._id != null) return String(ref._id)
+  return String(ref)
+}
+
 const VariationImagesDisplay = ({ productId, fetchVariations, openMediaPopup, variationsCache, expandedVariations, onToggleVariationExpansion }) => {
   const [variations, setVariations] = useState([])
   const [loading, setLoading] = useState(false)
@@ -376,6 +383,8 @@ export default function Products() {
   const [fitTypes, setFitTypes] = useState([])
   const [sleeveTypes, setSleeveTypes] = useState([])
   const [printingTypes, setPrintingTypes] = useState([])
+  const [managedPrintSides, setManagedPrintSides] = useState([])
+  const [managedProductAddons, setManagedProductAddons] = useState([])
   const [countries, setCountries] = useState([])
 
   // Store name for SEO defaults (multi-tenant safe) - memoize to prevent re-renders
@@ -400,6 +409,40 @@ export default function Products() {
       .replace(/[^\w\s-]/g, "") // Remove special characters
       .replace(/\s+/g, "-") // Replace spaces with hyphens
       .replace(/-+/g, "-") // Replace multiple hyphens with single hyphen
+  }
+
+  const quantityTierBandsForForm = [
+    { minQty: 1, maxQty: 5 },
+    { minQty: 6, maxQty: 10 },
+    { minQty: 11, maxQty: 20 },
+    { minQty: 21, maxQty: null },
+  ]
+
+  const tiersToFormQuantityDiscounts = (tiers) =>
+    quantityTierBandsForForm.map((b) => {
+      const row = (tiers || []).find(
+        (t) =>
+          Number(t.minQty) === b.minQty &&
+          (b.maxQty == null ? t.maxQty == null || t.maxQty === undefined : Number(t.maxQty) === b.maxQty)
+      )
+      return row != null && row.discountPercent != null && Number(row.discountPercent) > 0
+        ? String(row.discountPercent)
+        : ""
+    })
+
+  const mergePricingMapFromProductRows = (rows, refKey) => {
+    const map = {}
+    ;(rows || []).forEach((row) => {
+      const ref = row?.[refKey]
+      const id = ref?._id ?? ref
+      if (id == null || id === "") return
+      const pr = row.price
+      map[String(id)] = {
+        enabled: Boolean(row.enabled),
+        price: pr != null && pr !== "" && !Number.isNaN(Number(pr)) ? String(Math.round(Number(pr))) : "",
+      }
+    })
+    return map
   }
 
   const initialFormData = {
@@ -432,10 +475,15 @@ export default function Products() {
     design: "",
     occasion: "",
     
-    // Pricing & Inventory
+    // Pricing & Inventory (keys = PrintSide / ProductAddon _id)
+    printSidePricing: {},
+    addOnPricing: {},
     basePrice: "",
+    plainProductPrice: "",
     discountPrice: "",
     discountPercentage: "",
+    /** Extra % off per quantity band (1–5, 6–10, 11–20, 21+); strings for inputs */
+    quantityTierDiscounts: ["", "", "", ""],
     taxClass: "",
     sku: "",
     stockManagement: "unlimited", // "unlimited" or "track"
@@ -497,6 +545,8 @@ export default function Products() {
     selectedSizes: [],
     selectedHeights: [],
     selectedLengths: [],
+    /** Mirrors API; used to keep Variations tab visible when editing products that already use variants */
+    hasVariations: false,
   }
 
   const [formData, setFormData] = useState(initialFormData)
@@ -517,6 +567,24 @@ export default function Products() {
       setPrintingTypes(res.data || [])
     } catch (err) {
       console.error("Failed to fetch printing types:", err)
+    }
+  }, [])
+
+  const fetchManagedPrintSides = useCallback(async () => {
+    try {
+      const res = await api.get("/print-sides?includeDeleted=true&_t=" + Date.now())
+      setManagedPrintSides(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error("Failed to fetch print sides:", err)
+    }
+  }, [])
+
+  const fetchManagedProductAddons = useCallback(async () => {
+    try {
+      const res = await api.get("/product-addons?includeDeleted=true&_t=" + Date.now())
+      setManagedProductAddons(Array.isArray(res.data) ? res.data : [])
+    } catch (err) {
+      console.error("Failed to fetch product add-ons:", err)
     }
   }, [])
 
@@ -541,6 +609,8 @@ export default function Products() {
         fitTypesRes,
         sleeveTypesRes,
         printingTypesRes,
+        printSidesRes,
+        productAddonsRes,
         countriesRes
       ] = await Promise.all([
         api.get(`/categories?_t=${Date.now()}`),
@@ -557,6 +627,8 @@ export default function Products() {
         api.get(`/fit-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
         api.get(`/sleeve-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
         api.get(`/printing-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/print-sides?includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/product-addons?includeDeleted=true&_t=${Date.now()}`),
         api.get(`/countries?showInactive=true&includeDeleted=true&_t=${Date.now()}`)
       ])
 
@@ -574,6 +646,8 @@ export default function Products() {
       setFitTypes(fitTypesRes.data || [])
       setSleeveTypes(sleeveTypesRes.data || [])
       setPrintingTypes(printingTypesRes.data || [])
+      setManagedPrintSides(Array.isArray(printSidesRes.data) ? printSidesRes.data : [])
+      setManagedProductAddons(Array.isArray(productAddonsRes.data) ? productAddonsRes.data : [])
       setCountries(countriesRes.data || [])
       setSubcategories([])
     } catch (err) {
@@ -581,12 +655,14 @@ export default function Products() {
     }
   }
 
-  // Refetch printing types when user opens Product Details tab so dropdown stays in sync with PrintingTypeManager
+  // Refetch attribute lists when user opens Product Details tab (stays in sync with managers)
   useEffect(() => {
     if (activeTab === "details") {
       fetchPrintingTypes()
+      fetchManagedPrintSides()
+      fetchManagedProductAddons()
     }
-  }, [activeTab, fetchPrintingTypes])
+  }, [activeTab, fetchPrintingTypes, fetchManagedPrintSides, fetchManagedProductAddons])
 
   // Fetch templates for the selected category (includes templates created in PixelCraft)
   const fetchTemplates = async (categoryId) => {
@@ -877,6 +953,29 @@ export default function Products() {
       return
     }
     
+    if (name.startsWith("quantityTierDiscounts__")) {
+      const idx = parseInt(name.replace("quantityTierDiscounts__", ""), 10)
+      if (!Number.isFinite(idx) || idx < 0 || idx > 3) return
+      setFormData((prev) => {
+        const next = [...(prev.quantityTierDiscounts || ["", "", "", ""])]
+        next[idx] = value
+        return { ...prev, quantityTierDiscounts: next }
+      })
+      return
+    }
+
+    if (name === "plainProductPrice") {
+      setFormData((prev) => {
+        if (value === "" || value === null || value === undefined) {
+          return { ...prev, plainProductPrice: "" }
+        }
+        const n = parseFloat(value)
+        if (!Number.isFinite(n)) return prev
+        return { ...prev, plainProductPrice: String(Math.round(n)) }
+      })
+      return
+    }
+
     if (name === "basePrice" || name === "discountPrice") {
       setFormData(prev => {
         const rounded = value === "" || value === null || value === undefined ? "" : Math.round(parseFloat(value))
@@ -996,6 +1095,50 @@ export default function Products() {
   const handleMultiSelect = (name, valueArray) => {
     setFormData(prev => ({ ...prev, [name]: Array.isArray(valueArray) ? valueArray : [] }))
   }
+
+  const handlePrintSidePricingChange = useCallback((printSideId, field, value) => {
+    const id = String(printSideId)
+    setFormData((prev) => {
+      const cur = prev.printSidePricing?.[id] || { enabled: false, price: "" }
+      let next = { ...cur }
+      if (field === "enabled") {
+        next.enabled = Boolean(value)
+        if (!value) next.price = ""
+      } else if (field === "price") {
+        if (value === "" || value == null) next.price = ""
+        else {
+          const n = parseFloat(value)
+          next.price = Number.isFinite(n) ? String(Math.round(n)) : ""
+        }
+      }
+      return {
+        ...prev,
+        printSidePricing: { ...(prev.printSidePricing || {}), [id]: next },
+      }
+    })
+  }, [])
+
+  const handleAddOnPricingChange = useCallback((productAddonId, field, value) => {
+    const id = String(productAddonId)
+    setFormData((prev) => {
+      const cur = prev.addOnPricing?.[id] || { enabled: false, price: "" }
+      let next = { ...cur }
+      if (field === "enabled") {
+        next.enabled = Boolean(value)
+        if (!value) next.price = ""
+      } else if (field === "price") {
+        if (value === "" || value == null) next.price = ""
+        else {
+          const n = parseFloat(value)
+          next.price = Number.isFinite(n) ? String(Math.round(n)) : ""
+        }
+      }
+      return {
+        ...prev,
+        addOnPricing: { ...(prev.addOnPricing || {}), [id]: next },
+      }
+    })
+  }, [])
 
   const validateFeaturedImage = (file) => {
     return new Promise((resolve) => {
@@ -1257,8 +1400,57 @@ export default function Products() {
     productData.append("occasion", formData.occasion || "")
 
     productData.append("price", formData.basePrice)
+    if (formData.productType === "customized") {
+      const printSidePricingPayload = (managedPrintSides || [])
+        .filter((d) => !d.deleted)
+        .map((d) => {
+          const id = String(d._id)
+          const v = formData.printSidePricing?.[id] || { enabled: false, price: "" }
+          let price = null
+          if (v.enabled && v.price !== "" && v.price != null) {
+            const n = parseFloat(v.price)
+            price = Number.isFinite(n) ? Math.round(n) : null
+          }
+          return { printSide: id, enabled: Boolean(v.enabled), price }
+        })
+      productData.append("printSidePricing", JSON.stringify(printSidePricingPayload))
+      const addOnPricingPayload = (managedProductAddons || [])
+        .filter((d) => !d.deleted)
+        .map((d) => {
+          const id = String(d._id)
+          const v = formData.addOnPricing?.[id] || { enabled: false, price: "" }
+          let price = null
+          if (v.enabled && v.price !== "" && v.price != null) {
+            const n = parseFloat(v.price)
+            price = Number.isFinite(n) ? Math.round(n) : null
+          }
+          return { productAddon: id, enabled: Boolean(v.enabled), price }
+        })
+      productData.append("addOnPricing", JSON.stringify(addOnPricingPayload))
+    } else {
+      productData.append("printSidePricing", JSON.stringify([]))
+      productData.append("addOnPricing", JSON.stringify([]))
+    }
+    productData.append(
+      "plainProductPrice",
+      formData.productType === "customized" ? (formData.plainProductPrice ?? "").toString().trim() : ""
+    )
     if (formData.discountPrice) productData.append("discountedPrice", formData.discountPrice)
     if (formData.discountPercentage) productData.append("discountPercentage", formData.discountPercentage)
+    const quantityTierBands = [
+      { minQty: 1, maxQty: 5 },
+      { minQty: 6, maxQty: 10 },
+      { minQty: 11, maxQty: 20 },
+      { minQty: 21, maxQty: null },
+    ]
+    const quantityDiscountTiersPayload = quantityTierBands.map((band, i) => {
+      const raw = formData.quantityTierDiscounts?.[i]
+      const n = parseFloat(raw)
+      const discountPercent =
+        raw === "" || raw == null || !Number.isFinite(n) ? 0 : Math.min(100, Math.max(0, n))
+      return { minQty: band.minQty, maxQty: band.maxQty, discountPercent }
+    })
+    productData.append("quantityDiscountTiers", JSON.stringify(quantityDiscountTiersPayload))
     if (formData.taxClass) productData.append("taxClass", formData.taxClass)
     if (formData.sku) productData.append("sku", formData.sku)
     if (formData.noOfPcsIncluded) productData.append("noOfPcsIncluded", formData.noOfPcsIncluded)
@@ -1278,7 +1470,7 @@ export default function Products() {
     if (formData.processingTime) productData.append("processingTime", formData.processingTime)
     productData.append("madeToOrder", formData.madeToOrder ? "true" : "false")
 
-    // Customization Settings (Details tab - only for customized products)
+    // Customization fields (edited on Templates tab; only sent for customized products)
     if (formData.productType === "customized") {
       productData.append("customizationEnabled", "true")
       productData.append("textCustomization", JSON.stringify(formData.textCustomization))
@@ -1695,9 +1887,24 @@ export default function Products() {
       style: (p.style ?? listProduct.style) ?? "",
       design: (p.design ?? listProduct.design) ?? "",
       occasion: (p.occasion ?? listProduct.occasion) ?? "",
+      printSidePricing: mergePricingMapFromProductRows(
+        apiProduct?.printSidePricing ?? p.printSidePricing ?? listProduct.printSidePricing,
+        "printSide"
+      ),
+      addOnPricing: mergePricingMapFromProductRows(
+        apiProduct?.addOnPricing ?? p.addOnPricing ?? listProduct.addOnPricing,
+        "productAddon"
+      ),
       basePrice: p.price != null && p.price !== "" ? Math.round(Number(p.price)) : "",
+      plainProductPrice:
+        p.plainProductPrice != null && p.plainProductPrice !== ""
+          ? Math.round(Number(p.plainProductPrice))
+          : "",
       discountPrice: p.discountedPrice != null && p.discountedPrice !== "" ? Math.round(Number(p.discountedPrice)) : "",
       discountPercentage: p.discountPercentage || (p.price && p.discountedPrice && p.price > p.discountedPrice ? Math.round(((p.price - p.discountedPrice) / p.price * 100)) : ""),
+      quantityTierDiscounts: tiersToFormQuantityDiscounts(
+        apiProduct?.quantityDiscountTiers ?? p.quantityDiscountTiers ?? listProduct.quantityDiscountTiers
+      ),
       taxClass: toOptionId(p.taxClass),
       sku: (p.sku ?? listProduct.sku) ?? "",
       noOfPcsIncluded: (p.noOfPcsIncluded ?? listProduct.noOfPcsIncluded) ?? "",
@@ -1743,6 +1950,7 @@ export default function Products() {
       selectedSizes: (p.sizes || []).map(s => String(typeof s === "object" && s != null && s._id != null ? s._id : s)),
       selectedHeights: (p.heights || []).map(h => String(typeof h === "object" && h != null && h._id != null ? h._id : h)),
       selectedLengths: (p.lengths || []).map(l => String(typeof l === "object" && l != null && l._id != null ? l._id : l)),
+      hasVariations: Boolean(p.hasVariations ?? listProduct.hasVariations),
     })
 
     // Subcategories/templates are fetched by useEffect when formData.category (and productType) update
@@ -1917,7 +2125,8 @@ export default function Products() {
   const fetchVariationSettings = useCallback(async () => {
     try {
       const response = await api.get("/variation-settings")
-      setVariationSettings(response.data || [])
+      const data = response?.data
+      setVariationSettings(Array.isArray(data) ? data : [])
     } catch (err) {
       setVariationSettings([])
     }
@@ -1927,51 +2136,72 @@ export default function Products() {
     fetchVariationSettings()
   }, [fetchVariationSettings])
 
-  // Check if current category/subcategory supports variations
+  // Check if current category/subcategory supports variations (variation-settings manager)
   const categorySupportsVariations = useMemo(() => {
     if (!formData.category) return false
-    
-    // Check for subcategory-specific setting first
-    if (formData.subcategory) {
-      const subcategorySetting = variationSettings.find(setting => 
-        setting.subcategory && 
-        (setting.subcategory._id === formData.subcategory || 
-         setting.subcategory._id?.toString() === formData.subcategory) &&
+    const catStr = String(formData.category)
+    const subStr = formData.subcategory ? String(formData.subcategory) : ""
+
+    if (subStr) {
+      const subcategorySetting = variationSettings.find((setting) => {
+        const sid = refIdToString(setting.subcategory)
+        return (
+          sid !== "" &&
+          sid === subStr &&
+          setting.enabled === true &&
+          !setting.deleted
+        )
+      })
+      if (subcategorySetting) return true
+    }
+
+    const categorySetting = variationSettings.find((setting) => {
+      const cid = refIdToString(setting.category)
+      const noSub = !setting.subcategory || refIdToString(setting.subcategory) === ""
+      return (
+        cid !== "" &&
+        cid === catStr &&
+        noSub &&
         setting.enabled === true &&
         !setting.deleted
       )
-      if (subcategorySetting) return true
-    }
-    
-    const categorySetting = variationSettings.find(setting => 
-      setting.category && 
-      (setting.category._id === formData.category || 
-       setting.category._id?.toString() === formData.category) &&
-      !setting.subcategory && // Category-level setting (no subcategory)
-      setting.enabled === true &&
-      !setting.deleted
-    )
-    
+    })
+
     return !!categorySetting
   }, [formData.category, formData.subcategory, variationSettings])
 
   // Resolve variation setting for current product (subcategory first, then category)
   const variationSettingForProduct = useMemo(() => {
     if (!formData.category) return null
-    if (formData.subcategory) {
-      const sub = variationSettings.find(setting =>
-        setting.subcategory &&
-        (setting.subcategory._id === formData.subcategory || setting.subcategory._id?.toString() === formData.subcategory) &&
-        setting.enabled === true && !setting.deleted
-      )
+    const catStr = String(formData.category)
+    const subStr = formData.subcategory ? String(formData.subcategory) : ""
+    if (subStr) {
+      const sub = variationSettings.find((setting) => {
+        const sid = refIdToString(setting.subcategory)
+        return sid !== "" && sid === subStr && setting.enabled === true && !setting.deleted
+      })
       if (sub) return sub
     }
-    return variationSettings.find(setting =>
-      setting.category &&
-      (setting.category._id === formData.category || setting.category._id?.toString() === formData.category) &&
-      !setting.subcategory && setting.enabled === true && !setting.deleted
-    ) || null
+    return (
+      variationSettings.find((setting) => {
+        const cid = refIdToString(setting.category)
+        const noSub = !setting.subcategory || refIdToString(setting.subcategory) === ""
+        return (
+          cid !== "" &&
+          cid === catStr &&
+          noSub &&
+          setting.enabled === true &&
+          !setting.deleted
+        )
+      }) || null
+    )
   }, [formData.category, formData.subcategory, variationSettings])
+
+  // Show Variations tab when category is configured for variants, or when editing a product that already has variants
+  const showVariationsTab = useMemo(
+    () => categorySupportsVariations || (!!editingId && formData.hasVariations === true),
+    [categorySupportsVariations, editingId, formData.hasVariations],
+  )
 
   // Which attributes are required when creating variants (from variation setting basis)
   const variationRequiredAttributes = useMemo(() => {
@@ -1990,23 +2220,23 @@ export default function Products() {
     return displayBasis === "size_first" ? ["size", "color"] : ["color", "size"]
   }, [variationSettingForProduct])
 
-  // Switch away from variations tab if category doesn't support it
+  // Switch away from variations tab if it should no longer be shown
   useEffect(() => {
-    if (activeTab === "variations" && !categorySupportsVariations) {
+    if (activeTab === "variations" && !showVariationsTab) {
       setActiveTab("details")
     }
-  }, [categorySupportsVariations, activeTab])
+  }, [showVariationsTab, activeTab])
 
   // Tabs configuration - Templates tab only shows for customized products
   // Variations tab only shows for specific categories (tshirt, caps, etc.)
   // Memoize tabs to prevent infinite re-renders
   const tabs = useMemo(() => [
     { id: "details", label: "📝 Product Details", icon: "📝" },
-    ...(categorySupportsVariations ? [{ id: "variations", label: "🔀 Variations", icon: "🔀" }] : []),
+    ...(showVariationsTab ? [{ id: "variations", label: "🔀 Variations", icon: "🔀" }] : []),
     { id: "media", label: "🖼️ Media/Images", icon: "🖼️" },
     { id: "seo", label: "🔍 SEO", icon: "🔍" },
     ...(formData.productType === "customized" ? [{ id: "templates", label: "📐 Templates", icon: "📐" }] : [])
-  ], [formData.productType, categorySupportsVariations])
+  ], [formData.productType, showVariationsTab])
 
   // Move to next tab after variations update (defined after tabs so tabs is initialized)
   const handleMoveToNextTab = useCallback(() => {
@@ -2103,6 +2333,11 @@ export default function Products() {
                   formData={formData}
                   handleInputChange={handleInputChange}
                   handleMultiSelect={handleMultiSelect}
+                  managedPrintSides={managedPrintSides}
+                  managedProductAddons={managedProductAddons}
+                  onPrintSidePricingChange={handlePrintSidePricingChange}
+                  onAddOnPricingChange={handleAddOnPricingChange}
+                  quantityTierLabels={["1–5 units", "6–10 units", "11–20 units", "21+ units"]}
                   categories={categories}
                   subcategories={subcategories}
                   brands={brands}
@@ -2204,6 +2439,7 @@ export default function Products() {
                   formData={formData}
                   templates={templates}
                   handleTemplateToggle={handleTemplateToggle}
+                  handleInputChange={handleInputChange}
                 />
               </div>
             )}
@@ -2405,6 +2641,20 @@ export default function Products() {
                             </>
                           )
                         })()}
+                        {(product.productType === "customized" ||
+                          product.displayMode === "customized" ||
+                          product.type === "customized") && (
+                          <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
+                            <span className="detailLabel font14 fontSemiBold grayText textUppercase">
+                              Plain Product Price:
+                            </span>
+                            <span className="detailValue font14 blackText appendLeft6">
+                              {product.plainProductPrice != null && product.plainProductPrice !== ""
+                                ? `₹${Math.round(Number(product.plainProductPrice))}`
+                                : "—"}
+                            </span>
+                          </div>
+                        )}
                         <div className="brandDetail makeFlex spaceBetween alignCenter paddingTop8 paddingBottom8">
                           <span className="detailLabel font14 fontSemiBold grayText textUppercase">Price:</span>
                           <span className="detailValue font14 blackText appendLeft6" style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>

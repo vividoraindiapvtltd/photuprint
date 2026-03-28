@@ -1,7 +1,7 @@
 import ProductVariant from "../models/productVariant.model.js"
 import Product from "../models/product.model.js"
 import mongoose from "mongoose"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { uploadLocalFileToCloudinary, uploadMulterFilesToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 /**
  * Generate all possible variant combinations from selected attributes
@@ -325,57 +325,87 @@ export const updateVariant = async (req, res) => {
       return res.status(404).json({ msg: "Variant not found" })
     }
     
-    // Handle primary image upload (if provided)
+    // Handle primary image upload (if provided) — Cloudinary only
     if (req.files && req.files.primaryImage && req.files.primaryImage.length > 0) {
-      variant.primaryImage = await tenantCloudinaryUpload(req.websiteId, req.files.primaryImage[0], {
-        folder: "photuprint/variants",
-      })
+      try {
+        variant.primaryImage = await uploadLocalFileToCloudinary(req.files.primaryImage[0].path, {
+          folder: "photuprint/variants",
+        })
+        console.log("Primary image uploaded to Cloudinary:", variant.primaryImage)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.primaryImage)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary (CLOUDINARY_URL or CLOUDINARY_* env vars).",
+        })
+      }
     }
-    
+
     // Handle additional images uploads (if provided)
     if (req.files && req.files.images && req.files.images.length > 0) {
       try {
-        const newImageUrls = []
-        for (const file of req.files.images) {
-          const url = await tenantCloudinaryUpload(req.websiteId, file, { folder: "photuprint/variants" })
-          if (url) newImageUrls.push(url)
-        }
-        // Merge with existing images (keep existing, add new, limit to 5)
+        const newImageUrls = await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/variants" })
         const existingImages = Array.isArray(variant.images) ? variant.images : []
-        variant.images = [...existingImages, ...newImageUrls].slice(0, 5)
+        variant.images = [...existingImages, ...newImageUrls].slice(0, 9)
         console.log("Additional images uploaded to Cloudinary:", newImageUrls)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
-        // Fallback to local storage
-        const newImageUrls = req.files.images.map((file) => `/uploads/${file.filename}`)
-        const existingImages = Array.isArray(variant.images) ? variant.images : []
-        variant.images = [...existingImages, ...newImageUrls].slice(0, 5)
+        removeLocalFiles(req.files.images)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary (CLOUDINARY_URL or CLOUDINARY_* env vars).",
+        })
       }
     }
     
-    // Update fields from req.body
-    const {
+    // Update fields from req.body (JSON body is only reliable when multer is skipped for non-multipart PUTs)
+    const body = req.body && typeof req.body === "object" ? req.body : {}
+    let {
       price,
       discountedPrice,
       stock,
       sku,
-      images, // Can be array of URLs to replace existing images
-      primaryImage, // Can be URL string to replace primary image
+      images,
+      primaryImage,
       isActive,
       lowStockThreshold,
       weight,
       barcode,
-      attributes
-    } = req.body
-    
+      attributes,
+    } = body
+
+    if (typeof images === "string") {
+      try {
+        images = JSON.parse(images)
+      } catch {
+        images = undefined
+      }
+    }
+    if (primaryImage === "null" || primaryImage === "") {
+      primaryImage = null
+    }
+
+    // Multer multipart sends scalar fields as strings — coerce for validation and Mongoose
+    if (price !== undefined && price !== "") {
+      const p = typeof price === "string" ? parseFloat(price) : price
+      price = Number.isNaN(p) ? undefined : p
+    }
+    if (stock !== undefined && stock !== "") {
+      const s = typeof stock === "string" ? parseInt(stock, 10) : stock
+      stock = Number.isNaN(s) ? undefined : s
+    }
+    if (isActive !== undefined) {
+      if (isActive === "true" || isActive === true) isActive = true
+      else if (isActive === "false" || isActive === false) isActive = false
+    }
+
     console.log("Updating variant:", variantId, "with body:", {
       price,
       stock,
       sku,
       isActive,
-      imagesCount: images ? (Array.isArray(images) ? images.length : 0) : undefined,
-      primaryImage: primaryImage ? (primaryImage.substring(0, 50) + "...") : primaryImage
-    });
+      imagesCount: images != null ? (Array.isArray(images) ? images.length : 0) : undefined,
+      primaryImage: primaryImage != null && typeof primaryImage === "string" ? primaryImage.substring(0, 50) + "..." : primaryImage,
+    })
     
     // Validate stock doesn't exceed product stock
     if (stock !== undefined) {
@@ -395,24 +425,25 @@ export const updateVariant = async (req, res) => {
     if (price !== undefined) variant.price = price
     if (discountedPrice !== undefined) variant.discountedPrice = discountedPrice
     if (sku !== undefined) variant.sku = sku
-    // Only update images from body if no files were uploaded
+    // Only update images from body if no new image files were uploaded in this request
     if (images !== undefined && (!req.files || !req.files.images || req.files.images.length === 0)) {
-      // Filter out blob URLs and invalid URLs
-      const validImages = Array.isArray(images) 
-        ? images.filter(img => img && typeof img === 'string' && !img.startsWith('blob:'))
-        : [];
-      variant.images = validImages;
-      console.log("Updated images from body:", validImages.length, "valid images");
+      const validImages = Array.isArray(images)
+        ? images.filter((img) => img && typeof img === "string" && !img.startsWith("blob:"))
+        : []
+      variant.images = validImages
+      variant.markModified("images")
+      console.log("Updated images from body:", validImages.length, "valid images")
     }
-    // Only update primaryImage from body if no file was uploaded
+    // Only update primaryImage from body if no primary file was uploaded in this request
     if (primaryImage !== undefined && (!req.files || !req.files.primaryImage || req.files.primaryImage.length === 0)) {
-      // Don't set blob URLs
-      if (primaryImage && typeof primaryImage === 'string' && !primaryImage.startsWith('blob:')) {
-        variant.primaryImage = primaryImage;
-        console.log("Updated primaryImage from body:", primaryImage.substring(0, 50));
-      } else if (primaryImage === null || primaryImage === '') {
-        variant.primaryImage = null;
-        console.log("Removed primaryImage");
+      if (primaryImage && typeof primaryImage === "string" && !primaryImage.startsWith("blob:")) {
+        variant.primaryImage = primaryImage
+        variant.markModified("primaryImage")
+        console.log("Updated primaryImage from body:", primaryImage.substring(0, 50))
+      } else if (primaryImage === null || primaryImage === "") {
+        variant.set("primaryImage", null)
+        variant.markModified("primaryImage")
+        console.log("Removed primaryImage")
       }
     }
     if (isActive !== undefined) variant.isActive = isActive

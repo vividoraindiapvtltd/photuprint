@@ -16,13 +16,14 @@ function getImageUrl(product) {
   return `${SITE_URL}${img}`
 }
 
-/** Pre-render top product slugs at build; rest generated on demand with revalidate 600. */
+/** Pre-render top product slugs at build; pages are rendered dynamically so price/tier edits show promptly. */
 export async function generateStaticParams() {
   const slugs = await getProductSlugs(50)
   return slugs.map((slug) => ({ slug }))
 }
 
-export const revalidate = 600
+export const dynamic = "force-dynamic"
+export const revalidate = 0
 
 export async function generateMetadata({ params }) {
   const { slug } = await params

@@ -1,5 +1,6 @@
 import PinCode from "../models/pinCode.model.js"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { removeLocalFile } from "../utils/fileCleanup.js"
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
 
 // Get all pin codes
 export const getPinCodes = async (req, res) => {
@@ -90,10 +91,16 @@ export const createPinCode = async (req, res) => {
       return res.status(400).json({ msg: "Pin code name already exists" })
     }
 
-    // Handle image upload
     let imageUrl = null
     if (req.file) {
-      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: "photuprint/pincodes" })
+      try {
+        imageUrl = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/pincodes" })
+        console.log("Image uploaded to Cloudinary:", imageUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const pinCode = new PinCode({
@@ -180,9 +187,15 @@ export const updatePinCode = async (req, res) => {
       pinCode.deleted = req.body.deleted
     }
 
-    // Handle image upload
     if (req.file) {
-      pinCode.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: "photuprint/pincodes" })
+      try {
+        pinCode.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/pincodes" })
+        console.log("Image updated in Cloudinary:", pinCode.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const updatedPinCode = await pinCode.save()

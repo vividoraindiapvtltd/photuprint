@@ -240,6 +240,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
   const [imagePopup, setImagePopup] = useState({ isOpen: false, imageUrl: null });
   // Local state for stock input when not in edit mode
   const [localStock, setLocalStock] = useState(variant.stock || 0);
+  const primaryImageInputRef = useRef(null);
 
   const normalizeImageUrl = buildVariantImageUrl;
   const [formData, setFormData] = useState({
@@ -273,26 +274,11 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
   }, [variant.stock, variant._id]);
   const isLowStock = variant.stock !== -1 && variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
 
-  // Handle main/primary image upload
-  const handlePrimaryImageChange = async (e) => {
-    const file = e.target.files[0];
+  // Preview only — primary image is uploaded when user clicks "Update Variant" (multipart with ref file)
+  const handlePrimaryImageChange = (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-
-    const prevImage = formData.primaryImage;
-    setFormData(prev => ({ ...prev, primaryImage: URL.createObjectURL(file) })); // Optimistic update
-
-    try {
-      const formDataPayload = new FormData();
-      formDataPayload.append("primaryImage", file);
-      await api.put(`/variants/${variant._id}`, formDataPayload, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-      if (onImageUpload) onImageUpload(variant._id, file, "primary");
-    } catch (err) {
-      setFormData(prev => ({ ...prev, primaryImage: prevImage })); // Rollback
-      console.error("Primary image upload failed", err);
-      alert("Failed to upload primary image");
-    }
+    setFormData((prev) => ({ ...prev, primaryImage: URL.createObjectURL(file) }));
   };
 
   // Handle additional images/videos upload (up to 9)
@@ -320,14 +306,13 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
       filesToAdd.forEach((file, index) => {
         formDataPayload.append("images", file);
       });
-      await api.put(`/variants/${variant._id}`, formDataPayload, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+      await api.put(`/variants/${variant._id}`, formDataPayload);
       if (onImageUpload) onImageUpload(variant._id, filesToAdd, "additional");
     } catch (err) {
       setFormData(prev => ({ ...prev, images: currentImages })); // Rollback
       console.error("Additional images/videos upload failed", err);
-      alert("Failed to upload additional images/videos");
+      const msg = err.response?.data?.msg || err.response?.data?.error || err.message || "Upload failed";
+      alert(msg);
     }
   };
 
@@ -335,6 +320,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
   const handleRemovePrimaryImage = async () => {
     const prevImage = formData.primaryImage || variant.primaryImage || variant.image;
     setFormData(prev => ({ ...prev, primaryImage: null }));
+    if (primaryImageInputRef.current) primaryImageInputRef.current.value = "";
 
     try {
       await api.put(`/variants/${variant._id}`, { primaryImage: null });
@@ -532,7 +518,8 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  onUpdate(variant._id, formData);
+                  const primaryFile = primaryImageInputRef.current?.files?.[0] || null;
+                  onUpdate(variant._id, formData, { primaryFile });
                 }} 
                 className="btnPrimary" 
                 style={{ padding: "4px 12px", fontSize: "12px" }}
@@ -560,6 +547,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
                   Main Image:
                 </label>
                 <input 
+                  ref={primaryImageInputRef}
                   type="file" 
                   accept="image/*" 
                   onChange={handlePrimaryImageChange} 
@@ -863,6 +851,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
 const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes }) => {
   // Image popup state
   const [imagePopup, setImagePopup] = useState({ isOpen: false, imageUrl: null });
+  const primaryImageInputRef = useRef(null);
 
   const normalizeImageUrl = buildVariantImageUrl;
 
@@ -957,24 +946,10 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
     return attrDisplay.length > 0 ? attrDisplay.join(", ") : "No attributes";
   };
 
-  // Handle primary image upload
-  const handlePrimaryImageChange = async (e) => {
-    const file = e.target.files[0];
+  const handlePrimaryImageChange = (e) => {
+    const file = e.target.files?.[0];
     if (!file) return;
-    const prevImage = formData.primaryImage;
-    setFormData(prev => ({ ...prev, primaryImage: URL.createObjectURL(file) }));
-    try {
-      const formDataPayload = new FormData();
-      formDataPayload.append("primaryImage", file);
-      await api.put(`/variants/${variant._id}`, formDataPayload, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
-      if (onImageUpload) onImageUpload(variant._id, file, "primary");
-    } catch (err) {
-      setFormData(prev => ({ ...prev, primaryImage: prevImage }));
-      console.error("Primary image upload failed", err);
-      alert("Failed to upload primary image");
-    }
+    setFormData((prev) => ({ ...prev, primaryImage: URL.createObjectURL(file) }));
   };
 
   // Handle additional images upload
@@ -998,14 +973,13 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
     try {
       const formDataPayload = new FormData();
       filesToAdd.forEach(file => formDataPayload.append("images", file));
-      await api.put(`/variants/${variant._id}`, formDataPayload, {
-        headers: { "Content-Type": "multipart/form-data" }
-      });
+      await api.put(`/variants/${variant._id}`, formDataPayload);
       if (onImageUpload) onImageUpload(variant._id, filesToAdd, "additional");
     } catch (err) {
       setFormData(prev => ({ ...prev, images: currentImages }));
       console.error("Additional images/videos upload failed", err);
-      alert("Failed to upload additional images/videos");
+      const msg = err.response?.data?.msg || err.response?.data?.error || err.message || "Upload failed";
+      alert(msg);
     }
   };
 
@@ -1013,6 +987,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
   const handleRemovePrimaryImage = async () => {
     const prevImage = formData.primaryImage || variant.primaryImage || variant.image;
     setFormData(prev => ({ ...prev, primaryImage: null }));
+    if (primaryImageInputRef.current) primaryImageInputRef.current.value = "";
     try {
       await api.put(`/variants/${variant._id}`, { primaryImage: null });
       if (onImageUpload) onImageUpload(variant._id, null, "primary");
@@ -1349,6 +1324,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
               Main Image:
             </label>
             <input
+              ref={primaryImageInputRef}
               type="file"
               accept="image/*"
               onChange={handlePrimaryImageChange}
@@ -1380,7 +1356,8 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                onUpdate(variant._id, formData);
+                const primaryFile = primaryImageInputRef.current?.files?.[0] || null;
+                onUpdate(variant._id, formData, { primaryFile });
               }}
               className="btnPrimary"
               style={{ padding: "6px 12px", fontSize: "12px" }}
@@ -2100,7 +2077,8 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
   const handleEdit = (variant) => setEditingVariantId(variant._id);
   const handleCancel = () => setEditingVariantId(null);
 
-  const handleUpdate = async (variantId, formData) => {
+  const handleUpdate = async (variantId, formData, uploadOpts = {}) => {
+    const { primaryFile } = uploadOpts || {};
     try {
       setLoading(true);
       setError("");
@@ -2109,6 +2087,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
       const originalVariant = variants.find(v => v._id === variantId);
       if (!originalVariant) {
         setError("Variant not found");
+        setLoading(false);
         return;
       }
       
@@ -2150,9 +2129,19 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
         updatePayload.primaryImage = null;
       }
       
-      console.log("Updating variant with payload:", updatePayload);
+      console.log("Updating variant with payload:", updatePayload, "primaryFile:", !!primaryFile);
       
-      await api.put(`/variants/${variantId}`, updatePayload);
+      if (primaryFile) {
+        const fd = new FormData();
+        fd.append("price", String(parseFloat(formData.price) || 0));
+        fd.append("stock", String(parseInt(formData.stock, 10) || 0));
+        fd.append("sku", formData.sku || "");
+        fd.append("isActive", String(formData.isActive !== undefined ? formData.isActive : true));
+        fd.append("primaryImage", primaryFile);
+        await api.put(`/variants/${variantId}`, fd);
+      } else {
+        await api.put(`/variants/${variantId}`, updatePayload);
+      }
       
       // Refresh variants to get updated data from server
       const updated = await api.get(`/products/${productId}/variants`);

@@ -31,8 +31,12 @@ const nextConfig = {
   poweredByHeader: false,
   compress: true,
 
-  // Silence "multiple lockfiles" warning — use photuprint-frontend as the trace root
+  // Pin tracing to this app so Next does not pick a parent folder when multiple lockfiles exist
+  // (avoids broken server chunks like missing vendor-chunks/axios.js).
   outputFileTracingRoot: path.join(__dirname),
+
+  // fabric.js has Node.js bindings that break webpack; exclude from server bundling
+  serverExternalPackages: ["fabric", "canvas"],
 
   // Allow dev requests from 127.0.0.1 (e.g. when accessing via IP)
   allowedDevOrigins: ["127.0.0.1", "localhost"],

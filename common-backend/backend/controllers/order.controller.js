@@ -1,7 +1,13 @@
+import mongoose from "mongoose"
 import Order from '../models/order.model.js';
 import User from '../models/user.model.js';
-import Product from '../models/product.model.js';
-import { scheduleReviewEmail } from "../utils/reviewEmailScheduler.js"
+import { enhanceOrderProductsWithVolumePricing } from '../utils/orderCheckoutRecalc.js';
+import * as walletLedger from "../services/walletLedger.service.js"
+import * as cashbackService from "../services/cashback.service.js"
+
+function roundMoney(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100
+}
 
 // Get all orders
 export const getOrders = async (req, res) => {
@@ -142,7 +148,11 @@ export const createOrder = async (req, res) => {
       shipmentDate,
       estimatedDeliveryDate,
       notes,
-      website
+      website,
+      salesAgent,
+      walletAmountApplied,
+      walletDebitIdempotencyKey,
+      otherPaymentAmount,
     } = req.body;
 
     // Validation
@@ -168,9 +178,6 @@ export const createOrder = async (req, res) => {
       if (!item.quantity || item.quantity < 1) {
         return res.status(400).json({ msg: 'Valid quantity is required for all items' });
       }
-      if (!item.price || item.price < 0) {
-        return res.status(400).json({ msg: 'Valid price is required for all items' });
-      }
     }
 
     // Validate shipping address - all required fields
@@ -182,13 +189,15 @@ export const createOrder = async (req, res) => {
       });
     }
 
-    // Calculate totals
-    let calculatedSubtotal = subtotal;
-    if (!calculatedSubtotal) {
-      calculatedSubtotal = products.reduce((sum, item) => {
-        const itemSubtotal = (item.price || 0) * (item.quantity || 0);
-        return sum + itemSubtotal;
-      }, 0);
+    let enhancedProducts;
+    let calculatedSubtotal;
+    try {
+      const vol = await enhanceOrderProductsWithVolumePricing(products, req.websiteId);
+      enhancedProducts = vol.products;
+      calculatedSubtotal = vol.subtotal;
+    } catch (volErr) {
+      console.error('Volume pricing / catalog error:', volErr);
+      return res.status(400).json({ msg: volErr.message || 'Failed to price order lines' });
     }
 
     const finalTax = tax || 0;
@@ -197,13 +206,15 @@ export const createOrder = async (req, res) => {
 
     const calculatedTotal = calculatedSubtotal + finalTax + finalShipping - finalDiscount;
 
-    // Enhance products with subtotals
-    const enhancedProducts = products.map(item => ({
-      ...item,
-      subtotal: (item.price || 0) * (item.quantity || 0)
-    }));
+    const wa = roundMoney(Number(walletAmountApplied) || 0)
+    if (wa < 0 || wa > roundMoney(calculatedTotal)) {
+      return res.status(400).json({ msg: "walletAmountApplied must be between 0 and order total" })
+    }
+    if (wa > 0 && !walletDebitIdempotencyKey) {
+      return res.status(400).json({ msg: "walletDebitIdempotencyKey is required when using wallet" })
+    }
 
-    const newOrder = new Order({
+    const orderPayload = {
       user,
       products: enhancedProducts,
       subtotal: calculatedSubtotal,
@@ -227,10 +238,43 @@ export const createOrder = async (req, res) => {
       notes: notes || null,
       isActive: true,
       deleted: false,
-      website: website || req.websiteId // Multi-tenant: Use provided website or from context
-    });
+      website: website || req.websiteId,
+      salesAgent: salesAgent || null,
+      walletAmountApplied: wa,
+      otherPaymentAmount: otherPaymentAmount != null ? roundMoney(otherPaymentAmount) : null,
+      walletDebitIdempotencyKey: wa > 0 ? String(walletDebitIdempotencyKey) : null,
+    }
 
-    const savedOrder = await newOrder.save();
+    let savedOrder
+    if (wa > 0) {
+      const session = await mongoose.startSession()
+      session.startTransaction()
+      try {
+        const [doc] = await Order.create([orderPayload], { session })
+        await walletLedger.debitWallet({
+          userId: user,
+          websiteId: req.websiteId,
+          amount: wa,
+          idempotencyKey: String(walletDebitIdempotencyKey),
+          reason: "wallet_order_payment",
+          orderId: doc._id,
+          session,
+        })
+        await session.commitTransaction()
+        savedOrder = doc
+      } catch (e) {
+        await session.abortTransaction()
+        if (e.message?.includes("Insufficient")) {
+          return res.status(400).json({ msg: e.message })
+        }
+        throw e
+      } finally {
+        session.endSession()
+      }
+    } else {
+      savedOrder = await new Order(orderPayload).save()
+    }
+
     const populatedOrder = await Order.findById(savedOrder._id)
       .populate('user', 'name email phone')
       .populate('products.product', 'name images price')
@@ -335,28 +379,23 @@ export const updateOrder = async (req, res) => {
       return res.status(404).json({ msg: 'Order not found' });
     }
 
+    const prevStatus = order.orderStatus
+    const prevPayment = order.paymentStatus
+
     // Update products if provided
     if (products && Array.isArray(products)) {
-      // Validate products
       for (const item of products) {
         if (item.product && (!item.quantity || item.quantity < 1)) {
           return res.status(400).json({ msg: 'Valid quantity is required for all items' });
         }
-        if (item.price && item.price < 0) {
-          return res.status(400).json({ msg: 'Valid price is required for all items' });
-        }
       }
-
-      const enhancedProducts = products.map(item => ({
-        ...item,
-        subtotal: (item.price || 0) * (item.quantity || 0)
-      }));
-
-      order.products = enhancedProducts;
-
-      // Recalculate subtotal if products changed
-      if (!subtotal) {
-        order.subtotal = enhancedProducts.reduce((sum, item) => sum + (item.subtotal || 0), 0);
+      try {
+        const vol = await enhanceOrderProductsWithVolumePricing(products, req.websiteId);
+        order.products = vol.products;
+        order.subtotal = vol.subtotal;
+      } catch (volErr) {
+        console.error('Volume pricing / catalog error:', volErr);
+        return res.status(400).json({ msg: volErr.message || 'Failed to price order lines' });
       }
     }
 
@@ -391,6 +430,32 @@ export const updateOrder = async (req, res) => {
     order.totalAmount = order.subtotal + order.tax + order.shippingCharges - order.discount;
 
     const updatedOrder = await order.save();
+
+    try {
+      if (prevStatus !== "delivered" && order.orderStatus === "delivered") {
+        await cashbackService.creditCashbackOnDelivered(order._id)
+      }
+      if (prevPayment !== "refunded" && order.paymentStatus === "refunded") {
+        await cashbackService.reverseCashbackForOrder(order._id)
+        const wa = roundMoney(order.walletAmountApplied || 0)
+        if (wa > 0) {
+          await walletLedger.creditWallet({
+            userId: order.user,
+            websiteId: order.websiteId,
+            amount: wa,
+            idempotencyKey: `wallet:refund:order:${order._id}`,
+            reason: "wallet_order_refund",
+            orderId: order._id,
+          })
+        }
+      }
+      if (prevStatus !== "returned" && order.orderStatus === "returned") {
+        await cashbackService.reverseCashbackForOrder(order._id)
+      }
+    } catch (hookErr) {
+      console.error("Wallet/cashback hook:", hookErr)
+    }
+
     const populatedOrder = await Order.findById(updatedOrder._id)
       .populate('user', 'name email phone')
       .populate('products.product', 'name images price')
@@ -431,6 +496,24 @@ export const cancelMyOrder = async (req, res) => {
     order.orderStatus = "cancelled"
     order.paymentStatus = order.paymentStatus === "paid" ? "refunded" : "cancelled"
     await order.save()
+    try {
+      if (order.paymentStatus === "refunded") {
+        await cashbackService.reverseCashbackForOrder(order._id)
+        const wa = roundMoney(order.walletAmountApplied || 0)
+        if (wa > 0) {
+          await walletLedger.creditWallet({
+            userId: order.user,
+            websiteId: order.websiteId,
+            amount: wa,
+            idempotencyKey: `wallet:refund:order:${order._id}:cancel`,
+            reason: "wallet_order_refund",
+            orderId: order._id,
+          })
+        }
+      }
+    } catch (e) {
+      console.error("Cancel wallet/cashback hook:", e)
+    }
     const populated = await Order.findById(order._id)
       .populate("products.product", "name images price")
     res.json(populated)

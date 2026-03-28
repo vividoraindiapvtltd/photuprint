@@ -1,6 +1,6 @@
-import Company from '../models/company.model.js';
-import Website from '../models/website.model.js';
-import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
+import Company from "../models/company.model.js"
+import Website from "../models/website.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all companies
 export const getCompanies = async (req, res) => {
@@ -222,13 +222,18 @@ export const createCompany = async (req, res) => {
       await Company.updateMany(unsetQuery, { $set: { isDefault: false } });
     }
 
-    // Handle logo upload
-    let logoUrl = null;
+    let logoUrl = null
     if (req.file) {
-      logoUrl = await tenantCloudinaryUpload(req.websiteId, req.file, {
-        folder: "photuprint/company",
-        resource_type: "auto",
-      });
+      try {
+        logoUrl = await uploadLocalFileToCloudinary(req.file.path, {
+          folder: "photuprint/company",
+          resource_type: "auto",
+        })
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Logo upload failed. Configure Cloudinary." })
+      }
     }
 
     const company = new Company({
@@ -408,12 +413,17 @@ export const updateCompany = async (req, res) => {
       }
     }
 
-    // Handle logo upload
     if (req.file) {
-      company.logo = await tenantCloudinaryUpload(req.websiteId, req.file, {
-        folder: "photuprint/company",
-        resource_type: "auto",
-      });
+      try {
+        company.logo = await uploadLocalFileToCloudinary(req.file.path, {
+          folder: "photuprint/company",
+          resource_type: "auto",
+        })
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Logo upload failed. Configure Cloudinary." })
+      }
     }
 
     const updatedCompany = await company.save();

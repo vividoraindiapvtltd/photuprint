@@ -2,6 +2,7 @@ import Template from "../models/template.model.js"
 import Category from "../models/category.model.js"
 import { getCloudinaryForWebsite } from "../utils/cloudinary.js"
 import { removeLocalFile } from "../utils/fileCleanup.js"
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
 import fs from "fs"
 import path from "path"
 import { fileURLToPath } from "url"
@@ -247,26 +248,22 @@ export const createTemplate = async (req, res) => {
         }
       }
 
-      // Handle preview image (optional - can use first template image if not provided) - CLOUDINARY or local fallback
       if (req.files.previewImage) {
         const previewFile = Array.isArray(req.files.previewImage) ? req.files.previewImage[0] : req.files.previewImage
 
         if (previewFile && previewFile.path) {
           try {
-            const result = await cl.uploader.upload(previewFile.path, {
+            previewImageUrl = await uploadLocalFileToCloudinary(previewFile.path, {
               folder: "templates/previews",
               resource_type: "image",
             })
-            previewImageUrl = result.secure_url
-            removeLocalFile(previewFile.path)
             console.log("Uploaded preview image to Cloudinary:", previewImageUrl)
           } catch (uploadError) {
             console.error("Preview image upload error:", uploadError.message || uploadError)
-            // Fallback: use local upload URL when Cloudinary is not configured (e.g. missing api_key)
-            if (previewFile.filename) {
-              previewImageUrl = `${req.protocol}://${req.get("host")}/uploads/${previewFile.filename}`
-              console.log("Using local preview image:", previewImageUrl)
-            }
+            removeLocalFile(previewFile.path)
+            return res.status(503).json({
+              msg: uploadError.message || "Preview image upload failed. Configure Cloudinary.",
+            })
           }
         }
       }
@@ -594,20 +591,17 @@ export const updateTemplate = async (req, res) => {
         const file = previewFile
         if (file && file.path) {
           try {
-            const result = await cl.uploader.upload(file.path, {
+            previewImageUrl = await uploadLocalFileToCloudinary(file.path, {
               folder: "templates/previews",
               resource_type: "image",
             })
-            previewImageUrl = result.secure_url
-            removeLocalFile(file.path)
             console.log("Uploaded new preview image to Cloudinary:", previewImageUrl)
           } catch (uploadError) {
             console.error("Preview image upload error:", uploadError.message || uploadError)
-            // Fallback: use local upload URL when Cloudinary is not configured (e.g. missing api_key)
-            if (file.filename) {
-              previewImageUrl = `${req.protocol}://${req.get("host")}/uploads/${file.filename}`
-              console.log("Using local preview image:", previewImageUrl)
-            }
+            removeLocalFile(file.path)
+            return res.status(503).json({
+              msg: uploadError.message || "Preview image upload failed. Configure Cloudinary.",
+            })
           }
         }
       }

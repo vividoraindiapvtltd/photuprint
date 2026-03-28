@@ -36,8 +36,22 @@ function saveCart(items) {
   }
 }
 
-function makeLineId(productId, variantId = "", isCustom = false) {
-  return `${productId}|${variantId || ""}|${isCustom ? "custom" : "std"}`
+/** Stable key from multiple print sides (sorted ids) or legacy single id string. */
+function makeLineId(
+  productId,
+  variantId = "",
+  isCustom = false,
+  sizeId = "",
+  printSidesKey = "",
+  materialId = "",
+  plainWithoutCustomization = false,
+) {
+  const v = variantId || ""
+  const s = sizeId || ""
+  const p = printSidesKey || ""
+  const m = materialId || ""
+  const mode = plainWithoutCustomization ? "plain" : isCustom ? "custom" : "std"
+  return `${productId}|${v}|${s}|${mode}|${p}|${m}`
 }
 
 export function CartProvider({ children }) {
@@ -59,12 +73,38 @@ export function CartProvider({ children }) {
         name,
         price,
         discountedPrice,
+        quantityDiscountTiers,
         quantity = 1,
         image,
         variant,
+        size,
         customDesign,
+        printSide,
+        printSides,
+        printSideAddon,
+        material,
+        plainWithoutCustomization,
       } = payload
-      const lineId = makeLineId(productId, variant?._id || variant?.id, !!customDesign)
+      const printSidesKey = (() => {
+        if (Array.isArray(printSides) && printSides.length) {
+          return [...printSides]
+            .map((p) => String(p._id || p.id || "").trim())
+            .filter(Boolean)
+            .sort()
+            .join(",")
+        }
+        const one = printSide?._id || printSide?.id
+        return one != null ? String(one) : ""
+      })()
+      const lineId = makeLineId(
+        productId,
+        variant?._id || variant?.id,
+        !!customDesign,
+        size?._id || size?.id || "",
+        printSidesKey,
+        material?._id || material?.id || "",
+        plainWithoutCustomization === true,
+      )
       setItems((prev) => {
         const i = prev.findIndex((x) => x.lineId === lineId)
         const next = [...prev]
@@ -73,6 +113,12 @@ export function CartProvider({ children }) {
           next[i] = { ...next[i], quantity: next[i].quantity + q }
           return next
         }
+        const addon = printSideAddon != null ? Number(printSideAddon) : 0
+        const normalizedPrintSides = Array.isArray(printSides)
+          ? printSides.map((p) => ({ _id: String(p._id || p.id), name: p.name || "" })).filter((p) => p._id)
+          : printSide
+            ? [{ _id: String(printSide._id || printSide.id), name: printSide.name || "" }]
+            : []
         next.push({
           lineId,
           productId,
@@ -80,10 +126,17 @@ export function CartProvider({ children }) {
           name: name || "Product",
           price: Number(price) || 0,
           discountedPrice: discountedPrice != null ? Number(discountedPrice) : null,
+          quantityDiscountTiers: quantityDiscountTiers || null,
           quantity: q,
           image: image || null,
           variant: variant || null,
+          size: size || null,
+          material: material || null,
           customDesign: customDesign || null,
+          printSides: normalizedPrintSides,
+          printSide: printSide || null,
+          printSideAddon: Number.isFinite(addon) && addon >= 0 ? Math.round(addon) : 0,
+          plainWithoutCustomization: plainWithoutCustomization === true,
         })
         return next
       })

@@ -104,12 +104,44 @@
     "icon": "MdAddCard"
   },
   {
+    "id": 66,
+    "title": "Capacity Manager",
+    "description": "Add/Edit/Delete capacity options (e.g. volume) for products",
+    "link": "/dashboard/addcapacity",
+    "bgColor": "#007bff",
+    "icon": "MdLocalDrink"
+  },
+  {
+    "id": 67,
+    "title": "GSM Manager",
+    "description": "Add/Edit/Delete fabric weight (GSM) options for products",
+    "link": "/dashboard/addgsm",
+    "bgColor": "#007bff",
+    "icon": "MdStraighten"
+  },
+  {
     "id": 27,
     "title": "Printing Type Manager",
     "description": "Add/Edit/Delete Printing Type for the products",
     "link": "/dashboard/addprintingtype",
     "bgColor": "#007bff",
     "icon": "MdPrint"
+  },
+  {
+    "id": 61,
+    "title": "Print Side Manager",
+    "description": "Define printable areas (front, back, sleeves, etc.) for product pricing",
+    "link": "/dashboard/addprintside",
+    "bgColor": "#007bff",
+    "icon": "MdLayers"
+  },
+  {
+    "id": 62,
+    "title": "Product Add-ons Manager",
+    "description": "Define add-on options (e.g. zipper) for product pricing",
+    "link": "/dashboard/addproductaddon",
+    "bgColor": "#007bff",
+    "icon": "MdExtension"
   },
   {
     "id": 7,
@@ -452,6 +484,30 @@
     "title": "Admin Activity",
     "description": "Admin actions and audit log",
     "link": "/dashboard/reports/admin-activity",
+    "bgColor": "#007bff",
+    "icon": "MdReceipt"
+  },
+  {
+    "id": 63,
+    "title": "Wallet & cashback",
+    "description": "Overview: wallet balance, cashback on delivery, ledger",
+    "link": "/dashboard/wallet-cashback",
+    "bgColor": "#007bff",
+    "icon": "MdAccountBalanceWallet"
+  },
+  {
+    "id": 64,
+    "title": "Cashback rules",
+    "description": "Configure cashback % by product, category, or site default",
+    "link": "/dashboard/wallet-cashback/rules",
+    "bgColor": "#007bff",
+    "icon": "MdDiscount"
+  },
+  {
+    "id": 65,
+    "title": "Wallet ledger",
+    "description": "View customer wallet balance and credit/debit history",
+    "link": "/dashboard/wallet-cashback/ledger",
     "bgColor": "#007bff",
     "icon": "MdReceipt"
   }

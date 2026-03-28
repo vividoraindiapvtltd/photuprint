@@ -21,7 +21,7 @@ export async function getProductBySlug(slugOrId) {
   const isObjectId = /^[0-9a-fA-F]{24}$/.test(slugOrId)
   const url = isObjectId ? `${backendUrl}/products/${slugOrId}` : `${backendUrl}/products/slug/${encodeURIComponent(slugOrId)}`
   try {
-    const res = await fetch(url, { headers, next: { revalidate: 600 } })
+    const res = await fetch(url, { headers, cache: "no-store" })
     if (!res.ok) return null
     return await res.json()
   } catch (e) {

@@ -8,6 +8,64 @@ import { getImageSrc } from "../src/utils/imageUrl"
 import { useAuth } from "../src/context/AuthContext"
 import { getGuestRecentlyViewed, GUEST_RECENTLY_VIEWED_UPDATED_EVENT } from "../src/utils/guestRecentlyViewed"
 import { getProductSlug } from "../src/utils/slugify"
+import { resolveProductOfferPricing } from "../src/utils/productOfferPricing"
+
+function ProductCardPriceBlock({ product, size = "default" }) {
+  const { mrp, sale, hasOffer, pctOff } = resolveProductOfferPricing(product)
+  const saleClass =
+    size === "lg"
+      ? "text-lg font-bold text-emerald-700"
+      : size === "sm"
+        ? "text-sm font-bold text-emerald-700"
+        : "text-[16px] font-bold text-emerald-700"
+  const strikeClass = size === "lg" ? "text-sm text-gray-400" : "text-xs text-gray-400"
+  const pctClass = size === "lg" ? "text-sm text-red-600 font-medium" : "text-xs text-red-600 font-medium"
+  return (
+    <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5">
+      {hasOffer && <span className={`line-through ${strikeClass}`}>₹{Math.round(mrp)}</span>}
+      <span className={saleClass}>₹{Math.round(sale)}</span>
+      {pctOff != null && pctOff > 0 && <span className={pctClass}>({pctOff}% off)</span>}
+    </div>
+  )
+}
+
+function ProductRatingRow({ avgRating, reviewCount }) {
+  const hasReviews = (reviewCount != null && reviewCount > 0) || (avgRating != null && avgRating > 0)
+  if (!hasReviews) {
+    return null
+  }
+  const r = Math.min(5, Math.max(0, Number(avgRating) || 0))
+  return (
+    <div
+      className="flex items-center mt-0 mb-0 py-0 leading-none [&>div]:leading-none"
+      aria-label={`Rated ${r.toFixed(1)} out of 5`}
+    >
+      <div className="flex items-center gap-0.5" role="img">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <span
+            key={star}
+            className={`inline-block text-xl sm:text-2xl leading-none align-middle ${star <= Math.round(r) ? "text-amber-400" : "text-gray-200"}`}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function CashbackWalletStrip({ amount }) {
+  const n = Number(amount)
+  if (!Number.isFinite(n) || n <= 0) return null
+  const rounded = Math.round(n)
+  if (rounded <= 0) return null
+  return (
+    <div className="mt-1.5 rounded-md bg-gradient-to-r from-emerald-50 via-teal-50 to-cyan-50 border border-emerald-200/90 px-2 py-1.5 text-[11px] leading-snug">
+      <span className="font-medium text-emerald-900">Cashback in Wallet of </span>
+      <span className="font-bold tabular-nums text-red-600">₹{rounded}</span>
+    </div>
+  )
+}
 
 // ─── Shared ProductCard ──────────────────────────────────────────────────────
 export function ProductCard({ product }) {
@@ -17,6 +75,7 @@ export function ProductCard({ product }) {
   const productId = product._id || product.id
   const imgRaw = product.mainImage || product.images?.[0]
   const imageUrl = getImageSrc(imgRaw)
+  const offer = resolveProductOfferPricing(product)
 
   useEffect(() => {
     if (!isAuthenticated || !productId) return
@@ -50,7 +109,9 @@ export function ProductCard({ product }) {
             <span className="text-gray-400 text-xs">No Image</span>
           </div>
         )}
-        {product.discountPercentage > 0 && <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{product.discountPercentage}% OFF</span>}
+        {offer.pctOff > 0 && (
+          <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{offer.pctOff}% OFF</span>
+        )}
         {isAuthenticated && (
           <button onClick={handleWishlistClick} className={`absolute top-2 right-2 p-1.5 rounded-full shadow-sm transition-colors z-10 ${isInWishlist ? "bg-red-50 text-red-500" : "bg-white/90 text-gray-500 hover:bg-white"}`} title={isInWishlist ? "Remove from wishlist" : "Add to wishlist"}>
             <svg className="w-4 h-4" fill={isInWishlist ? "currentColor" : "none"} stroke="currentColor" strokeWidth={2} viewBox="0 0 24 24">
@@ -64,12 +125,12 @@ export function ProductCard({ product }) {
         {isAuthenticated && product.homepageTags?.newArrival && !product.homepageTags?.hot && <span className="absolute top-2 right-10 bg-blue-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">NEW</span>}
       </div>
       <div className="p-3">
-        <h3 className="text-sm font-bold text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">{product.name}</h3>
-        <div className="flex text-[16px] items-center space-x-2 mt-1">
-          <span className="font-bold text-gray-900">₹{product.discountedPrice || product.price}</span>
-          {product.discountedPrice && product.discountedPrice < product.price && <span className="text-xs text-gray-400 line-through">₹{product.price}</span>}
+        <h3 className="text-sm font-bold text-gray-900 mb-0 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">{product.name}</h3>
+        <ProductRatingRow avgRating={product.avgRating} reviewCount={product.reviewCount} />
+        <div className="mt-0.5">
+          <ProductCardPriceBlock product={product} />
         </div>
-        {product.category && <p className="text-[10px] text-gray-500 mt-1">{product.category.name}</p>}
+        <CashbackWalletStrip amount={product.estimatedCashbackWallet} />
       </div>
     </Link>
   )
@@ -324,6 +385,7 @@ function ListLayout({ products }) {
         const productSlug = getProductSlug(product)
         const productId = product._id || product.id
         const imageUrl = getImageSrc(product.mainImage || product.images?.[0])
+        const offer = resolveProductOfferPricing(product)
         return (
           <Link key={productId} href={productSlug ? `/products/${productSlug}` : "/products"} className="group flex items-center bg-white rounded-lg border border-gray-100 overflow-hidden hover:shadow-md transition-all duration-200">
             <div className="relative w-28 h-28 sm:w-36 sm:h-36 flex-shrink-0 bg-gray-100 overflow-hidden">
@@ -334,16 +396,20 @@ function ListLayout({ products }) {
                   <span className="text-gray-400 text-xs">No Image</span>
                 </div>
               )}
-              {product.discountPercentage > 0 && <span className="absolute top-1.5 left-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{product.discountPercentage}% OFF</span>}
+              {offer.pctOff > 0 && (
+                <span className="absolute top-1.5 left-1.5 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">
+                  {offer.pctOff}% OFF
+                </span>
+              )}
             </div>
             <div className="flex-1 p-4 min-w-0">
-              <h3 className="text-base font-semibold text-gray-900 mb-1 line-clamp-1 group-hover:text-blue-600 transition-colors">{product.name}</h3>
-              {product.description && <p className="text-xs text-gray-500 mb-2 line-clamp-2">{product.description.replace(/<[^>]*>/g, "").substring(0, 120)}</p>}
+              <h3 className="text-base font-semibold text-gray-900 mb-0 line-clamp-1 group-hover:text-blue-600 transition-colors">{product.name}</h3>
+              <ProductRatingRow avgRating={product.avgRating} reviewCount={product.reviewCount} />
+              {product.description && <p className="text-xs text-gray-500 mb-2 line-clamp-2 mt-0.5">{product.description.replace(/<[^>]*>/g, "").substring(0, 120)}</p>}
               <div className="flex items-center space-x-3">
-                <span className="text-lg font-bold text-gray-900">₹{product.discountedPrice || product.price}</span>
-                {product.discountedPrice && product.discountedPrice < product.price && <span className="text-sm text-gray-400 line-through">₹{product.price}</span>}
+                <ProductCardPriceBlock product={product} size="lg" />
               </div>
-              {product.category && <span className="inline-block mt-2 text-[10px] text-gray-500 bg-gray-100 px-2 py-0.5 rounded">{product.category.name}</span>}
+              <CashbackWalletStrip amount={product.estimatedCashbackWallet} />
             </div>
           </Link>
         )
@@ -361,6 +427,7 @@ function MasonryLayout({ products }) {
         const productSlug = getProductSlug(product)
         const productId = product._id || product.id
         const imageUrl = getImageSrc(product.mainImage || product.images?.[0])
+        const offer = resolveProductOfferPricing(product)
         return (
           <Link key={productId} href={productSlug ? `/products/${productSlug}` : "/products"} className="group block bg-white rounded-lg overflow-hidden border border-gray-100 hover:shadow-lg transition-all duration-200 break-inside-avoid">
             <div className={`relative ${aspects[i % 5]} bg-gray-100 overflow-hidden`}>
@@ -371,14 +438,17 @@ function MasonryLayout({ products }) {
                   <span className="text-gray-400 text-xs">No Image</span>
                 </div>
               )}
-              {product.discountPercentage > 0 && <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{product.discountPercentage}% OFF</span>}
+              {offer.pctOff > 0 && (
+                <span className="absolute top-2 left-2 bg-red-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded">{offer.pctOff}% OFF</span>
+              )}
             </div>
             <div className="p-3">
-              <h3 className="text-sm font-medium text-gray-900 mb-1 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">{product.name}</h3>
-              <div className="flex items-center space-x-2 mt-1">
-                <span className="text-sm font-bold text-gray-900">₹{product.discountedPrice || product.price}</span>
-                {product.discountedPrice && product.discountedPrice < product.price && <span className="text-xs text-gray-400 line-through">₹{product.price}</span>}
+              <h3 className="text-sm font-medium text-gray-900 mb-0 line-clamp-2 group-hover:text-blue-600 transition-colors leading-tight">{product.name}</h3>
+              <ProductRatingRow avgRating={product.avgRating} reviewCount={product.reviewCount} />
+              <div className="mt-0.5">
+                <ProductCardPriceBlock product={product} size="sm" />
               </div>
+              <CashbackWalletStrip amount={product.estimatedCashbackWallet} />
             </div>
           </Link>
         )
@@ -522,7 +592,8 @@ const GUEST_RECENTLY_VIEWED_DISPLAY_LIMIT = 8
 // ─── Recently Viewed Products (carousel: guest = localStorage + fetch; logged-in = API) ──────────────
 // Backend: GET /products/:id must be allowed for unauthenticated users so guest product cards load.
 // If it returns 401, we still show the section with simple links (fallback below).
-export function RecentlyViewedProducts() {
+/** @param {{ contentClassName?: string }} props — inner width; default full width. PDP passes `PDP_PAGE_INNER_WIDTH_CLASS` from `src/constants/pdpLayout`. */
+export function RecentlyViewedProducts({ contentClassName = "w-full mx-auto" } = {}) {
   const { isAuthenticated } = useAuth()
   const [products, setProducts] = useState([])
   const [guestIds, setGuestIds] = useState([]) // ids we tried to fetch (for fallback when API fails)
@@ -589,16 +660,23 @@ export function RecentlyViewedProducts() {
     }
   }, [isAuthenticated])
 
-  if (loading) return <CarouselRowShimmer columns={4} />
+  if (loading)
+    return (
+      <div className="bg-white py-8 border-b border-gray-200">
+        <div className={`${contentClassName} px-4 sm:px-6 lg:px-8`}>
+          <CarouselRowShimmer columns={4} />
+        </div>
+      </div>
+    )
   // Show section if we have products (full cards) or, for guests, if we have ids but API failed (fallback links)
   const hasProducts = products.length > 0
   const showGuestFallback = !isAuthenticated && guestIds.length > 0 && !hasProducts
   if (!hasProducts && !showGuestFallback) return null
 
   return (
-    <div className="border-b border-gray-200 bg-white py-5 sm:py-8">
-      <div className="mx-auto w-full px-4 sm:px-6 lg:px-8">
-        <div className="mb-4 flex items-center justify-between sm:mb-6">
+    <div className="bg-white py-8 border-b border-gray-200">
+      <div className={`${contentClassName} px-4 sm:px-6 lg:px-8`}>
+        <div className="flex items-center justify-between mb-6">
           <div className="flex items-center space-x-2">
             <span className="text-xl">🕐</span>
             <h2 className="text-xl font-bold text-gray-900 sm:text-2xl">Recently Viewed</h2>

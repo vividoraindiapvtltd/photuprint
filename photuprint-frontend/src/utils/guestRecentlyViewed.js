@@ -1,3 +1,5 @@
+import api from "./api.js"
+
 const STORAGE_KEY = "pp_recently_viewed_guest"
 const MAX_ITEMS = 20
 export const GUEST_RECENTLY_VIEWED_UPDATED_EVENT = "pp_guest_recently_viewed_updated"
@@ -63,8 +65,6 @@ export function clearGuestRecentlyViewed() {
     // ignore
   }
 }
-
-import api from "./api.js"
 
 /**
  * Sync guest recently viewed list to backend (POST each productId), then clear guest storage.

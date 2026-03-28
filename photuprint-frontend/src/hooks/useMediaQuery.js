@@ -1,13 +1,19 @@
 "use client"
 
-import { useSyncExternalStore } from "react"
+import { useSyncExternalStore, useState, useLayoutEffect } from "react"
 
 /**
- * Subscribes to `window.matchMedia`. Server snapshot is `false` (mobile-first)
- * so filters stay out of SSR HTML for narrow layouts (mobile-first).
+ * Subscribes to `window.matchMedia`. Server snapshot and the first client render
+ * stay `false` (mobile-first) until after mount so SSR HTML matches hydration.
+ * Then the real match is applied (useLayoutEffect) to minimize layout flash.
  */
 export function useMediaQuery(query) {
-  return useSyncExternalStore(
+  const [mounted, setMounted] = useState(false)
+  useLayoutEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const matches = useSyncExternalStore(
     (onChange) => {
       if (typeof window === "undefined") return () => {}
       const mql = window.matchMedia(query)
@@ -17,4 +23,7 @@ export function useMediaQuery(query) {
     () => (typeof window !== "undefined" ? window.matchMedia(query).matches : false),
     () => false,
   )
+
+  if (!mounted) return false
+  return matches
 }

@@ -1,4 +1,6 @@
 import Element from "../models/element.model.js"
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
+import { removeLocalFile } from "../utils/fileCleanup.js"
 
 export const getElements = async (req, res) => {
   try {
@@ -41,9 +43,15 @@ export const createElement = async (req, res) => {
     if (!name || !name.trim()) {
       return res.status(400).json({ msg: "Element name is required" })
     }
-    const imageUrl = req.file?.path
-      ? `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`
-      : null
+    let imageUrl = null
+    if (req.file?.path) {
+      try {
+        imageUrl = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/elements" })
+      } catch (e) {
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: e.message || "Image upload failed. Configure Cloudinary." })
+      }
+    }
     const element = await Element.create({
       name: name.trim(),
       type: type === "text" || type === "image" || type === "shape" ? type : "image",
@@ -75,7 +83,14 @@ export const updateElement = async (req, res) => {
     if (type !== undefined && ["text", "image", "shape"].includes(type)) el.type = type
     if (description !== undefined) el.description = (description || "").trim()
     if (isActive !== undefined) el.isActive = isActive === true || isActive === "true"
-    if (req.file?.path) el.image = `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`
+    if (req.file?.path) {
+      try {
+        el.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/elements" })
+      } catch (e) {
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: e.message || "Image upload failed. Configure Cloudinary." })
+      }
+    }
     await el.save()
     res.json(el)
   } catch (error) {

@@ -1,10 +1,7 @@
 import ElementAsset from "../models/elementAsset.model.js"
 import Element from "../models/element.model.js"
-
-const imageUrlFromFile = (req) => {
-  if (!req.file?.filename) return null
-  return `${req.protocol}://${req.get("host")}/uploads/${req.file.filename}`
-}
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
+import { removeLocalFile } from "../utils/fileCleanup.js"
 
 export const getElementAssets = async (req, res) => {
   try {
@@ -58,9 +55,15 @@ export const createElementAsset = async (req, res) => {
     }
     const el = await Element.findOne({ _id: elementId, website: req.websiteId })
     if (!el) return res.status(404).json({ msg: "Element not found" })
-    const imageUrl = imageUrlFromFile(req)
-    if (!imageUrl) {
+    if (!req.file?.path) {
       return res.status(400).json({ msg: "Image file is required" })
+    }
+    let imageUrl
+    try {
+      imageUrl = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/element-assets" })
+    } catch (e) {
+      removeLocalFile(req.file.path)
+      return res.status(503).json({ msg: e.message || "Image upload failed. Configure Cloudinary." })
     }
     const asset = await ElementAsset.create({
       element: elementId,
@@ -95,8 +98,13 @@ export const updateElementAsset = async (req, res) => {
     if (animation !== undefined) asset.animation = animation || "none"
     if (label !== undefined) asset.label = (label || "").trim()
     if (isActive !== undefined) asset.isActive = isActive !== "false" && isActive !== false
-    if (req.file?.filename) {
-      asset.image = imageUrlFromFile(req)
+    if (req.file?.path) {
+      try {
+        asset.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/element-assets" })
+      } catch (e) {
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: e.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
     await asset.save()
     res.json(asset)

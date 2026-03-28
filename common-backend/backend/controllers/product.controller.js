@@ -1,7 +1,18 @@
 import Product from "../models/product.model.js"
+import ProductVariant from "../models/productVariant.model.js"
+import Color from "../models/color.model.js"
+import Size from "../models/size.model.js"
+import Material from "../models/material.model.js"
+import Review from "../models/review.model.js"
+import * as cashbackService from "../services/cashback.service.js"
 import sanitizeHtml from "sanitize-html"
 import mongoose from "mongoose"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { uploadLocalFileToCloudinary, uploadMulterFilesToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
+import { parseQuantityDiscountTiers } from "../utils/quantityTierPricing.js"
+
+/** Populated fields for product.sizes — measurements required for PDP size guide modal. */
+const SIZE_POPULATE_SELECT =
+  "name initial dimensions image chestInch chestCm frontLengthInch frontLengthCm sleeveLengthInch sleeveLengthCm"
 
 // Helper function to sanitize HTML
 function sanitizeHTML(html) {
@@ -34,11 +45,136 @@ function parseDimensions(dim) {
   }
 }
 
+/** Parse printSidePricing JSON array from FormData (refs PrintSide documents). */
+function parsePrintSidePricing(raw) {
+  if (raw == null || raw === "") return []
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+    if (!Array.isArray(arr)) return []
+    return arr
+      .map((item) => {
+        const id = item.printSide || item.printSideId
+        if (!id) return null
+        const p = item.price
+        const price =
+          p === "" || p == null || p === undefined
+            ? null
+            : Number.isFinite(Number(p))
+              ? Math.round(Number(p))
+              : null
+        return {
+          printSide: id,
+          enabled: Boolean(item.enabled),
+          price,
+        }
+      })
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+/** Parse addOnPricing JSON array from FormData (refs ProductAddon documents). */
+function parseAddOnPricing(raw) {
+  if (raw == null || raw === "") return []
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+    if (!Array.isArray(arr)) return []
+    return arr
+      .map((item) => {
+        const id = item.productAddon || item.productAddonId
+        if (!id) return null
+        const p = item.price
+        const price =
+          p === "" || p == null || p === undefined
+            ? null
+            : Number.isFinite(Number(p))
+              ? Math.round(Number(p))
+              : null
+        return {
+          productAddon: id,
+          enabled: Boolean(item.enabled),
+          price,
+        }
+      })
+      .filter(Boolean)
+  } catch {
+    return []
+  }
+}
+
+
 /** Ensure product has all fields the admin edit form expects (plain object with defaults). */
 function toId(v) {
   if (v == null || v === "") return null
   if (typeof v === "object" && v._id != null) return String(v._id)
   return String(v)
+}
+
+function roundMoneyListing(n) {
+  return Math.round((Number(n) + Number.EPSILON) * 100) / 100
+}
+
+/**
+ * Storefront listing: average rating, review count, estimated wallet cashback (from active rules).
+ */
+async function attachStorefrontListingFields(products, websiteId) {
+  if (!products?.length || !websiteId) return
+  const ids = products.map((p) => p._id).filter(Boolean)
+  if (!ids.length) return
+
+  let reviewStats = []
+  try {
+    reviewStats = await Review.aggregate([
+      {
+        $match: {
+          website: new mongoose.Types.ObjectId(String(websiteId)),
+          productId: { $in: ids.map((id) => new mongoose.Types.ObjectId(String(id))) },
+          status: "approved",
+          deleted: false,
+          isActive: true,
+        },
+      },
+      {
+        $group: {
+          _id: "$productId",
+          avgRating: { $avg: "$rating" },
+          reviewCount: { $sum: 1 },
+        },
+      },
+    ])
+  } catch (e) {
+    console.error("attachStorefrontListingFields reviews:", e)
+  }
+  const reviewMap = new Map(
+    reviewStats.map((r) => [String(r._id), { avgRating: r.avgRating, reviewCount: r.reviewCount }]),
+  )
+
+  for (const p of products) {
+    const id = String(p._id)
+    const rs = reviewMap.get(id)
+    if (rs) {
+      p.avgRating = Math.round(rs.avgRating * 10) / 10
+      p.reviewCount = rs.reviewCount
+    } else {
+      p.avgRating = null
+      p.reviewCount = 0
+    }
+  }
+
+  await Promise.all(
+    products.map(async (p) => {
+      try {
+        const { percent } = await cashbackService.resolvePercentForProduct(websiteId, p._id)
+        const unitPrice = Number(p.discountedPrice ?? p.price ?? 0)
+        p.cashbackPercent = percent
+        p.estimatedCashbackWallet = roundMoneyListing((unitPrice * percent) / 100)
+      } catch (e) {
+        p.cashbackPercent = 0
+        p.estimatedCashbackWallet = 0
+      }
+    }),
+  )
 }
 
 function normalizeProductForEdit(product) {
@@ -66,6 +202,229 @@ function normalizeProductForEdit(product) {
   doc.collarStyle = toId(doc.collarStyle)
   doc.pattern = toId(doc.pattern)
   doc.fitType = toId(doc.fitType)
+
+  // Pricing — always expose numeric fields for storefront JSON (discountedPrice is stored on Product / variants)
+  if (doc.price != null && doc.price !== "") {
+    const n = Number(doc.price)
+    if (Number.isFinite(n)) doc.price = n
+  }
+  if (doc.discountedPrice != null && doc.discountedPrice !== "") {
+    const d = Number(doc.discountedPrice)
+    doc.discountedPrice = Number.isFinite(d) ? d : null
+  } else {
+    doc.discountedPrice = null
+  }
+  if (doc.plainProductPrice != null && doc.plainProductPrice !== "") {
+    const pp = Number(doc.plainProductPrice)
+    doc.plainProductPrice = Number.isFinite(pp) ? pp : null
+  } else {
+    doc.plainProductPrice = null
+  }
+  if (doc.discountPercentage != null && doc.discountPercentage !== "") {
+    const p = Number(doc.discountPercentage)
+    doc.discountPercentage = Number.isFinite(p) ? p : null
+  } else if (doc.discountPercentage === undefined) {
+    doc.discountPercentage = null
+  }
+
+  return doc
+}
+
+function plainVariantAttributes(attrs) {
+  if (attrs == null) return {}
+  if (attrs instanceof Map) return Object.fromEntries(attrs)
+  if (typeof attrs !== "object" || Array.isArray(attrs)) return {}
+  return { ...attrs }
+}
+
+const ATTR_OID_RE = /^[0-9a-fA-F]{24}$/
+
+/** Normalize a variant attribute value to a 24-char hex id when it is a bare ObjectId ref. */
+function variantValueToRefId(v) {
+  if (v == null || v === "") return null
+  if (typeof v === "string") {
+    const t = v.trim()
+    return ATTR_OID_RE.test(t) ? t : null
+  }
+  if (typeof v === "object" && !Array.isArray(v)) {
+    const name = v.name ?? v.label ?? v.title
+    if (name != null && String(name).trim()) return null
+    if (v._id != null) {
+      const s = String(v._id).trim()
+      if (ATTR_OID_RE.test(s)) return s
+    }
+    if (typeof v.toString === "function") {
+      const s = String(v.toString()).trim()
+      if (ATTR_OID_RE.test(s)) return s
+    }
+  }
+  return null
+}
+
+/**
+ * Batch-resolve 24-char hex ids to Color / Size / Material docs (variant attributes).
+ */
+async function resolveColorSizeRefsById(ids, websiteId) {
+  const map = new Map()
+  if (!websiteId || !ids?.length) return map
+  const uniq = [...new Set(ids.filter((id) => ATTR_OID_RE.test(String(id))))]
+  if (uniq.length === 0) return map
+  let oidList
+  try {
+    oidList = uniq.map((id) => new mongoose.Types.ObjectId(id))
+  } catch {
+    return map
+  }
+  const [colors, sizes, materials] = await Promise.all([
+    Color.find({
+      _id: { $in: oidList },
+      website: websiteId,
+      deleted: { $ne: true },
+    })
+      .select("name code image")
+      .lean(),
+    Size.find({
+      _id: { $in: oidList },
+      website: websiteId,
+      deleted: { $ne: true },
+    })
+      .select("name")
+      .lean(),
+    Material.find({
+      _id: { $in: oidList },
+      website: websiteId,
+      deleted: { $ne: true },
+    })
+      .select("name")
+      .lean(),
+  ])
+  for (const c of colors) {
+    map.set(String(c._id), { kind: "color", name: c.name, code: c.code, image: c.image })
+  }
+  for (const s of sizes) {
+    map.set(String(s._id), { kind: "size", name: s.name })
+  }
+  for (const m of materials) {
+    map.set(String(m._id), { kind: "material", name: m.name })
+  }
+  return map
+}
+
+/**
+ * Replace bare ObjectId values with { _id, name, image? } from populated product.colors / product.sizes,
+ * then fall back to refMap (batch Color/Size query).
+ */
+function enrichVariantAttributesForStorefront(attrs, productDoc, refMap) {
+  const plain = plainVariantAttributes(attrs)
+  if (!productDoc || typeof productDoc !== "object") return plain
+  const colors = Array.isArray(productDoc.colors) ? productDoc.colors : []
+  const sizes = Array.isArray(productDoc.sizes) ? productDoc.sizes : []
+  const out = {}
+  for (const [k, v] of Object.entries(plain)) {
+    const id = variantValueToRefId(v)
+    if (!id) {
+      out[k] = v
+      continue
+    }
+    const col = colors.find((c) => c && String(c._id || c.id) === id)
+    if (col && (col.name || col.code)) {
+      out[k] = {
+        _id: id,
+        name: col.name || col.code || id,
+        code: col.code ?? "",
+        image: col.image ?? null,
+      }
+      continue
+    }
+    const sz = sizes.find((s) => s && String(s._id || s.id) === id)
+    if (sz && sz.name) {
+      out[k] = { _id: id, name: sz.name }
+      continue
+    }
+    const matSingle = productDoc.material && typeof productDoc.material === "object" ? productDoc.material : null
+    if (matSingle && String(matSingle._id || matSingle.id) === id && matSingle.name) {
+      out[k] = { _id: id, name: matSingle.name }
+      continue
+    }
+    const ref = refMap?.get(id)
+    if (ref?.kind === "color" && (ref.name || ref.code)) {
+      out[k] = {
+        _id: id,
+        name: ref.name || ref.code || id,
+        code: ref.code ?? "",
+        image: ref.image ?? null,
+      }
+      continue
+    }
+    if (ref?.kind === "size" && ref.name) {
+      out[k] = { _id: id, name: ref.name }
+      continue
+    }
+    if (ref?.kind === "material" && ref.name) {
+      out[k] = { _id: id, name: ref.name }
+      continue
+    }
+    out[k] = v
+  }
+  return out
+}
+
+/**
+ * Attach active ProductVariant rows for storefront PDP (admin routes remain protected).
+ * Always loads variants from DB when they exist — many catalogs have ProductVariant rows but
+ * forgot to set hasVariations=true; without this, PDP shows no colour/variant UI.
+ */
+async function attachStorefrontVariations(doc, productMongoId, websiteId) {
+  if (!doc || !productMongoId || !websiteId) {
+    if (doc && !Array.isArray(doc.variations)) doc.variations = []
+    return doc
+  }
+  try {
+    const list = await ProductVariant.find({
+      product: productMongoId,
+      website: websiteId,
+      deleted: false,
+      isActive: true,
+    }).lean()
+
+    list.sort((a, b) => {
+      const ao = Number.isFinite(Number(a.sortOrder)) ? Number(a.sortOrder) : 0
+      const bo = Number.isFinite(Number(b.sortOrder)) ? Number(b.sortOrder) : 0
+      if (ao !== bo) return ao - bo
+      const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0
+      const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0
+      return ta - tb
+    })
+
+    const allRefIds = []
+    for (const v of list) {
+      const plain = plainVariantAttributes(v.attributes)
+      for (const val of Object.values(plain)) {
+        const id = variantValueToRefId(val)
+        if (id) allRefIds.push(id)
+      }
+    }
+    const refMap = await resolveColorSizeRefsById(allRefIds, websiteId)
+
+    doc.variations = list.map((v) => ({
+      _id: v._id,
+      attributes: enrichVariantAttributesForStorefront(v.attributes, doc, refMap),
+      price: v.price,
+      discountedPrice: v.discountedPrice ?? null,
+      stock: v.stock,
+      sku: v.sku,
+      primaryImage: v.primaryImage || null,
+      images: Array.isArray(v.images) ? v.images.filter((x) => x != null && String(x).trim()) : [],
+      sortOrder: Number.isFinite(Number(v.sortOrder)) ? Number(v.sortOrder) : 0,
+      isOutOfStock: Boolean(v.isOutOfStock),
+    }))
+    if (doc.variations.length > 0) {
+      doc.hasVariations = true
+    }
+  } catch (e) {
+    console.error("attachStorefrontVariations:", e)
+    doc.variations = []
+  }
   return doc
 }
 
@@ -97,32 +456,58 @@ export const createProduct = async (req, res) => {
     // Main image is optional for draft saves (tab-by-tab saving)
     // It will be required when saving from the Media tab or final submission
 
-    // Handle main image upload (optional for draft saves)
+    // Handle main image upload (optional for draft saves) — Cloudinary only
     let mainImageUrl = ""
     if (req.files && req.files.mainImage && req.files.mainImage.length > 0) {
-      mainImageUrl =
-        (await tenantCloudinaryUpload(req.websiteId, req.files.mainImage[0], { folder: "photuprint/products" })) || ""
-      if (mainImageUrl) console.log("Main image stored:", mainImageUrl)
+      try {
+        mainImageUrl = await uploadLocalFileToCloudinary(req.files.mainImage[0].path, {
+          folder: "photuprint/products",
+        })
+        console.log("Main image uploaded to Cloudinary:", mainImageUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.mainImage)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary in the environment.",
+        })
+      }
     }
 
-    // Handle additional images uploads
     let imageUrls = []
     if (req.files.images && req.files.images.length > 0) {
-      for (const file of req.files.images) {
-        const url = await tenantCloudinaryUpload(req.websiteId, file, { folder: "photuprint/products" })
-        if (url) imageUrls.push(url)
+      try {
+        imageUrls = await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
+        console.log("Additional images uploaded to Cloudinary:", imageUrls)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.images)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary in the environment.",
+        })
       }
       console.log("Additional images stored:", imageUrls)
     }
 
-    // Handle video upload
     let videoUrl = null
     if (req.files.video && req.files.video.length > 0) {
-      videoUrl = await tenantCloudinaryUpload(req.websiteId, req.files.video[0], {
-        folder: "photuprint/products/videos",
-        resource_type: "video",
-      })
-      if (videoUrl) console.log("Video stored:", videoUrl)
+      try {
+        videoUrl = await uploadLocalFileToCloudinary(req.files.video[0].path, {
+          folder: "photuprint/products/videos",
+          resource_type: "video",
+        })
+        console.log("Video uploaded to Cloudinary:", videoUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.video)
+        return res.status(503).json({
+          msg: uploadError.message || "Video upload failed. Configure Cloudinary in the environment.",
+        })
+      }
+    }
+
+    // Validate tenant context
+    if (!req.websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
     }
 
     // Prepare product data
@@ -139,6 +524,12 @@ export const createProduct = async (req, res) => {
       dimensions: parseDimensions(req.body.dimensions),
       price: parseFloat(req.body.price),
       discountedPrice: req.body.discountedPrice ? parseFloat(req.body.discountedPrice) : null,
+      plainProductPrice: (() => {
+        const raw = req.body.plainProductPrice
+        if (raw == null || raw === "") return null
+        const n = parseFloat(raw)
+        return Number.isFinite(n) ? Math.round(n) : null
+      })(),
       discountPercentage: req.body.discountPercentage 
         ? parseFloat(req.body.discountPercentage) 
         : (req.body.discountedPrice && req.body.price && parseFloat(req.body.price) > parseFloat(req.body.discountedPrice)
@@ -174,6 +565,9 @@ export const createProduct = async (req, res) => {
       },
       // Multi-tenant: Set website from tenant context
       website: req.websiteId,
+      printSidePricing: parsePrintSidePricing(req.body.printSidePricing),
+      addOnPricing: parseAddOnPricing(req.body.addOnPricing),
+      quantityDiscountTiers: parseQuantityDiscountTiers(req.body.quantityDiscountTiers),
     }
 
     // Create product (productId, slug and SKU will be auto-generated by pre-save middleware)
@@ -189,7 +583,7 @@ export const createProduct = async (req, res) => {
       .populate("pattern", "name")
       .populate("fitType", "name")
       .populate("colors", "name code image")
-      .populate("sizes", "name dimensions")
+      .populate("sizes", SIZE_POPULATE_SELECT)
       .populate({
         path: "templates",
         select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -202,6 +596,8 @@ export const createProduct = async (req, res) => {
         path: "lengths",
         select: "name description",
       })
+      .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+      .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
 
     res.status(201).json({
       success: true,
@@ -292,7 +688,7 @@ export const getAllProducts = async (req, res) => {
       .populate("pattern", "name")
       .populate("fitType", "name")
       .populate("colors", "name code image")
-      .populate("sizes", "name dimensions")
+      .populate("sizes", SIZE_POPULATE_SELECT)
       .populate({
         path: "templates",
         select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -305,6 +701,8 @@ export const getAllProducts = async (req, res) => {
         path: "lengths",
         select: "name description",
       })
+      .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+      .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
       .skip(skip)
       .limit(limit)
       .sort({ createdAt: -1 })
@@ -312,6 +710,7 @@ export const getAllProducts = async (req, res) => {
     console.log(`Returning ${products.length} products`)
 
     const normalizedProducts = products.map((p) => normalizeProductForEdit(p))
+    await attachStorefrontListingFields(normalizedProducts, req.websiteId)
 
     res.json({
       total,
@@ -396,7 +795,8 @@ export const getProductById = async (req, res) => {
         .populate("pattern", "name")
         .populate("fitType", "name")
         .populate("colors", "name code image")
-        .populate("sizes", "name dimensions")
+        .populate("sizes", SIZE_POPULATE_SELECT)
+        .populate("material", "name type")
         .populate({
           path: "templates",
           select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -410,6 +810,8 @@ export const getProductById = async (req, res) => {
           path: "lengths",
           select: "name description",
         })
+        .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+        .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
 
       if (!product) {
         console.log("Product not found after populate")
@@ -419,7 +821,10 @@ export const getProductById = async (req, res) => {
       console.log("Product fetched successfully:", product.name)
       res.set("Cache-Control", "no-store, no-cache, must-revalidate")
       res.set("Pragma", "no-cache")
-      res.json(normalizeProductForEdit(product))
+      const doc = normalizeProductForEdit(product)
+      await attachStorefrontVariations(doc, product._id, req.websiteId)
+      await attachStorefrontListingFields([doc], req.websiteId)
+      res.json(doc)
     } catch (populateError) {
       console.error("Error during populate:", populateError)
       console.error("Populate error stack:", populateError.stack)
@@ -430,7 +835,10 @@ export const getProductById = async (req, res) => {
       console.log("Returning product without full populate due to error")
       res.set("Cache-Control", "no-store, no-cache, must-revalidate")
       res.set("Pragma", "no-cache")
-      res.json(normalizeProductForEdit(basicProduct))
+      const fallbackDoc = normalizeProductForEdit(basicProduct)
+      await attachStorefrontVariations(fallbackDoc, basicProduct._id, req.websiteId)
+      await attachStorefrontListingFields([fallbackDoc], req.websiteId)
+      res.json(fallbackDoc)
     }
   } catch (err) {
     console.error("Error fetching product by ID:", err)
@@ -470,32 +878,53 @@ export const updateProduct = async (req, res) => {
       return res.status(404).json({ msg: "Product not found" })
     }
 
-    // Handle main image upload (if provided)
+    // Handle main image upload (if provided) — Cloudinary only
     let mainImageUrl = null
     if (req.files.mainImage && req.files.mainImage.length > 0) {
-      mainImageUrl =
-        (await tenantCloudinaryUpload(req.websiteId, req.files.mainImage[0], { folder: "photuprint/products" })) || ""
-      if (mainImageUrl) console.log("Main image updated:", mainImageUrl)
+      try {
+        mainImageUrl = await uploadLocalFileToCloudinary(req.files.mainImage[0].path, {
+          folder: "photuprint/products",
+        })
+        console.log("Main image uploaded to Cloudinary:", mainImageUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.mainImage)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary in the environment.",
+        })
+      }
     }
 
-    // Handle additional/gallery images uploads (same pattern as main image: check Cloudinary config first)
     let newImageUrls = []
     if (req.files.images && req.files.images.length > 0) {
-      for (const file of req.files.images) {
-        const url = await tenantCloudinaryUpload(req.websiteId, file, { folder: "photuprint/products" })
-        if (url) newImageUrls.push(url)
+      try {
+        newImageUrls = await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
+        console.log("New additional images uploaded to Cloudinary:", newImageUrls)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.images)
+        return res.status(503).json({
+          msg: uploadError.message || "Image upload failed. Configure Cloudinary in the environment.",
+        })
       }
       console.log("New additional images stored:", newImageUrls)
     }
 
-    // Handle video upload (if provided)
     let videoUrl = null
     if (req.files.video && req.files.video.length > 0) {
-      videoUrl = await tenantCloudinaryUpload(req.websiteId, req.files.video[0], {
-        folder: "photuprint/products/videos",
-        resource_type: "video",
-      })
-      if (videoUrl) console.log("Video updated:", videoUrl)
+      try {
+        videoUrl = await uploadLocalFileToCloudinary(req.files.video[0].path, {
+          folder: "photuprint/products/videos",
+          resource_type: "video",
+        })
+        console.log("Video uploaded to Cloudinary:", videoUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.video)
+        return res.status(503).json({
+          msg: uploadError.message || "Video upload failed. Configure Cloudinary in the environment.",
+        })
+      }
     }
 
     // Prepare update data
@@ -505,6 +934,15 @@ export const updateProduct = async (req, res) => {
       description: req.body.description !== undefined ? (req.body.description ? sanitizeHTML(req.body.description) : req.body.description) : product.description,
       price: req.body.price ? parseFloat(req.body.price) : product.price,
       discountedPrice: req.body.discountedPrice !== undefined ? (req.body.discountedPrice ? parseFloat(req.body.discountedPrice) : null) : product.discountedPrice,
+      plainProductPrice:
+        req.body.plainProductPrice !== undefined
+          ? req.body.plainProductPrice === "" || req.body.plainProductPrice == null
+            ? null
+            : (() => {
+                const n = parseFloat(req.body.plainProductPrice)
+                return Number.isFinite(n) ? Math.round(n) : null
+              })()
+          : product.plainProductPrice,
       discountPercentage: req.body.discountPercentage !== undefined 
         ? (req.body.discountPercentage ? parseFloat(req.body.discountPercentage) : null) 
         : (req.body.discountedPrice !== undefined && req.body.price && parseFloat(req.body.price) > parseFloat(req.body.discountedPrice)
@@ -543,6 +981,16 @@ export const updateProduct = async (req, res) => {
       shippingClass: req.body.shippingClass !== undefined ? String(req.body.shippingClass || "") : product.shippingClass,
       processingTime: req.body.processingTime !== undefined ? String(req.body.processingTime || "") : product.processingTime,
       dimensions: req.body.dimensions !== undefined ? parseDimensions(req.body.dimensions) : (product.dimensions || { length: null, width: null, height: null }),
+      printSidePricing:
+        req.body.printSidePricing !== undefined
+          ? parsePrintSidePricing(req.body.printSidePricing)
+          : product.printSidePricing,
+      addOnPricing:
+        req.body.addOnPricing !== undefined ? parseAddOnPricing(req.body.addOnPricing) : product.addOnPricing,
+      quantityDiscountTiers:
+        req.body.quantityDiscountTiers !== undefined
+          ? parseQuantityDiscountTiers(req.body.quantityDiscountTiers)
+          : product.quantityDiscountTiers,
     }
 
     // Handle gallery images update
@@ -595,7 +1043,7 @@ export const updateProduct = async (req, res) => {
       .populate("pattern", "name")
       .populate("fitType", "name")
       .populate("colors", "name code image")
-      .populate("sizes", "name dimensions")
+      .populate("sizes", SIZE_POPULATE_SELECT)
       .populate({
         path: "templates",
         select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -608,6 +1056,8 @@ export const updateProduct = async (req, res) => {
         path: "lengths",
         select: "name description",
       })
+      .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+      .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
 
     res.json(updatedProduct)
   } catch (err) {

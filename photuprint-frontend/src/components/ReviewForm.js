@@ -6,19 +6,19 @@ import { useAuth } from "../context/AuthContext"
 import api from "../utils/api"
 import { isObjectId } from "../utils/slugify"
 
-const ReviewForm = ({ preselectedProductId, orderId }) => {
+const ReviewForm = ({ preselectedProductId, orderId, embedded = false, onReviewSubmitted, onCancel }) => {
   const router = useRouter()
   const params = useParams()
   const routeSlug = preselectedProductId || params?.slug || params?.productId
   const { user, isAuthenticated, openLoginModal } = useAuth()
 
-  // Open login modal if not authenticated
   useEffect(() => {
+    if (embedded) return
     if (!isAuthenticated) {
       const redirectPath = routeSlug ? `/products/${routeSlug}/review` : "/review"
       openLoginModal(redirectPath)
     }
-  }, [isAuthenticated, openLoginModal, routeSlug])
+  }, [embedded, isAuthenticated, openLoginModal, routeSlug])
 
   // Pre-fill user info when authenticated
   useEffect(() => {
@@ -214,7 +214,13 @@ const ReviewForm = ({ preselectedProductId, orderId }) => {
       // Check authentication
       if (!isAuthenticated || !user) {
         setError("You must be logged in to submit a review")
-        const redirectPath = routeSlug ? `/products/${routeSlug}/review` : "/review"
+        const redirectPath = embedded
+          ? routeSlug
+            ? `/products/${routeSlug}`
+            : "/"
+          : routeSlug
+            ? `/products/${routeSlug}/review`
+            : "/review"
         openLoginModal(redirectPath)
         setLoading(false)
         return
@@ -284,15 +290,19 @@ const ReviewForm = ({ preselectedProductId, orderId }) => {
 
       setSuccess("Review submitted successfully! It will be visible after admin approval.")
 
-      // Reset form
+      const keptCategoryId = routeSlug ? formData.categoryId : ""
+      const keptSubCategoryId = routeSlug ? formData.subCategoryId : ""
+      const keptProductId = formData.productId
+      const keptProductName = routeSlug ? formData.productName : ""
+
       setFormData({
-        categoryId: routeSlug ? formData.categoryId : "",
-        subCategoryId: routeSlug ? formData.subCategoryId : "",
-        productId: routeSlug || "",
-        productName: routeSlug ? formData.productName : "",
-        userId: "",
-        name: "",
-        email: "",
+        categoryId: keptCategoryId,
+        subCategoryId: keptSubCategoryId,
+        productId: keptProductId,
+        productName: keptProductName,
+        userId: user?.user?.id || user?.user?._id || "",
+        name: user?.user?.name || user?.user?.email?.split("@")[0] || "",
+        email: user?.user?.email || "",
         title: "",
         comment: "",
         rating: 0,
@@ -300,14 +310,16 @@ const ReviewForm = ({ preselectedProductId, orderId }) => {
         productImage: null,
       })
 
-      // Redirect to product page after 2 seconds
+      const delayMs = embedded ? 1600 : 2000
       setTimeout(() => {
-        if (routeSlug) {
+        if (embedded) {
+          onReviewSubmitted?.()
+        } else if (routeSlug) {
           router.push(`/products/${routeSlug}`)
         } else {
           router.push("/")
         }
-      }, 2000)
+      }, delayMs)
     } catch (err) {
       console.error("Error submitting review:", err)
       setError(err.response?.data?.msg || err.message || "Failed to submit review. Please try again.")
@@ -333,8 +345,21 @@ const ReviewForm = ({ preselectedProductId, orderId }) => {
     )
   }
 
-  // Show loading or redirect if not authenticated
   if (!isAuthenticated) {
+    if (embedded) {
+      return (
+        <div className="rounded-lg border border-gray-200 bg-gray-50 px-4 py-8 text-center">
+          <p className="text-sm text-gray-700 mb-4">Sign in to write a review for this product.</p>
+          <button
+            type="button"
+            onClick={() => openLoginModal(routeSlug ? `/products/${routeSlug}` : "/")}
+            className="inline-flex items-center justify-center px-5 py-2.5 rounded-lg bg-gray-900 text-white text-sm font-semibold hover:bg-gray-800"
+          >
+            Log in
+          </button>
+        </div>
+      )
+    }
     return (
       <div className="max-w-2xl mx-auto p-6">
         <div className="text-center py-8">
@@ -344,13 +369,16 @@ const ReviewForm = ({ preselectedProductId, orderId }) => {
     )
   }
 
+  const shellClass = embedded ? "max-w-none mx-0 p-0" : "max-w-2xl mx-auto p-6"
+  const titleClass = embedded ? "text-lg font-bold mb-4 text-gray-900" : "text-2xl font-bold mb-6"
+
   return (
-    <div className="max-w-2xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-6">Write a Review</h1>
+    <div className={shellClass}>
+      <h2 className={titleClass}>{embedded ? "Write a review" : "Write a Review"}</h2>
 
       {selectedProduct && (
         <div className="mb-6 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-          <h2 className="font-semibold text-blue-900 mb-2">Reviewing Product:</h2>
+          <h3 className="font-semibold text-blue-900 mb-2">Reviewing product</h3>
           <p className="text-gray-700 font-medium">{selectedProduct.name}</p>
           {selectedProduct.category && <p className="text-sm text-gray-600 mt-1">Category: {typeof selectedProduct.category === "object" ? selectedProduct.category.name : "N/A"}</p>}
         </div>
@@ -472,12 +500,16 @@ const ReviewForm = ({ preselectedProductId, orderId }) => {
         )}
 
         {/* Submit Button */}
-        <div className="flex gap-4">
+        <div className="flex flex-wrap gap-3">
           <button type="submit" disabled={loading} className="px-6 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-400 disabled:cursor-not-allowed">
             {loading ? "Submitting..." : "Submit Review"}
           </button>
-          <button type="button" onClick={() => router.back()} className="px-6 py-2 bg-gray-300 text-gray-700 rounded-md hover:bg-gray-400 focus:outline-none focus:ring-2 focus:ring-gray-500">
-            Cancel
+          <button
+            type="button"
+            onClick={() => (embedded && onCancel ? onCancel() : router.back())}
+            className="px-6 py-2 bg-gray-200 text-gray-800 rounded-md hover:bg-gray-300 focus:outline-none focus:ring-2 focus:ring-gray-400"
+          >
+            {embedded ? "Back to reviews" : "Cancel"}
           </button>
         </div>
       </form>

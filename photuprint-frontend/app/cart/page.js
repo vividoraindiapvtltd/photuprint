@@ -12,6 +12,11 @@ import { useAuth } from "../../src/context/AuthContext"
 import { useMediaQuery } from "../../src/hooks/useMediaQuery"
 import api from "../../src/utils/api"
 import { slugify } from "../../src/utils/slugify"
+import {
+  getCartLineUnitPrice,
+  getCartLineTotal,
+  getCartLineUnitPriceBeforeVolumeTier,
+} from "../../src/utils/quantityTierPricing"
 import NavigationBar from "../../components/NavigationBar"
 import Footer from "../../components/Footer"
 import OrderSummaryPanel from "./OrderSummaryPanel"
@@ -389,10 +394,7 @@ export default function CartPage() {
     if (errors["shipping_" + field]) setErrors((e) => ({ ...e, ["shipping_" + field]: null }))
   }
 
-  const subtotal = items.reduce((sum, x) => {
-    const p = x.discountedPrice != null ? x.discountedPrice : x.price
-    return sum + p * (x.quantity || 0)
-  }, 0)
+  const subtotal = items.reduce((sum, x) => sum + getCartLineTotal(x), 0)
 
   const cartProductIds = items.map((x) => String(x.productId || "")).filter(Boolean)
   const isCouponApplicableToCart = (coupon) => {
@@ -422,7 +424,7 @@ export default function CartPage() {
       candidateItems = cartItems.filter((x) => productIds.some((pid) => String(pid) === String(x.productId)))
       if (candidateItems.length === 0) return { valid: false, discount: 0, error: "Add applicable product(s) to use this coupon." }
     }
-    const unitPrice = (x) => (x.discountedPrice != null ? x.discountedPrice : x.price) || 0
+    const unitPrice = (x) => getCartLineUnitPrice(x) || 0
     const singleProductUnitPrice = candidateItems.length === 0 ? 0 : Math.max(...candidateItems.map(unitPrice))
     const eligibleSubtotal = singleProductUnitPrice
     if (eligibleSubtotal <= 0) return { valid: false, discount: 0, error: "Invalid coupon." }
@@ -573,19 +575,16 @@ export default function CartPage() {
     const shippingAddr = mapAddressToBackend(shippingAddress)
     const billingAddr = sameAsBilling ? shippingAddr : mapAddressToBackend(billingAddress)
     const orderProducts = items.map((item) => {
-      const price = item.discountedPrice != null ? item.discountedPrice : item.price
+      const unit = getCartLineUnitPrice(item)
       return {
         product: item.productId,
         productName: item.name,
         productImage: item.image || null,
         quantity: item.quantity || 1,
-        price: Number(price) || 0,
+        price: Number(unit) || 0,
       }
     })
-    const subtotalAmount = items.reduce((sum, x) => {
-      const p = x.discountedPrice != null ? x.discountedPrice : x.price
-      return sum + p * (x.quantity || 0)
-    }, 0)
+    const subtotalAmount = items.reduce((sum, x) => sum + getCartLineTotal(x), 0)
     const shippingCharges = SHIPPING_CHARGE
     const discountRes = appliedCoupon ? validateAndComputeCoupon(appliedCoupon, subtotalAmount) : null
     const discount = discountRes?.valid ? discountRes.discount : 0
@@ -933,27 +932,31 @@ export default function CartPage() {
                   {items.map((item) => {
                     const imgSrc = item.customDesign?.image || item.image
                     const src = imgSrc ? resolveImageUrl(imgSrc) : null
-                    const price = item.discountedPrice != null ? item.discountedPrice : item.price
-                    const lineTotal = price * (item.quantity || 0)
+                    const unit = getCartLineUnitPrice(item)
+                    const lineTotal = getCartLineTotal(item)
+                    const baseLine = getCartLineUnitPriceBeforeVolumeTier(item) * (item.quantity || 0)
+                    const showStrike = baseLine > lineTotal + 0.01
                     return (
-                      <li key={item.lineId} className="flex gap-3 py-4 first:pt-0 sm:gap-6">
-                        <div className="relative h-[120px] w-[90px] flex-shrink-0 overflow-hidden rounded-lg bg-gray-100 sm:h-[202px] sm:w-[151px]">
-                          {src ? <Image src={getImageSrc(src) || src} alt={item.name} width={151} height={202} className="h-full w-full object-cover" /> : <div className="flex h-full w-full items-center justify-center text-gray-400 text-xs">No image</div>}
-                        </div>
-                        <div className="flex min-w-0 flex-1 flex-col">
-                          <div className="flex min-w-0 gap-2">
-                            <Link href={item.slug ? `/products/${item.slug}` : "#"} className="min-w-0 flex-1 font-semibold text-gray-900 line-clamp-2 hover:text-gray-600">
-                              {item.name}
-                            </Link>
-                            <div className="flex flex-shrink-0 flex-col items-end text-right">
-                              <p className="whitespace-nowrap font-semibold text-gray-900">₹{lineTotal.toFixed(0)}</p>
-                              {item.discountedPrice != null && item.discountedPrice < item.price && (
-                                <p className="whitespace-nowrap text-xs text-gray-500 line-through">₹{(item.price * (item.quantity || 0)).toFixed(0)}</p>
-                              )}
-                            </div>
-                          </div>
-                          {item.customDesign && <span className="mt-1 inline-block text-xs font-medium text-green-600">Customized</span>}
-                          {item.variant?.name && <p className="mt-0.5 text-sm text-gray-500">{item.variant.name}</p>}
+                      <li key={item.lineId} className="flex gap-4 sm:gap-6 py-4 first:pt-0">
+                        <div className="relative flex-shrink-0 w-[151px] h-[202px] bg-gray-100 rounded-lg overflow-hidden">{src ? <Image src={getImageSrc(src) || src} alt={item.name} width={151} height={202} className="w-full h-full object-cover" /> : <div className="w-full h-full flex items-center justify-center text-gray-400 text-xs">No image</div>}</div>
+                        <div className="flex-1 min-w-0">
+                          <Link href={item.slug ? `/products/${item.slug}` : "#"} className="font-semibold text-gray-900 hover:text-gray-600 line-clamp-2">
+                            {item.name}
+                          </Link>
+                          {item.customDesign && <span className="inline-block mt-1 text-xs text-green-600 font-medium">Customized</span>}
+                          {item.plainWithoutCustomization && !item.customDesign && (
+                            <span className="inline-block mt-1 text-xs text-slate-600 font-medium">Plain (no customization)</span>
+                          )}
+                          {item.variant?.name && <p className="text-sm text-gray-500 mt-0.5">{item.variant.name}</p>}
+                          {item.size?.name && <p className="text-sm text-gray-500 mt-0.5">Size: {item.size.name}</p>}
+                          {(Array.isArray(item.printSides) && item.printSides.length > 0) || item.printSide?.name ? (
+                            <p className="text-sm text-gray-500 mt-0.5">
+                              Print:{" "}
+                              {Array.isArray(item.printSides) && item.printSides.length > 0
+                                ? item.printSides.map((p) => p.name).filter(Boolean).join(", ")
+                                : item.printSide?.name}
+                            </p>
+                          ) : null}
                           <div className="mt-3 flex flex-wrap items-center gap-3">
                             <div className="flex shrink-0 items-center overflow-hidden rounded-md border border-gray-300">
                               <button
@@ -978,6 +981,12 @@ export default function CartPage() {
                               Remove
                             </button>
                           </div>
+                        </div>
+                        <div className="flex-shrink-0 text-right">
+                          <p className="font-semibold text-gray-900">₹{lineTotal.toFixed(0)}</p>
+                          {showStrike && (
+                            <p className="text-xs text-gray-500 line-through">₹{baseLine.toFixed(0)}</p>
+                          )}
                         </div>
                       </li>
                     )
@@ -1028,13 +1037,298 @@ export default function CartPage() {
               )}
             </div>
 
-            {isMdUp && (
-            <aside className="lg:w-96 flex-shrink-0 lg:self-start">
-              <div className="sticky top-24 w-full rounded-xl border border-gray-200 bg-white p-6">
-                <OrderSummaryPanel {...summaryPanelProps} />
+            {/* Order summary - ADDRESS / PAYMENT style block */}
+            <aside className="lg:w-96 flex-shrink-0">
+              <div className="bg-white rounded-xl border border-gray-200 p-6 sticky top-24">
+                <h2 className="text-lg font-bold text-gray-900 uppercase tracking-wide mb-4">Order Summary</h2>
+                <ul className="divide-y divide-gray-200 mb-4 max-h-60 overflow-y-auto">
+                  {items.map((item) => {
+                    const unit = getCartLineUnitPrice(item)
+                    const lineTotal = getCartLineTotal(item)
+                    const imgSrc = item.customDesign?.image || item.image
+                    const src = imgSrc ? resolveImageUrl(imgSrc) : null
+                    return (
+                      <li key={item.lineId} className="flex gap-3 py-3">
+                        <div className="relative w-14 h-14 bg-gray-100 rounded overflow-hidden flex-shrink-0">{src ? <Image src={getImageSrc(src) || src} alt={item.name} width={56} height={56} className="w-full h-full object-cover" /> : <div className="w-full h-14 bg-gray-200" />}</div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-gray-900 line-clamp-2">{item.name}</p>
+                          <p className="text-xs text-gray-500">
+                            {[
+                              item.plainWithoutCustomization ? "Plain" : null,
+                              item.variant?.name,
+                              item.size?.name ? `Size ${item.size.name}` : null,
+                              (() => {
+                                const ps = Array.isArray(item.printSides) && item.printSides.length
+                                  ? item.printSides.map((p) => p.name).filter(Boolean).join(", ")
+                                  : item.printSide?.name || ""
+                                return ps ? `Print ${ps}` : null
+                              })(),
+                            ]
+                              .filter(Boolean)
+                              .join(" · ")}
+                            {(item.variant?.name || item.size?.name || (Array.isArray(item.printSides) && item.printSides.length) || item.printSide?.name) && " · "}
+                            Qty: {item.quantity} × ₹{unit.toFixed(0)}
+                          </p>
+                        </div>
+                        <p className="text-sm font-semibold text-gray-900 flex-shrink-0">₹{lineTotal.toFixed(0)}</p>
+                      </li>
+                    )
+                  })}
+                </ul>
+
+                {/* Coupons - apply before totals */}
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-2">Available Coupons</label>
+                  {couponsLoading ? (
+                    <p className="text-xs text-gray-500">Loading coupons...</p>
+                  ) : availableCoupons.length > 0 ? (
+                    <ul className="space-y-2 mb-3">
+                      {availableCoupons.map((c) => {
+                        const res = validateAndComputeCoupon(c, subtotal)
+                        const isApplied = appliedCoupon && (String(appliedCoupon._id || appliedCoupon.id) === String(c._id || c.id) || (appliedCoupon.code || "").toUpperCase() === (c.code || "").toUpperCase())
+                        const canApply = res.valid && !isApplied
+                        const code = c.code || `COUPON-${(c._id || c.id || "").toString().slice(-6)}`
+                        const isProductSpecific = c.applicableProductIds && Array.isArray(c.applicableProductIds) && c.applicableProductIds.length > 0
+                        const isBankOffer = c.isBankOffer === true
+                        const label = c.discountType === "percentage" ? `${code} — ${c.discountValue}% off` : `${code} — ₹${(c.discountValue || 0).toFixed(0)} off`
+                        return (
+                          <li key={c._id || c.id} className="flex items-center justify-between gap-2 p-2 border border-gray-200 rounded-lg">
+                            <span className="text-sm font-medium text-gray-700 truncate">
+                              {label}
+                              {isBankOffer && <span className="block text-xs text-gray-500 font-normal">Bank offer</span>}
+                              {isProductSpecific && !isBankOffer && <span className="block text-xs text-gray-500 font-normal">Product specific</span>}
+                            </span>
+                            {isApplied ? (
+                              <span className="flex-shrink-0 text-xs text-green-600 font-medium">Applied</span>
+                            ) : canApply ? (
+                              <button type="button" onClick={() => handleApplyCoupon(null, c)} className="flex-shrink-0 text-xs font-medium text-gray-900 underline hover:text-gray-600">
+                                Apply
+                              </button>
+                            ) : (
+                              <span className="flex-shrink-0 text-xs text-gray-400">{res.error || "—"}</span>
+                            )}
+                          </li>
+                        )
+                      })}
+                    </ul>
+                  ) : (
+                    <p className="text-xs text-gray-500 mb-3">{coupons.length > 0 ? "No bank or product-specific coupons apply. Enter your code below to apply a coupon." : "No coupons available."}</p>
+                  )}
+
+                  <form onSubmit={handleApplyCoupon} className="mt-2">
+                    <label className="block text-xs font-medium text-gray-600 mb-1">Have a code?</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        placeholder="Enter code"
+                        value={couponCode}
+                        onChange={(e) => {
+                          setCouponCode(e.target.value)
+                          setCouponError("")
+                        }}
+                        className="flex-1 px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-gray-900 focus:border-gray-900"
+                      />
+                      <button type="submit" className="px-4 py-2 border border-gray-900 text-gray-900 font-medium rounded-md text-sm hover:bg-gray-50 transition-colors">
+                        Apply
+                      </button>
+                    </div>
+                    {appliedCoupon && (
+                      <p className="mt-2 flex items-center gap-2">
+                        <span className="text-xs text-green-600 font-medium">
+                          {appliedCoupon.code} applied (−₹{discount.toFixed(0)})
+                        </span>
+                        <button type="button" onClick={handleRemoveCoupon} className="text-xs text-gray-500 hover:text-red-600 underline">
+                          Remove
+                        </button>
+                      </p>
+                    )}
+                    {couponError && <p className="mt-1 text-xs text-red-600">{couponError}</p>}
+                  </form>
+                  <p className="mt-3 text-xs text-gray-500 italic">Offer valid per single unit of the specified product.</p>
+                </div>
+
+                {/* Gift Voucher */}
+                <div className="mb-4 pt-4 border-t border-gray-200">
+                  <button type="button" onClick={() => setGiftVoucherExpanded(!giftVoucherExpanded)} className="flex items-center justify-between w-full text-left">
+                    <span className="flex items-center gap-2 font-semibold text-gray-900">
+                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                      </svg>
+                      Gift Voucher
+                    </span>
+                    <svg className={`w-5 h-5 text-gray-500 transition-transform ${giftVoucherExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {giftVoucherExpanded && (
+                    <div className="mt-3 space-y-2">
+                      {!isAuthenticated ? (
+                        <button type="button" onClick={() => openLoginModal("/cart")} className="text-sm text-blue-600 hover:text-blue-700 underline">
+                          Login to Apply.
+                        </button>
+                      ) : (
+                        <input type="text" placeholder="Enter Code Here" value={giftVoucherCode} onChange={(e) => setGiftVoucherCode(e.target.value)} className="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-gray-900 focus:border-gray-900" />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Gift Wrap */}
+                <div className="mb-4 pt-4 border-t border-gray-200 flex items-center justify-between">
+                  <span className="flex items-center gap-2 font-semibold text-gray-900">
+                    <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7" />
+                    </svg>
+                    Gift Wrap (₹ {GIFT_WRAP_PRICE})
+                  </span>
+                  <label className="flex items-center cursor-pointer">
+                    <input type="checkbox" checked={giftWrapChecked} onChange={(e) => setGiftWrapChecked(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+                  </label>
+                </div>
+
+                {/* TSS Money / TSS Points */}
+                <div className="mb-4 pt-4 border-t border-gray-200">
+                  <button type="button" onClick={() => setTssExpanded(!tssExpanded)} className="flex items-center justify-between w-full text-left">
+                    <span className="flex items-center gap-2 font-semibold text-gray-900">
+                      <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                      </svg>
+                      TSS Money / TSS Points
+                    </span>
+                    <svg className={`w-5 h-5 text-gray-500 transition-transform ${tssExpanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                    </svg>
+                  </button>
+                  {tssExpanded && (
+                    <div className="mt-3 space-y-3">
+                      {!isAuthenticated ? (
+                        <button type="button" onClick={() => openLoginModal("/cart")} className="text-sm text-blue-600 hover:text-blue-700 underline">
+                          Login to Apply.
+                        </button>
+                      ) : (
+                        <>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z" />
+                              </svg>
+                              TSS Money
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700 text-xs font-medium" title="TSS Money can be used for purchases">
+                                i
+                              </span>
+                            </span>
+                            <label className="flex items-center cursor-pointer">
+                              <input type="checkbox" checked={tssMoneyChecked} onChange={(e) => setTssMoneyChecked(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+                            </label>
+                          </div>
+                          <div className="flex items-center justify-between">
+                            <span className="flex items-center gap-2 text-sm font-medium text-gray-700">
+                              <svg className="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <circle cx="12" cy="12" r="10" strokeWidth={2} />
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6v6l4 2" />
+                              </svg>
+                              TSS Points
+                              <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-100 text-green-700 text-xs font-medium" title="TSS Points can be redeemed">
+                                i
+                              </span>
+                            </span>
+                            <label className="flex items-center cursor-pointer">
+                              <input type="checkbox" checked={tssPointsChecked} onChange={(e) => setTssPointsChecked(e.target.checked)} className="w-4 h-4 rounded border-gray-300 text-gray-900 focus:ring-gray-900" />
+                            </label>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Order breakdown: Subtotal → Discount → Total → COD pay-now / on-delivery */}
+                <div className="space-y-2 mb-4 pt-4 border-t border-gray-200">
+                  <div className="flex justify-between text-gray-600">
+                    <span>Subtotal</span>
+                    <span className="font-medium text-gray-900">₹{subtotal.toFixed(0)}</span>
+                  </div>
+                  {discount > 0 && (
+                    <div className="flex justify-between text-green-600">
+                      <span>Discount ({appliedCoupon?.code})</span>
+                      <span className="font-medium">−₹{discount.toFixed(0)}</span>
+                    </div>
+                  )}
+                  {giftWrapCharge > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Gift Wrap</span>
+                      <span className="font-medium text-gray-900">₹{giftWrapCharge.toFixed(0)}</span>
+                    </div>
+                  )}
+                  {shippingCharge > 0 && (
+                    <div className="flex justify-between text-gray-600">
+                      <span>Shipping</span>
+                      <span className="font-medium text-gray-900">₹{shippingCharge.toFixed(0)}</span>
+                    </div>
+                  )}
+                  {taxTotal > 0 && (
+                    <>
+                      {isDelhi ? (
+                        <>
+                          <div className="flex justify-between text-gray-600">
+                            <span>CGST ({GST_RATE_PERCENT / 2}%)</span>
+                            <span className="font-medium text-gray-900">₹{cgst.toFixed(0)}</span>
+                          </div>
+                          <div className="flex justify-between text-gray-600">
+                            <span>SGST ({GST_RATE_PERCENT / 2}%)</span>
+                            <span className="font-medium text-gray-900">₹{sgst.toFixed(0)}</span>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="flex justify-between text-gray-600">
+                          <span>IGST ({GST_RATE_PERCENT}%)</span>
+                          <span className="font-medium text-gray-900">₹{igst.toFixed(0)}</span>
+                        </div>
+                      )}
+                    </>
+                  )}
+                  <div className="flex justify-between font-semibold text-gray-900 pt-2 border-t border-gray-100">
+                    <span>Total</span>
+                    <span>₹{totalAmount.toFixed(0)}</span>
+                  </div>
+                  {paymentMethod === "cod" && checkoutStarted && (
+                    <div className="mt-3 p-3 bg-amber-50 border border-amber-200 rounded-lg space-y-2">
+                      <p className="text-xs font-semibold text-amber-800 uppercase">Cash on Delivery</p>
+                      <div className="flex justify-between text-sm text-amber-900">
+                        <span>Pay now</span>
+                        <span className="font-medium">₹{advanceAmount.toLocaleString("en-IN")}</span>
+                      </div>
+                      <div className="flex justify-between text-sm text-amber-900">
+                        <span>Pay on delivery</span>
+                        <span className="font-medium">₹{codRemaining.toLocaleString("en-IN")}</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                <p className="text-xs text-gray-500 mb-4">Shipping and taxes calculated at checkout.</p>
+
+                {checkoutStarted ? <p className="text-xs text-gray-500 mb-4">Complete Billing &amp; Shipping above, then place your order.</p> : <p className="text-xs text-gray-500 mb-4">Click Proceed to Checkout to enter delivery details and payment.</p>}
+
+                <div className="space-y-3">
+                  {checkoutStarted && !canPlaceOrder && <p className="text-xs text-amber-700">{!billingComplete || !shippingComplete ? "Fill Billing &amp; Shipping above." : "Select a payment method in the Payment section above."}</p>}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <Link href="/" className="flex-1 text-center px-6 py-3 border-2 border-gray-900 text-gray-900 font-semibold rounded-md hover:bg-gray-50 transition-colors uppercase tracking-wide text-sm">
+                      Continue Shopping
+                    </Link>
+                    {checkoutStarted ? (
+                      <button type="button" onClick={handlePlaceOrder} disabled={!canPlaceOrder || placing} className={`flex-1 px-6 py-3 font-semibold rounded-md uppercase tracking-wide text-sm transition-colors ${canPlaceOrder && !placing ? "bg-gray-900 text-white hover:bg-gray-800" : "bg-gray-200 text-gray-500 cursor-not-allowed"}`}>
+                        {placing ? "Opening payment..." : !paymentMethod ? "Select payment method" : paymentMethod === "cod" ? `Pay ₹${advanceAmount.toLocaleString("en-IN")}` : "Pay Now"}
+                      </button>
+                    ) : (
+                      <button type="button" onClick={handleProceedToCheckout} className="flex-1 px-6 py-3 bg-gray-900 text-white font-semibold rounded-md hover:bg-gray-800 transition-colors uppercase tracking-wide text-sm">
+                        Proceed to Checkout
+                      </button>
+                    )}
+                  </div>
+                </div>
               </div>
             </aside>
-            )}
           </div>
           {!isMdUp && (
             <div className="fixed bottom-0 left-0 right-0 z-50 border-t border-zinc-800 bg-zinc-900 shadow-[0_-8px_32px_rgba(0,0,0,0.35)] md:hidden px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">

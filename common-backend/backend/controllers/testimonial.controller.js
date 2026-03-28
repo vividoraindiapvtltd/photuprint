@@ -1,5 +1,6 @@
 import Testimonial from "../models/testimonial.model.js"
-import { tenantCloudinaryUpload, tenantCloudinaryDestroyByUrl } from "../utils/cloudinary.js"
+import cloudinary from "../utils/cloudinary.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 /**
  * Get all testimonials with filtering, search, and pagination
@@ -143,10 +144,17 @@ export const createTestimonial = async (req, res) => {
       return res.status(400).json({ msg: "Rating must be between 1 and 5" })
     }
 
-    // Handle photo upload (Cloudinary when configured, else local)
     let photoUrl = null
     if (req.files && req.files.photo && req.files.photo[0]) {
-      photoUrl = await tenantCloudinaryUpload(websiteId, req.files.photo[0], { folder: "photuprint/testimonials" })
+      try {
+        photoUrl = await uploadLocalFileToCloudinary(req.files.photo[0].path, {
+          folder: "photuprint/testimonials",
+        })
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.photo)
+        return res.status(503).json({ msg: uploadError.message || "Photo upload failed. Configure Cloudinary." })
+      }
     }
 
     // Parse tags if sent as string
@@ -219,10 +227,24 @@ export const updateTestimonial = async (req, res) => {
       await tenantCloudinaryDestroyByUrl(websiteId || testimonial.website, testimonial.photo)
       testimonial.photo = null
     } else if (req.files && req.files.photo && req.files.photo[0]) {
-      await tenantCloudinaryDestroyByUrl(websiteId || testimonial.website, testimonial.photo)
-      testimonial.photo = await tenantCloudinaryUpload(websiteId || testimonial.website, req.files.photo[0], {
-        folder: "photuprint/testimonials",
-      })
+      // Upload new photo (Cloudinary when configured, else local)
+      if (testimonial.photo && testimonial.photo.includes("cloudinary")) {
+        const publicId = testimonial.photo.split("/").slice(-2).join("/").split(".")[0]
+        try {
+          await cloudinary.uploader.destroy(publicId)
+        } catch (e) {
+          console.error("Error deleting old photo:", e)
+        }
+      }
+      try {
+        testimonial.photo = await uploadLocalFileToCloudinary(req.files.photo[0].path, {
+          folder: "photuprint/testimonials",
+        })
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles(req.files.photo)
+        return res.status(503).json({ msg: uploadError.message || "Photo upload failed. Configure Cloudinary." })
+      }
     }
 
     // Update fields

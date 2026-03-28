@@ -1,5 +1,5 @@
-import Pattern from '../models/pattern.model.js';
-import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
+import Pattern from "../models/pattern.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all patterns
 export const getPatterns = async (req, res) => {
@@ -79,10 +79,16 @@ export const createPattern = async (req, res) => {
       return res.status(400).json({ msg: 'Pattern name already exists' });
     }
 
-    // Handle image upload if present
-    let image = null;
+    let image = null
     if (req.file) {
-      image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/patterns' });
+      try {
+        image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/patterns" })
+        console.log("Image uploaded to Cloudinary:", image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     // Parse isActive - it might come as string 'true'/'false' from FormData
@@ -143,9 +149,15 @@ export const updatePattern = async (req, res) => {
       }
     }
 
-    // Handle image upload if present
     if (req.file) {
-      pattern.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/patterns' });
+      try {
+        pattern.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/patterns" })
+        console.log("Image updated in Cloudinary:", pattern.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     // Update fields

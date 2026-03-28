@@ -1,5 +1,5 @@
-import SleeveType from '../models/sleeveType.model.js';
-import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
+import SleeveType from "../models/sleeveType.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all sleeve types
 export const getSleeveTypes = async (req, res) => {
@@ -87,10 +87,16 @@ export const createSleeveType = async (req, res) => {
       return res.status(400).json({ msg: 'Sleeve type name already exists' });
     }
 
-    // Handle image upload if present
-    let image = null;
+    let image = null
     if (req.file) {
-      image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/sleeve-types' });
+      try {
+        image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/sleeve-types" })
+        console.log("Image uploaded to Cloudinary:", image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const sleeveType = new SleeveType({
@@ -163,9 +169,15 @@ export const updateSleeveType = async (req, res) => {
       sleeveType.deleted = deleted;
     }
 
-    // Handle image upload if present
     if (req.file) {
-      sleeveType.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/sleeve-types' });
+      try {
+        sleeveType.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/sleeve-types" })
+        console.log("Image updated in Cloudinary:", sleeveType.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     } else if (req.body.image !== undefined) {
       // Allow setting image URL directly (for keeping existing image when no new file)
       // Only update if explicitly provided in body

@@ -5,6 +5,13 @@ const sizeSchema = new mongoose.Schema(
     name: { type: String, required: true }, // Removed unique: true - will use compound index with website
     initial: { type: String, required: false, default: null },
     dimensions: String, // Optional, like "10x10"
+    /** Size chart (apparel) — optional; used on PDP size guide modal */
+    chestInch: { type: Number, default: null },
+    chestCm: { type: Number, default: null },
+    frontLengthInch: { type: Number, default: null },
+    frontLengthCm: { type: Number, default: null },
+    sleeveLengthInch: { type: Number, default: null },
+    sleeveLengthCm: { type: Number, default: null },
     description: { type: String, default: null },
     image: { type: String, default: null },
     isActive: { type: Boolean, default: true },

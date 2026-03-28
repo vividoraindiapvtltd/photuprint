@@ -16,7 +16,7 @@ const SIDEBAR_GROUPS = [
   },
   {
     label: "Product attributes",
-    links: ["/dashboard/addcollarstyle", "/dashboard/addcolor", "/dashboard/addcountryoforigin", "/dashboard/addfittype", "/dashboard/addprintingtype", "/dashboard/addheight", "/dashboard/addlength", "/dashboard/addmaterial", "/dashboard/addpattern", "/dashboard/addpincode", "/dashboard/addsize", "/dashboard/addsleevetype", "/dashboard/addwidth"],
+    links: ["/dashboard/addcollarstyle", "/dashboard/addcolor", "/dashboard/addcountryoforigin", "/dashboard/addfittype", "/dashboard/addcapacity", "/dashboard/addgsm", "/dashboard/addprintingtype", "/dashboard/addprintside", "/dashboard/addproductaddon", "/dashboard/addheight", "/dashboard/addlength", "/dashboard/addmaterial", "/dashboard/addpattern", "/dashboard/addpincode", "/dashboard/addsize", "/dashboard/addsleevetype", "/dashboard/addwidth"],
   },
   {
     label: "Homepage Setting",
@@ -29,6 +29,14 @@ const SIDEBAR_GROUPS = [
   {
     label: "Orders & shipping",
     links: ["/dashboard/addorder", "/dashboard/addshipping", "/dashboard/shipping-cost-manager", "/dashboard/product-cost-calculator"],
+  },
+  {
+    label: "Wallet & cashback",
+    links: [
+      "/dashboard/wallet-cashback",
+      "/dashboard/wallet-cashback/rules",
+      "/dashboard/wallet-cashback/ledger",
+    ],
   },
   {
     label: "Reports",

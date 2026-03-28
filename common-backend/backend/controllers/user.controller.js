@@ -1,4 +1,7 @@
 import User from "../models/user.model.js"
+import Product from "../models/product.model.js"
+import RecentlyViewedProduct from "../models/recentlyViewedProduct.model.js"
+import Wishlist from "../models/wishlist.model.js"
 import bcrypt from "bcryptjs"
 import mongoose from "mongoose"
 
@@ -380,5 +383,101 @@ export const hardDeleteUser = async (req, res) => {
   } catch (error) {
     console.error("Error deleting user:", error)
     res.status(500).json({ msg: "Failed to delete user" })
+  }
+}
+
+/**
+ * Personalized product suggestions for the logged-in customer (storefront).
+ * Uses recently viewed categories when available; otherwise fills from newest products on the site.
+ */
+export const getMyRecommendations = async (req, res) => {
+  try {
+    const websiteId = req.websiteId || req.tenant?._id
+    if (!websiteId) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+    const userId = req.user?.id
+    if (!userId) {
+      return res.status(401).json({ msg: "Not authorized" })
+    }
+
+    const limit = Math.min(parseInt(req.query.limit, 10) || 12, 24)
+
+    const recentEntries = await RecentlyViewedProduct.find({ user: userId, website: websiteId })
+      .sort({ viewedAt: -1 })
+      .limit(20)
+      .select("product")
+      .lean()
+    const recentProductIds = recentEntries.map((r) => r.product).filter(Boolean)
+
+    const wishEntries = await Wishlist.find({ user: userId, website: websiteId }).select("product").lean()
+    const wishProductIds = wishEntries.map((w) => w.product).filter(Boolean)
+
+    const excludeIds = [...new Set([...recentProductIds, ...wishProductIds].map((id) => String(id)))].map(
+      (id) => new mongoose.Types.ObjectId(id),
+    )
+
+    let categoryIds = []
+    if (recentProductIds.length > 0) {
+      const hintProducts = await Product.find({
+        _id: { $in: recentProductIds.slice(0, 15) },
+        website: websiteId,
+      })
+        .select("category")
+        .lean()
+      for (const p of hintProducts) {
+        if (p.category) categoryIds.push(p.category)
+      }
+    }
+
+    const uniqueCategories = [...new Map(categoryIds.map((id) => [String(id), id])).values()]
+
+    const baseQuery = {
+      website: websiteId,
+      deleted: false,
+      isActive: true,
+    }
+
+    let products = []
+
+    if (uniqueCategories.length > 0) {
+      const q = {
+        ...baseQuery,
+        category: { $in: uniqueCategories },
+      }
+      if (excludeIds.length) q._id = { $nin: excludeIds }
+      products = await Product.find(q)
+        .sort({ createdAt: -1 })
+        .limit(limit)
+        .select("name slug mainImage images price discountedPrice discountPercentage")
+        .lean()
+    }
+
+    if (products.length < limit) {
+      const need = limit - products.length
+      const seen = new Set(products.map((p) => String(p._id)))
+      const excludeMore = [...excludeIds, ...products.map((p) => p._id)]
+      const q2 = { ...baseQuery }
+      if (excludeMore.length) q2._id = { $nin: excludeMore }
+
+      const more = await Product.find(q2)
+        .sort({ createdAt: -1 })
+        .limit(need + 8)
+        .select("name slug mainImage images price discountedPrice discountPercentage")
+        .lean()
+
+      for (const p of more) {
+        if (products.length >= limit) break
+        if (!seen.has(String(p._id))) {
+          seen.add(String(p._id))
+          products.push(p)
+        }
+      }
+    }
+
+    res.json(products)
+  } catch (error) {
+    console.error("getMyRecommendations error:", error)
+    res.status(500).json({ msg: "Failed to fetch recommendations" })
   }
 }

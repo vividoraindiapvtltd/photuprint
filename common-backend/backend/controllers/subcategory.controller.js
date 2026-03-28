@@ -1,6 +1,6 @@
-import Subcategory from '../models/subcategory.model.js';
-import Category from '../models/category.model.js';
-import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
+import Subcategory from "../models/subcategory.model.js"
+import Category from "../models/category.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Generate next subcategory ID
 const generateNextSubcategoryId = async () => {
@@ -140,10 +140,16 @@ export const createSubCategory = async (req, res) => {
     // Generate slug from name
     const slug = name.trim().toLowerCase().replace(/\s+/g, '-').replace(/[^\w\-]+/g, '');
 
-    // Handle image upload
-    let imageUrl = null;
+    let imageUrl = null
     if (req.file) {
-      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/subcategories' });
+      try {
+        imageUrl = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/subcategories" })
+        console.log("Image uploaded to Cloudinary:", imageUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     // Generate unique subcategory ID
@@ -206,9 +212,15 @@ export const updateSubCategory = async (req, res) => {
       }
     }
 
-    // Handle image update/removal
     if (req.file) {
-      subcategory.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/subcategories' });
+      try {
+        subcategory.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/subcategories" })
+        console.log("Image updated in Cloudinary:", subcategory.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     } else if (req.body.image !== undefined) {
       // Image field explicitly set (could be null to remove image)
       if (req.body.image === null || req.body.image === '') {

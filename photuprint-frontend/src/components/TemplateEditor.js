@@ -1,6 +1,33 @@
 "use client"
 
 import { useState, useEffect, useRef, useCallback } from "react"
+import dynamic from "next/dynamic"
+import { getImageSrc } from "../utils/imageUrl"
+
+const PixelCraftEditor = dynamic(() => import("./PixelCraftEditor"), { ssr: false })
+
+/**
+ * Browsers may return null for 2d context (e.g. 0×0 canvas, size limits, context loss).
+ * Never call methods on the result without checking.
+ */
+function getCanvas2dContext(canvas) {
+  if (!canvas || typeof canvas.getContext !== "function") return null
+  const w = canvas.width
+  const h = canvas.height
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w < 1 || h < 1) return null
+  return canvas.getContext("2d")
+}
+
+function resolveTemplateAssetUrl(url) {
+  if (url == null || url === "") return ""
+  const s = typeof url === "string" ? url.trim() : String(url)
+  if (!s) return ""
+  const resolved = getImageSrc(s)
+  if (resolved) return resolved
+  if (s.startsWith("http://") || s.startsWith("https://")) return s
+  const path = s.startsWith("/") ? s : `/${s}`
+  return path
+}
 
 /**
  * TemplateEditor - Canvas-based template editor with layered images
@@ -308,17 +335,20 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
             height = width * imgAspectRatio
           }
 
-          // Ensure minimum size
+          // Ensure minimum size (0×0 canvas → getContext("2d") can be null → clearRect throws)
           if (width > 0 && height > 0) {
             console.log("TemplateEditor: Setting canvas size based on image:", Math.round(width), "x", Math.round(height))
-            setCanvasSize({ width: Math.round(width), height: Math.round(height) })
+            setCanvasSize({
+              width: Math.max(1, Math.round(width)),
+              height: Math.max(1, Math.round(height)),
+            })
           }
         } else {
           // Default size if no background - fill container
           console.log("TemplateEditor: Setting default canvas size:", Math.round(containerWidth), "x", Math.round(containerHeight))
           setCanvasSize({
-            width: Math.round(containerWidth),
-            height: Math.round(containerHeight),
+            width: Math.max(1, Math.round(containerWidth)),
+            height: Math.max(1, Math.round(containerHeight)),
           })
         }
       }
@@ -369,10 +399,12 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
       imgElement.crossOrigin = "anonymous"
       const imgUrl = templateBackgroundImages[selectedBackgroundIndex]
 
-      // Handle both Cloudinary URLs and local URLs
-      let fullUrl = imgUrl
-      if (!imgUrl.startsWith("http")) {
-        fullUrl = `http://localhost:8080${imgUrl}`
+      const fullUrl = resolveTemplateAssetUrl(imgUrl)
+      if (!fullUrl) {
+        setBackgroundImage(null)
+        setIsLoading(false)
+        setIsCanvasReady(true)
+        return
       }
 
       console.log("TemplateEditor: Loading background image:", fullUrl, "from template:", template.name)
@@ -386,11 +418,20 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
         setBackgroundImage(imgElement)
         if (!constrained) {
           const maxWidth = containerRef.current?.clientWidth || 600
-          const aspectRatio = imgElement.height / imgElement.width
-          setCanvasSize({
-            width: maxWidth,
-            height: maxWidth * aspectRatio,
-          })
+          const nw = imgElement.naturalWidth || imgElement.width
+          const nh = imgElement.naturalHeight || imgElement.height
+          if (nw > 0 && nh > 0) {
+            const aspectRatio = nh / nw
+            setCanvasSize({
+              width: Math.max(1, Math.round(maxWidth)),
+              height: Math.max(1, Math.round(maxWidth * aspectRatio)),
+            })
+          } else {
+            setCanvasSize({
+              width: Math.max(1, Math.round(maxWidth)),
+              height: Math.max(1, Math.round(maxWidth)),
+            })
+          }
         }
         setIsLoading(false)
         setIsCanvasReady(true)
@@ -430,7 +471,11 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
       const img = new Image()
       img.crossOrigin = "anonymous"
       const imgUrl = logoImages[selectedLogoIndex]
-      const fullUrl = imgUrl.startsWith("http") ? imgUrl : `http://localhost:8080${imgUrl}`
+      const fullUrl = resolveTemplateAssetUrl(imgUrl)
+      if (!fullUrl) {
+        setLogoImage(null)
+        return
+      }
       console.log("TemplateEditor: Loading logo image from:", fullUrl)
       img.src = fullUrl
       img.onload = () => {
@@ -540,7 +585,22 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const ctx = canvas.getContext("2d")
+    const cw = Math.max(1, Math.round(canvasSize?.width ?? 600))
+    const ch = Math.max(1, Math.round(canvasSize?.height ?? 600))
+    if (
+      !Number.isFinite(canvas.width) ||
+      !Number.isFinite(canvas.height) ||
+      canvas.width < 1 ||
+      canvas.height < 1
+    ) {
+      canvas.width = cw
+      canvas.height = ch
+    }
+
+    const ctx = getCanvas2dContext(canvas)
+    if (!ctx) return
+
+    try {
     // Disable image smoothing for crisp rendering
     ctx.imageSmoothingEnabled = false
     ctx.imageSmoothingQuality = "high"
@@ -745,7 +805,35 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
         ctx.setLineDash([])
       }
     }
-  }, [backgroundImage, logoImage, showLogo, logoPosition, logoScale, userImage, userImagePosition, userImageScale, activeLayer, getImageBounds, getResizeHandles, simplified, textOption, textValue, textPosition, textFontSize, textColor, textFontFamily, textBold, textItalic, textUnderline, textAlign, textCurve])
+    } catch (e) {
+      console.error("TemplateEditor: drawCanvas failed:", e)
+    }
+  }, [
+    canvasSize,
+    backgroundImage,
+    logoImage,
+    showLogo,
+    logoPosition,
+    logoScale,
+    userImage,
+    userImagePosition,
+    userImageScale,
+    activeLayer,
+    getImageBounds,
+    getResizeHandles,
+    simplified,
+    textOption,
+    textValue,
+    textPosition,
+    textFontSize,
+    textColor,
+    textFontFamily,
+    textBold,
+    textItalic,
+    textUnderline,
+    textAlign,
+    textCurve,
+  ])
 
   // Redraw canvas when state changes or canvas becomes ready
   useEffect(() => {
@@ -802,40 +890,42 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
     if (textOption && textValue) {
       const textX = (textPosition.x / 100) * canvas.width
       const textY = (textPosition.y / 100) * canvas.height
-      const ctx = canvas.getContext("2d")
-      let fontStyle = ""
-      if (textItalic) fontStyle += "italic "
-      if (textBold) fontStyle += "bold "
-      ctx.font = `${fontStyle}${textFontSize}px ${textFontFamily}`
-      const textMetrics = ctx.measureText(textValue)
-      const textWidth = textMetrics.width
-      let textHeight = textFontSize
+      const ctx = getCanvas2dContext(canvas)
+      if (ctx) {
+        let fontStyle = ""
+        if (textItalic) fontStyle += "italic "
+        if (textBold) fontStyle += "bold "
+        ctx.font = `${fontStyle}${textFontSize}px ${textFontFamily}`
+        const textMetrics = ctx.measureText(textValue)
+        const textWidth = textMetrics.width
+        let textHeight = textFontSize
 
-      // Calculate actual text bounds based on alignment
-      let textLeft = textX
-      if (textAlign === "center") {
-        textLeft = textX - textWidth / 2
-      } else if (textAlign === "right") {
-        textLeft = textX - textWidth
-      }
+        // Calculate actual text bounds based on alignment
+        let textLeft = textX
+        if (textAlign === "center") {
+          textLeft = textX - textWidth / 2
+        } else if (textAlign === "right") {
+          textLeft = textX - textWidth
+        }
 
-      // Adjust bounds for curved text
-      let curveExtraWidth = 0
-      let curveExtraHeight = 0
-      if (textCurve !== 0) {
-        const curveIntensity = Math.abs(textCurve) * 0.5
-        // Curved text spreads wider and taller
-        curveExtraWidth = curveIntensity * 15
-        curveExtraHeight = curveIntensity * 25
-        textHeight += curveExtraHeight
-      }
+        // Adjust bounds for curved text
+        let curveExtraWidth = 0
+        let curveExtraHeight = 0
+        if (textCurve !== 0) {
+          const curveIntensity = Math.abs(textCurve) * 0.5
+          // Curved text spreads wider and taller
+          curveExtraWidth = curveIntensity * 15
+          curveExtraHeight = curveIntensity * 25
+          textHeight += curveExtraHeight
+        }
 
-      // Increased padding (20px) for easier text selection and dragging
-      const textPadding = 20 + curveExtraWidth
-      const verticalPadding = 20 + curveExtraHeight
-      if (x >= textLeft - textPadding && x <= textLeft + textWidth + textPadding && y >= textY - verticalPadding && y <= textY + textHeight + verticalPadding) {
-        setCursorStyle("move")
-        return
+        // Increased padding (20px) for easier text selection and dragging
+        const textPadding = 20 + curveExtraWidth
+        const verticalPadding = 20 + curveExtraHeight
+        if (x >= textLeft - textPadding && x <= textLeft + textWidth + textPadding && y >= textY - verticalPadding && y <= textY + textHeight + verticalPadding) {
+          setCursorStyle("move")
+          return
+        }
       }
     }
 
@@ -926,47 +1016,49 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
     if (textOption && textValue) {
       const textX = (textPosition.x / 100) * canvas.width
       const textY = (textPosition.y / 100) * canvas.height
-      const ctx = canvas.getContext("2d")
-      let fontStyle = ""
-      if (textItalic) fontStyle += "italic "
-      if (textBold) fontStyle += "bold "
-      ctx.font = `${fontStyle}${textFontSize}px ${textFontFamily}`
-      const textMetrics = ctx.measureText(textValue)
-      const textWidth = textMetrics.width
-      let textHeight = textFontSize
+      const ctx = getCanvas2dContext(canvas)
+      if (ctx) {
+        let fontStyle = ""
+        if (textItalic) fontStyle += "italic "
+        if (textBold) fontStyle += "bold "
+        ctx.font = `${fontStyle}${textFontSize}px ${textFontFamily}`
+        const textMetrics = ctx.measureText(textValue)
+        const textWidth = textMetrics.width
+        let textHeight = textFontSize
 
-      // Calculate actual text bounds based on alignment
-      let textLeft = textX
-      if (textAlign === "center") {
-        textLeft = textX - textWidth / 2
-      } else if (textAlign === "right") {
-        textLeft = textX - textWidth
-      }
+        // Calculate actual text bounds based on alignment
+        let textLeft = textX
+        if (textAlign === "center") {
+          textLeft = textX - textWidth / 2
+        } else if (textAlign === "right") {
+          textLeft = textX - textWidth
+        }
 
-      // Adjust bounds for curved text
-      let curveExtraWidth = 0
-      let curveExtraHeight = 0
-      if (textCurve !== 0) {
-        const curveIntensity = Math.abs(textCurve) * 0.5
-        // Curved text spreads wider and taller
-        curveExtraWidth = curveIntensity * 15
-        curveExtraHeight = curveIntensity * 25
-        textHeight += curveExtraHeight
-      }
+        // Adjust bounds for curved text
+        let curveExtraWidth = 0
+        let curveExtraHeight = 0
+        if (textCurve !== 0) {
+          const curveIntensity = Math.abs(textCurve) * 0.5
+          // Curved text spreads wider and taller
+          curveExtraWidth = curveIntensity * 15
+          curveExtraHeight = curveIntensity * 25
+          textHeight += curveExtraHeight
+        }
 
-      // Increased padding (20px) for easier text selection and dragging
-      const textPadding = 20 + curveExtraWidth
-      const verticalPadding = 20 + curveExtraHeight
-      // Check if clicking on text
-      if (x >= textLeft - textPadding && x <= textLeft + textWidth + textPadding && y >= textY - verticalPadding && y <= textY + textHeight + verticalPadding) {
-        setIsDragging(true)
-        setDragTarget("text")
-        setActiveLayer("text")
-        setDragOffset({
-          x: x - textLeft,
-          y: y - textY,
-        })
-        return
+        // Increased padding (20px) for easier text selection and dragging
+        const textPadding = 20 + curveExtraWidth
+        const verticalPadding = 20 + curveExtraHeight
+        // Check if clicking on text
+        if (x >= textLeft - textPadding && x <= textLeft + textWidth + textPadding && y >= textY - verticalPadding && y <= textY + textHeight + verticalPadding) {
+          setIsDragging(true)
+          setDragTarget("text")
+          setActiveLayer("text")
+          setDragOffset({
+            x: x - textLeft,
+            y: y - textY,
+          })
+          return
+        }
       }
     }
 
@@ -1133,11 +1225,17 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
       const timestamp = Date.now()
       const width = canvas.width
       const height = canvas.height
+      if (width < 1 || height < 1) {
+        setActiveLayer(tempActiveLayer)
+        return
+      }
 
       // 1. Download combined image (all layers)
-      const ctx = canvas.getContext("2d")
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = "high"
+      const mainCtx = getCanvas2dContext(canvas)
+      if (mainCtx) {
+        mainCtx.imageSmoothingEnabled = true
+        mainCtx.imageSmoothingQuality = "high"
+      }
       const combinedDataUrl = canvas.toDataURL("image/png", 1.0)
       downloadDataUrl(combinedDataUrl, `combined-design-${timestamp}.png`)
 
@@ -1146,12 +1244,14 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
         const bgCanvas = document.createElement("canvas")
         bgCanvas.width = width
         bgCanvas.height = height
-        const bgCtx = bgCanvas.getContext("2d")
-        bgCtx.imageSmoothingEnabled = true
-        bgCtx.imageSmoothingQuality = "high"
-        bgCtx.drawImage(backgroundImage, 0, 0, width, height)
-        const bgDataUrl = bgCanvas.toDataURL("image/png", 1.0)
-        downloadDataUrl(bgDataUrl, `background-${timestamp}.png`)
+        const bgCtx = getCanvas2dContext(bgCanvas)
+        if (bgCtx) {
+          bgCtx.imageSmoothingEnabled = true
+          bgCtx.imageSmoothingQuality = "high"
+          bgCtx.drawImage(backgroundImage, 0, 0, width, height)
+          const bgDataUrl = bgCanvas.toDataURL("image/png", 1.0)
+          downloadDataUrl(bgDataUrl, `background-${timestamp}.png`)
+        }
       }
 
       // 3. Download user uploaded image layer separately (if exists)
@@ -1159,19 +1259,21 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
         const userCanvas = document.createElement("canvas")
         userCanvas.width = width
         userCanvas.height = height
-        const userCtx = userCanvas.getContext("2d")
-        userCtx.imageSmoothingEnabled = true
-        userCtx.imageSmoothingQuality = "high"
-        // Make background transparent
-        userCtx.clearRect(0, 0, width, height)
+        const userCtx = getCanvas2dContext(userCanvas)
+        if (userCtx) {
+          userCtx.imageSmoothingEnabled = true
+          userCtx.imageSmoothingQuality = "high"
+          // Make background transparent
+          userCtx.clearRect(0, 0, width, height)
 
-        // Draw user image at its current position and scale
-        const bounds = getImageBounds(userImagePosition, userImageScale, userImage, canvas)
-        if (bounds) {
-          userCtx.drawImage(userImage, Math.round(bounds.x), Math.round(bounds.y), Math.round(bounds.width), Math.round(bounds.height))
+          // Draw user image at its current position and scale
+          const bounds = getImageBounds(userImagePosition, userImageScale, userImage, canvas)
+          if (bounds) {
+            userCtx.drawImage(userImage, Math.round(bounds.x), Math.round(bounds.y), Math.round(bounds.width), Math.round(bounds.height))
+          }
+          const userDataUrl = userCanvas.toDataURL("image/png", 1.0)
+          downloadDataUrl(userDataUrl, `uploaded-image-${timestamp}.png`)
         }
-        const userDataUrl = userCanvas.toDataURL("image/png", 1.0)
-        downloadDataUrl(userDataUrl, `uploaded-image-${timestamp}.png`)
       }
 
       // 4. Download text layer separately (if exists)
@@ -1179,7 +1281,8 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
         const textCanvas = document.createElement("canvas")
         textCanvas.width = width
         textCanvas.height = height
-        const textCtx = textCanvas.getContext("2d")
+        const textCtx = getCanvas2dContext(textCanvas)
+        if (textCtx) {
         // Make background transparent
         textCtx.clearRect(0, 0, width, height)
 
@@ -1255,6 +1358,7 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
 
         const textDataUrl = textCanvas.toDataURL("image/png", 1.0)
         downloadDataUrl(textDataUrl, `text-layer-${timestamp}.png`)
+        }
       }
 
       // Restore active layer
@@ -1272,10 +1376,12 @@ export default function TemplateEditor({ template, onSave, constrained = false, 
     setActiveLayer(null)
 
     setTimeout(() => {
-      // Ensure high quality rendering for export
-      const ctx = canvas.getContext("2d")
-      ctx.imageSmoothingEnabled = true
-      ctx.imageSmoothingQuality = "high"
+      // Ensure high quality rendering for export (context may be null on invalid canvas)
+      const ctx = getCanvas2dContext(canvas)
+      if (ctx) {
+        ctx.imageSmoothingEnabled = true
+        ctx.imageSmoothingQuality = "high"
+      }
 
       // Export at high quality (PNG always uses best quality)
       const dataUrl = canvas.toDataURL("image/png")

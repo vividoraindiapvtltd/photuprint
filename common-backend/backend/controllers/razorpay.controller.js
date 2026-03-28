@@ -2,6 +2,7 @@ import Razorpay from "razorpay"
 import crypto from "crypto"
 import Order from "../models/order.model.js"
 import User from "../models/user.model.js"
+import { recalculateOrderDataWithVolumePricing } from "../utils/orderCheckoutRecalc.js"
 import { sendOrderConfirmationEmail } from "../utils/emailVerification.js"
 import { sendOrderConfirmationSms } from "../utils/smsService.js"
 import { scheduleReviewEmail } from "../utils/reviewEmailScheduler.js"
@@ -67,12 +68,17 @@ export const createRazorpayOrder = async (req, res) => {
     }
 
     if (orderData?.products && Array.isArray(orderData.products) && orderData.products.length > 0) {
-      const calculatedSubtotal = orderData.subtotal ?? orderData.products.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0)
-      const tax = orderData.tax ?? 0
-      const shippingCharges = orderData.shippingCharges ?? 0
-      const discount = orderData.discount ?? 0
-      const giftWrapCharge = orderData.giftWrapCharge ?? 0
-      const totalAmount = Math.max(0, Math.round(calculatedSubtotal + tax + shippingCharges - discount + giftWrapCharge))
+      let recalced
+      try {
+        recalced = await recalculateOrderDataWithVolumePricing(orderData, req.websiteId)
+      } catch (e) {
+        console.error("[createRazorpayOrder] Pricing error:", e)
+        return res.status(400).json({
+          msg: e.message || "Unable to calculate order total",
+          code: "PRICING_ERROR",
+        })
+      }
+      const totalAmount = recalced.totalAmount
       const expectedPayAmount = isCod ? Math.round(totalAmount * (COD_ADVANCE_PERCENT / 100)) : totalAmount
       if (Math.abs(amountNum - expectedPayAmount) > 1) {
         console.warn("[createRazorpayOrder] Amount mismatch: frontend=", amountNum, "calculated=", expectedPayAmount)
@@ -183,25 +189,26 @@ export const verifyPaymentAndCreateOrder = async (req, res) => {
       return res.status(400).json({ msg: "User not found" })
     }
 
-    let calculatedSubtotal = subtotal
-    if (!calculatedSubtotal) {
-      calculatedSubtotal = products.reduce((sum, item) => sum + (item.price || 0) * (item.quantity || 0), 0)
+    let recalced
+    try {
+      recalced = await recalculateOrderDataWithVolumePricing(orderData, req.websiteId)
+    } catch (e) {
+      console.error("[verifyPayment] Pricing error:", e)
+      return res.status(400).json({ msg: e.message || "Unable to calculate order total", code: "PRICING_ERROR" })
     }
 
-    const totalAmount = Math.max(0, Math.round(calculatedSubtotal + tax + shippingCharges - discount + (giftWrapCharge || 0)))
+    const calculatedSubtotal = recalced.subtotal
+    const totalAmount = recalced.totalAmount
     const advanceAmount = isCodAdvance ? Math.round(totalAmount * (COD_ADVANCE_PERCENT / 100)) : totalAmount
     const codAmount = isCodAdvance ? totalAmount - advanceAmount : 0
 
-    const enhancedProducts = products.map((item) => ({
-      ...item,
-      subtotal: (item.price || 0) * (item.quantity || 0),
-    }))
+    const enhancedProducts = recalced.products
 
     const orderPayload = {
       user: userId,
       products: enhancedProducts,
       subtotal: calculatedSubtotal,
-      tax,
+      tax: recalced.tax,
       shippingCharges,
       discount,
       couponCode: couponCode || null,

@@ -18,8 +18,34 @@ const productSchema = new mongoose.Schema(
       height: { type: mongoose.Schema.Types.ObjectId, ref: "Height", default: null },
     },
     price: { type: Number, required: true },
+    /** Per print-side pricing; sides are defined in PrintSide manager. */
+    printSidePricing: [
+      {
+        printSide: { type: mongoose.Schema.Types.ObjectId, ref: "PrintSide" },
+        enabled: { type: Boolean, default: false },
+        price: { type: Number, default: null },
+      },
+    ],
+    /** Per add-on pricing; options are defined in ProductAddon manager. */
+    addOnPricing: [
+      {
+        productAddon: { type: mongoose.Schema.Types.ObjectId, ref: "ProductAddon" },
+        enabled: { type: Boolean, default: false },
+        price: { type: Number, default: null },
+      },
+    ],
     discountedPrice: { type: Number, default: null },
+    /** Unit price for buying the SKU without customization (customized products); optional. */
+    plainProductPrice: { type: Number, default: null },
     discountPercentage: { type: Number, default: null },
+    /** Extra % off effective unit price by order line quantity (bands 1–5, 6–10, 11–20, 21+). */
+    quantityDiscountTiers: [
+      {
+        minQty: { type: Number, required: true },
+        maxQty: { type: Number, default: null },
+        discountPercent: { type: Number, default: 0, min: 0, max: 100 },
+      },
+    ],
     sku: { type: String }, // Unique constraint handled by compound index with website
     mainImage: { type: String, required: false },
     images: [String],

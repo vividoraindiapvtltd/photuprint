@@ -105,7 +105,13 @@ const productVariantSchema = new mongoose.Schema(
     deleted: {
       type: Boolean,
       default: false
-    }
+    },
+
+    /** PDP / admin list order (ascending). Lower = first. */
+    sortOrder: {
+      type: Number,
+      default: 0,
+    },
   },
   {
     timestamps: true

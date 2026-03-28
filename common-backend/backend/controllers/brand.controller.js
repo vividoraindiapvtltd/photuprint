@@ -1,5 +1,5 @@
-import Brand from '../models/brand.model.js';
-import { tenantCloudinaryUpload } from '../utils/cloudinary.js';
+import Brand from "../models/brand.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all brands
 export const getBrands = async (req, res) => {
@@ -109,10 +109,15 @@ export const createBrand = async (req, res) => {
       counter++;
     } while (true);
 
-    // Handle logo upload if present
-    let logo = null;
+    let logo = null
     if (req.file) {
-      logo = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/brands' });
+      try {
+        logo = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/brands" })
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Logo upload failed. Configure Cloudinary." })
+      }
     }
 
     const brand = new Brand({
@@ -207,9 +212,13 @@ export const updateBrand = async (req, res) => {
       }
     }
 
-    // Handle logo upload if present
     if (req.file) {
-      brand.logo = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: 'photuprint/brands' });
+      try {
+        brand.logo = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/brands" })
+      } catch (uploadError) {
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Logo upload failed. Configure Cloudinary." })
+      }
     }
 
     // Update fields (brandId cannot be changed as it's auto-generated)

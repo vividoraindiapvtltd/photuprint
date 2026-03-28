@@ -46,10 +46,14 @@ async function main() {
     throw new Error("No users found. Create a user first (or run backend/seed.js to create admin).");
   }
 
-  // Pick a product (active, non-deleted)
+  // Pick a product (active, non-deleted) — website comes from product for multi-tenant orders
   const product = await Product.findOne({ deleted: false, isActive: true }).sort({ createdAt: -1 });
   if (!product) {
     throw new Error("No products found. Create at least one product first.");
+  }
+  const websiteId = product.website;
+  if (!websiteId) {
+    throw new Error("Product has no website set; cannot create a valid order.");
   }
 
   const qty = 2;
@@ -74,6 +78,7 @@ async function main() {
   const order = await Order.create({
     orderNumber: makeOrderNumber(),
     user: user._id,
+    website: websiteId,
     products: [
       {
         product: product._id,

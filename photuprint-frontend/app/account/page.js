@@ -672,10 +672,15 @@ function RecentlyViewedTab() {
         </div>
       ) : (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
-          {items.map((item) => {
+          {items.map((item, index) => {
             const slug = item.product ? getProductSlug(item.product) : ""
+            const productId = item.product?._id ?? item.product?.id
+            const rowKey =
+              item._id != null && item._id !== ""
+                ? String(item._id)
+                : `${productId != null ? String(productId) : "product"}-${index}-${item.viewedAt ?? ""}`
             return (
-              <a key={item._id} href={slug ? `/products/${slug}` : "/products"} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
+              <a key={rowKey} href={slug ? `/products/${slug}` : "/products"} className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden group hover:shadow-md transition-shadow">
                 <Image src={getImageSrc(item.product?.mainImage) || item.product?.mainImage || ""} alt={item.product?.name ?? ""} width={400} height={128} className="w-full h-32 object-cover group-hover:scale-105 transition-transform" />
                 <div className="p-3">
                   <p className="font-medium text-gray-900 text-sm line-clamp-2">{item.product?.name}</p>
@@ -847,7 +852,7 @@ function ReturnsTab({ isAuthenticated, token }) {
 function AccountPageContent() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  const { isAuthenticated, user, logout, openLoginModal } = useAuth()
+  const { isAuthenticated, authHydrated, user, logout, openLoginModal } = useAuth()
   const [activeTab, setActiveTab] = useState("profile")
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -917,6 +922,7 @@ function AccountPageContent() {
   }, [isAuthenticated])
 
   useEffect(() => {
+    if (!authHydrated) return
     if (!isAuthenticated) {
       if (wasAuthenticated.current) {
         if (typeof window !== "undefined") window.location.replace("/")
@@ -931,7 +937,7 @@ function AccountPageContent() {
     } else {
       setLoading(false)
     }
-  }, [isAuthenticated, token, openLoginModal])
+  }, [authHydrated, isAuthenticated, token, openLoginModal])
 
   useEffect(() => {
     const tab = searchParams.get("tab")
@@ -980,6 +986,14 @@ function AccountPageContent() {
     { id: "recommendations", label: "Recommendations", icon: "M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" },
     { id: "returns", label: "Returns", icon: "M3 10h10a8 8 0 018 8v2M3 10l6 6m-6-6l6-6" },
   ]
+
+  if (!authHydrated) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600" aria-label="Loading" />
+      </div>
+    )
+  }
 
   if (!isAuthenticated) {
     return (

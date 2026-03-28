@@ -1,6 +1,7 @@
 import Client from "../models/client.model.js"
 import Interaction from "../models/interaction.model.js"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { removeLocalFile } from "../utils/fileCleanup.js"
+import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
 
 /**
  * Client Controller
@@ -13,6 +14,45 @@ import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
  * - Statistics and analytics
  * - Multi-tenant support
  */
+
+const isSuperAdminViewAll = (req) => req.user?.role === "super_admin" && !req.websiteId && !req.tenant?._id
+
+/** Fields from Website manager (Website model) when populating client.website */
+const CLIENT_WEBSITE_SELECT = "name domain description"
+
+/**
+ * Pick a sales agent (editor) for the given website with the fewest assigned leads (least-loaded).
+ * Returns agent _id or null if no editors exist for the website.
+ */
+async function getNextAgentForWebsite(websiteId) {
+  const editors = await User.find({
+    role: "editor",
+    isActive: true,
+    deleted: false,
+    $or: [
+      { website: websiteId },
+      { accessibleWebsites: websiteId },
+    ],
+  })
+    .select("_id")
+    .lean()
+  if (!editors?.length) return null
+  const agentIds = editors.map((e) => e._id)
+  const counts = await Promise.all(
+    agentIds.map((agentId) =>
+      Client.countDocuments({
+        website: websiteId,
+        assignedTo: agentId,
+        deleted: false,
+      })
+    )
+  )
+  let minIdx = 0
+  for (let i = 1; i < counts.length; i++) {
+    if (counts[i] < counts[minIdx]) minIdx = i
+  }
+  return agentIds[minIdx]
+}
 
 // ============================================================================
 // CRUD OPERATIONS
@@ -113,6 +153,7 @@ export const getClients = async (req, res) => {
       Client.find(query)
         .populate("assignedTo", "name email")
         .populate("createdBy", "name email")
+        .populate("website", CLIENT_WEBSITE_SELECT)
         .sort(sort)
         .skip(skip)
         .limit(parseInt(limit))
@@ -146,11 +187,10 @@ export const getClientById = async (req, res) => {
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-
-    const client = await Client.findOne({
-      _id: id,
-      website: websiteId,
-    })
+    
+    const clientQuery = websiteId ? { _id: id, website: websiteId } : { _id: id }
+    const client = await Client.findOne(clientQuery)
+      .populate("website", CLIENT_WEBSITE_SELECT)
       .populate("assignedTo", "name email phone")
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
@@ -313,17 +353,22 @@ export const createClient = async (req, res) => {
         return res.status(400).json({ msg: "A client with this email already exists" })
       }
     }
-
-    // Handle avatar upload
+    
     let avatarUrl = null
     if (req.file) {
-      avatarUrl = await tenantCloudinaryUpload(websiteId, req.file, {
-        folder: "clients",
-        transformation: [
-          { width: 200, height: 200, crop: "fill" },
-          { quality: "auto" },
-        ],
-      })
+      try {
+        avatarUrl = await uploadLocalFileToCloudinary(req.file.path, {
+          folder: "clients",
+          transformation: [
+            { width: 200, height: 200, crop: "fill" },
+            { quality: "auto" },
+          ],
+        })
+      } catch (uploadError) {
+        console.error("Error uploading avatar:", uploadError)
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: uploadError.message || "Avatar upload failed. Configure Cloudinary." })
+      }
     }
 
     // Parse tags if string
@@ -379,6 +424,7 @@ export const createClient = async (req, res) => {
 
     // Populate and return
     const populatedClient = await Client.findById(client._id)
+      .populate("website", CLIENT_WEBSITE_SELECT)
       .populate("assignedTo", "name email")
       .populate("createdBy", "name email")
 
@@ -458,16 +504,21 @@ export const updateClient = async (req, res) => {
 
     // Track status change
     const oldStatus = client.status
-
-    // Handle avatar upload
+    
     if (req.file) {
-      client.avatar = await tenantCloudinaryUpload(websiteId, req.file, {
-        folder: "clients",
-        transformation: [
-          { width: 200, height: 200, crop: "fill" },
-          { quality: "auto" },
-        ],
-      })
+      try {
+        client.avatar = await uploadLocalFileToCloudinary(req.file.path, {
+          folder: "clients",
+          transformation: [
+            { width: 200, height: 200, crop: "fill" },
+            { quality: "auto" },
+          ],
+        })
+      } catch (uploadError) {
+        console.error("Error uploading avatar:", uploadError)
+        removeLocalFile(req.file.path)
+        return res.status(503).json({ msg: uploadError.message || "Avatar upload failed. Configure Cloudinary." })
+      }
     }
 
     // Update fields
@@ -529,6 +580,7 @@ export const updateClient = async (req, res) => {
 
     // Populate and return
     const populatedClient = await Client.findById(client._id)
+      .populate("website", CLIENT_WEBSITE_SELECT)
       .populate("assignedTo", "name email")
       .populate("createdBy", "name email")
       .populate("updatedBy", "name email")
@@ -622,7 +674,9 @@ export const restoreClient = async (req, res) => {
     client.updatedBy = userId
 
     await client.save()
-
+    
+    await client.populate({ path: "website", select: CLIENT_WEBSITE_SELECT })
+    
     res.json({ msg: "Client restored successfully", client })
   } catch (error) {
     console.error("Error restoring client:", error)
@@ -716,7 +770,12 @@ export const updateClientStatus = async (req, res) => {
       website: websiteId,
       createdBy: userId,
     })
-
+    
+    await client.populate([
+      { path: "website", select: CLIENT_WEBSITE_SELECT },
+      { path: "assignedTo", select: "name email phone" },
+    ])
+    
     res.json({
       msg: `Client status updated to ${status}`,
       client,
@@ -770,6 +829,7 @@ export const assignClient = async (req, res) => {
     })
 
     const populatedClient = await Client.findById(id)
+      .populate("website", CLIENT_WEBSITE_SELECT)
       .populate("assignedTo", "name email")
 
     res.json({
@@ -989,6 +1049,7 @@ export const getUpcomingFollowUps = async (req, res) => {
     }
 
     const clients = await Client.find(query)
+      .populate("website", CLIENT_WEBSITE_SELECT)
       .populate("assignedTo", "name email")
       .sort({ nextFollowUp: 1 })
       .lean()
@@ -1011,11 +1072,10 @@ export const getRecentClients = async (req, res) => {
     if (!websiteId) {
       return res.status(400).json({ msg: "Website context is required" })
     }
-
-    const clients = await Client.find({
-      website: websiteId,
-      deleted: false,
-    })
+    
+    const findQuery = websiteId ? { website: websiteId, deleted: false } : { deleted: false }
+    const clients = await Client.find(findQuery)
+      .populate("website", CLIENT_WEBSITE_SELECT)
       .populate("assignedTo", "name email")
       .sort({ createdAt: -1 })
       .limit(parseInt(limit))
@@ -1086,6 +1146,160 @@ export const getTags = async (req, res) => {
     res.json(tags.filter(Boolean).sort())
   } catch (error) {
     console.error("Error fetching tags:", error)
+    res.status(500).json({ msg: "Server error", error: error.message })
+  }
+}
+
+const LEAD_EXPORT_HEADERS = [
+  "Client ID",
+  "First Name",
+  "Last Name",
+  "Email",
+  "Phone",
+  "Company",
+  "Website",
+  "Product",
+  "Quantity",
+  "Location",
+  "Status",
+  "Source",
+  "Priority",
+  "Assigned To",
+  "Created At",
+]
+
+function buildLeadRows(clients) {
+  return clients.map((c) => [
+    c.clientId || "",
+    c.firstName || "",
+    c.lastName || "",
+    c.email || "",
+    c.phone || "",
+    c.company || "",
+    c.website
+      ? c.website.name || c.website.domain || String(c.website._id || "")
+      : "",
+    c.productName || "",
+    c.quantity != null ? c.quantity : "",
+    c.location || "",
+    c.status || "",
+    c.source || "",
+    c.priority || "",
+    c.assignedTo ? (c.assignedTo.name || c.assignedTo.email || "") : "",
+    c.createdAt ? new Date(c.createdAt).toISOString() : "",
+  ])
+}
+
+/**
+ * Export leads (by period and optional agent) as CSV, Excel, or PDF
+ * Query: period=day|week|month|year, assignedTo=userId|all, format=csv|xlsx|pdf
+ */
+export const exportLeads = async (req, res) => {
+  try {
+    const websiteId = req.websiteId || req.tenant?._id
+    if (!websiteId && !isSuperAdminViewAll(req)) {
+      return res.status(400).json({ msg: "Website context is required" })
+    }
+
+    const { period = "month", assignedTo, format = "csv" } = req.query
+    const fmt = String(format).toLowerCase()
+    if (!["csv", "xlsx", "pdf"].includes(fmt)) {
+      return res.status(400).json({ msg: "Invalid format. Use csv, xlsx, or pdf." })
+    }
+
+    const now = new Date()
+    let startDate
+    switch (String(period).toLowerCase()) {
+      case "day":
+        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate())
+        break
+      case "week":
+        startDate = new Date(now)
+        startDate.setDate(now.getDate() - 7)
+        break
+      case "month":
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+        break
+      case "year":
+        startDate = new Date(now.getFullYear(), 0, 1)
+        break
+      default:
+        startDate = new Date(now.getFullYear(), now.getMonth(), 1)
+    }
+
+    let query = { deleted: false, createdAt: { $gte: startDate, $lte: now } }
+    if (websiteId) query.website = websiteId
+    if (assignedTo && assignedTo !== "all") query.assignedTo = assignedTo
+
+    if (req.user?.role === "editor" && !isSuperAdminViewAll(req)) {
+      const userId = req.user._id
+      delete query.assignedTo
+      query = {
+        $and: [
+          query,
+          { $or: [{ assignedTo: userId }, { createdBy: userId }] },
+        ],
+      }
+    }
+
+    const clients = await Client.find(query)
+      .populate("website", CLIENT_WEBSITE_SELECT)
+      .populate("assignedTo", "name email")
+      .populate("createdBy", "name email")
+      .sort({ createdAt: -1 })
+      .lean()
+
+    const rows = buildLeadRows(clients)
+    const dateStr = new Date().toISOString().slice(0, 10)
+
+    if (fmt === "csv") {
+      const escapeCsv = (v) => {
+        if (v == null) return ""
+        const s = String(v).replace(/"/g, '""')
+        return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s}"` : s
+      }
+      const csv = [LEAD_EXPORT_HEADERS.join(","), ...rows.map((r) => r.map(escapeCsv).join(","))].join("\n")
+      const filename = `leads-${period}-${dateStr}.csv`
+      res.setHeader("Content-Type", "text/csv; charset=utf-8")
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      return res.send("\uFEFF" + csv)
+    }
+
+    if (fmt === "xlsx") {
+      const XLSX = await import("xlsx")
+      const wb = XLSX.utils.book_new()
+      const sheetData = [LEAD_EXPORT_HEADERS, ...rows]
+      const ws = XLSX.utils.aoa_to_sheet(sheetData)
+      XLSX.utils.book_append_sheet(wb, ws, "Leads")
+      const buf = XLSX.write(wb, { type: "buffer", bookType: "xlsx" })
+      const filename = `leads-${period}-${dateStr}.xlsx`
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      return res.send(buf)
+    }
+
+    if (fmt === "pdf") {
+      const PDFDocument = (await import("pdfkit-table")).default
+      const filename = `leads-${period}-${dateStr}.pdf`
+      res.setHeader("Content-Type", "application/pdf")
+      res.setHeader("Content-Disposition", `attachment; filename="${filename}"`)
+      const doc = new PDFDocument({ margin: 30, size: "A4" })
+      doc.pipe(res)
+      const table = {
+        title: `Leads export (${period})`,
+        subtitle: `Generated ${new Date().toLocaleString()}`,
+        headers: LEAD_EXPORT_HEADERS,
+        rows,
+      }
+      await doc.table(table, {
+        prepareHeader: () => doc.font("Helvetica-Bold").fontSize(8),
+        prepareRow: () => doc.font("Helvetica").fontSize(7),
+      })
+      doc.end()
+      return
+    }
+  } catch (error) {
+    console.error("Error exporting leads:", error)
     res.status(500).json({ msg: "Server error", error: error.message })
   }
 }

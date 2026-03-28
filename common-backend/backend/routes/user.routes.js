@@ -7,10 +7,11 @@ import {
   createUser,
   updateUser,
   deleteUser,
-  hardDeleteUser
+  hardDeleteUser,
+  getMyRecommendations,
 } from '../controllers/user.controller.js';
 import { protect, adminOnly, optionalAuth } from '../middlewares/auth.middleware.js';
-import { optionalTenant } from '../middlewares/tenant.middleware.js';
+import { optionalTenant, resolveTenant } from '../middlewares/tenant.middleware.js';
 
 const router = express.Router();
 
@@ -21,6 +22,9 @@ const router = express.Router();
 router.get('/profile', optionalAuth, getProfile);
 // Update current user's profile (name, phone, address) - storefront
 router.put('/profile', protect, updateMyProfile);
+
+// Storefront: personalized recommendations (must be registered BEFORE /:id or "recommendations" is parsed as an id)
+router.get('/recommendations', protect, resolveTenant, getMyRecommendations);
 
 // Protected admin routes
 // optionalTenant now resolves tenant from header if present, or allows super admin to proceed without it

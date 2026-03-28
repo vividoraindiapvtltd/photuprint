@@ -1,5 +1,11 @@
 import Size from "../models/size.model.js"
-import { tenantCloudinaryUpload } from "../utils/cloudinary.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
+
+function parseMeasurement(value) {
+  if (value === undefined || value === null || value === "") return null
+  const n = typeof value === "string" ? parseFloat(value.trim()) : Number(value)
+  return Number.isFinite(n) ? n : null
+}
 
 // Get all sizes
 export const getSizes = async (req, res) => {
@@ -69,6 +75,12 @@ export const createSize = async (req, res) => {
 
     const { name, initial, description, dimensions } = req.body
     let { isActive = true } = req.body
+    const chestInch = parseMeasurement(req.body.chestInch)
+    const chestCm = parseMeasurement(req.body.chestCm)
+    const frontLengthInch = parseMeasurement(req.body.frontLengthInch)
+    const frontLengthCm = parseMeasurement(req.body.frontLengthCm)
+    const sleeveLengthInch = parseMeasurement(req.body.sleeveLengthInch)
+    const sleeveLengthCm = parseMeasurement(req.body.sleeveLengthCm)
 
     // Convert string "true"/"false" to boolean (for FormData)
     if (typeof isActive === "string") {
@@ -103,16 +115,28 @@ export const createSize = async (req, res) => {
       }
     }
 
-    // Handle image upload
     let imageUrl = null
     if (req.file) {
-      imageUrl = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: "photuprint/sizes" })
+      try {
+        imageUrl = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/sizes" })
+        console.log("Image uploaded to Cloudinary:", imageUrl)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const size = new Size({
       name: name.trim(),
       initial: initialTrimmed,
       dimensions: dimensions?.trim() || null,
+      chestInch,
+      chestCm,
+      frontLengthInch,
+      frontLengthCm,
+      sleeveLengthInch,
+      sleeveLengthCm,
       description: description?.trim() || null,
       image: imageUrl,
       isActive,
@@ -148,6 +172,13 @@ export const updateSize = async (req, res) => {
     if (typeof isActive === "string") {
       isActive = isActive === "true"
     }
+
+    const chestInch = parseMeasurement(req.body.chestInch)
+    const chestCm = parseMeasurement(req.body.chestCm)
+    const frontLengthInch = parseMeasurement(req.body.frontLengthInch)
+    const frontLengthCm = parseMeasurement(req.body.frontLengthCm)
+    const sleeveLengthInch = parseMeasurement(req.body.sleeveLengthInch)
+    const sleeveLengthCm = parseMeasurement(req.body.sleeveLengthCm)
 
     // Check if size exists within the same website
     const size = await Size.findOne({ _id: req.params.id, website: req.websiteId })
@@ -200,6 +231,13 @@ export const updateSize = async (req, res) => {
       size.dimensions = dimensions?.trim() || null
     }
 
+    if (req.body.chestInch !== undefined) size.chestInch = chestInch
+    if (req.body.chestCm !== undefined) size.chestCm = chestCm
+    if (req.body.frontLengthInch !== undefined) size.frontLengthInch = frontLengthInch
+    if (req.body.frontLengthCm !== undefined) size.frontLengthCm = frontLengthCm
+    if (req.body.sleeveLengthInch !== undefined) size.sleeveLengthInch = sleeveLengthInch
+    if (req.body.sleeveLengthCm !== undefined) size.sleeveLengthCm = sleeveLengthCm
+
     if (isActive !== undefined) {
       size.isActive = isActive
     }
@@ -209,9 +247,15 @@ export const updateSize = async (req, res) => {
       size.deleted = req.body.deleted
     }
 
-    // Handle image upload
     if (req.file) {
-      size.image = await tenantCloudinaryUpload(req.websiteId, req.file, { folder: "photuprint/sizes" })
+      try {
+        size.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/sizes" })
+        console.log("Image updated in Cloudinary:", size.image)
+      } catch (uploadError) {
+        console.error("Cloudinary upload failed:", uploadError)
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: uploadError.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const updatedSize = await size.save()

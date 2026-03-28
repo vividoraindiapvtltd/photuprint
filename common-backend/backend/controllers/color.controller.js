@@ -1,4 +1,5 @@
 import Color from "../models/color.model.js"
+import { uploadLocalFileToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
 
 // Get all colors
 export const getColors = async (req, res) => {
@@ -79,11 +80,14 @@ export const createColor = async (req, res) => {
       return res.status(400).json({ msg: "Color name already exists" })
     }
 
-    // Handle image upload if present
     let imageUrl = null
     if (req.file) {
-      // For now, use local path. You might want to upload to cloud storage instead
-      imageUrl = `/uploads/${req.file.filename}`
+      try {
+        imageUrl = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/colors" })
+      } catch (e) {
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: e.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     const color = new Color({
@@ -143,9 +147,13 @@ export const updateColor = async (req, res) => {
       }
     }
 
-    // Handle image upload if present
     if (req.file) {
-      color.image = `/uploads/${req.file.filename}`
+      try {
+        color.image = await uploadLocalFileToCloudinary(req.file.path, { folder: "photuprint/colors" })
+      } catch (e) {
+        removeLocalFiles([req.file])
+        return res.status(503).json({ msg: e.message || "Image upload failed. Configure Cloudinary." })
+      }
     }
 
     // Update fields

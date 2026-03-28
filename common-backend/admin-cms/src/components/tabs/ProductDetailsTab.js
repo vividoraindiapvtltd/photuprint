@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from "react"
+import React, { useState, useRef, useEffect, useMemo } from "react"
 import { FormField } from "../../common"
 import SearchableSelect from "../../common/SearchableSelect"
 import RichTextEditor from "../CKEditor"
@@ -122,6 +122,11 @@ const ProductDetailsTab = ({
   formData,
   handleInputChange,
   handleMultiSelect,
+  managedPrintSides = [],
+  managedProductAddons = [],
+  onPrintSidePricingChange,
+  onAddOnPricingChange,
+  quantityTierLabels = ["1–5 units", "6–10 units", "11–20 units", "21+ units"],
   categories,
   subcategories,
   brands,
@@ -141,9 +146,31 @@ const ProductDetailsTab = ({
   categorySupportsVariations = false,
   getUnitAbbreviation
 }) => {
+  const printSidesForProduct = useMemo(
+    () =>
+      (managedPrintSides || [])
+        .filter((s) => !s.deleted)
+        .sort(
+          (a, b) =>
+            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.name || "").localeCompare(b.name || "")
+        ),
+    [managedPrintSides]
+  )
+
+  const productAddonsForProduct = useMemo(
+    () =>
+      (managedProductAddons || [])
+        .filter((s) => !s.deleted)
+        .sort(
+          (a, b) =>
+            (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.name || "").localeCompare(b.name || "")
+        ),
+    [managedProductAddons]
+  )
+
   return (
     <div>
-      {/* Product Type Selection - Controls visibility of customization sections */}
+      {/* Product Type Selection - Controls visibility of templates tab and related UI */}
       <div style={{ marginBottom: "30px" }}>
         <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "20px", color: "#444444", borderBottom: "2px solid #444444", paddingBottom: "12px", paddingTop: "8px" }}>
           Product Type
@@ -476,7 +503,28 @@ const ProductDetailsTab = ({
         <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "20px", color: "#444444", borderBottom: "2px solid #444444", paddingBottom: "12px", paddingTop: "8px" }}>
           Pricing & Inventory
         </h3>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: formData.productType === "customized" ? "1fr 1fr 1fr" : "1fr 1fr",
+            gap: "15px",
+          }}
+        >
+          {formData.productType === "customized" && (
+            <div>
+              <FormField
+                type="number"
+                name="plainProductPrice"
+                label="Plain Product Price (Optional)"
+                value={formData.plainProductPrice ?? ""}
+                onChange={handleInputChange}
+                placeholder="0"
+                step="1"
+                min="0"
+                info="Price for this SKU without customization (shown on the storefront “buy without customization” line). Leave empty to use the effective catalog price."
+              />
+            </div>
+          )}
           <div>
             <FormField
               type="number"
@@ -502,6 +550,232 @@ const ProductDetailsTab = ({
               min="0"
             />
           </div>
+          <div style={{ gridColumn: "1 / -1", marginTop: "8px" }}>
+            <h4
+              style={{
+                fontSize: "18px",
+                fontWeight: "600",
+                marginBottom: "16px",
+                color: "#444444",
+                borderBottom: "2px solid #444444",
+                paddingBottom: "12px",
+                paddingTop: "8px",
+                textTransform: "uppercase",
+                letterSpacing: "0.03em",
+              }}
+            >
+              Quantity discounts
+            </h4>
+            <p style={{ fontSize: "12px", color: "#6b7280", marginBottom: "14px" }}>
+              Extra percent off the effective unit price (after discount price, if any) when the customer buys in these quantity bands.
+            </p>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))",
+                gap: "12px",
+              }}
+            >
+              {(formData.quantityTierDiscounts || ["", "", "", ""]).map((val, i) => (
+                <div key={i}>
+                  <FormField
+                    type="number"
+                    name={`quantityTierDiscounts__${i}`}
+                    label={quantityTierLabels[i] || `Band ${i + 1}`}
+                    value={val}
+                    onChange={handleInputChange}
+                    placeholder="0"
+                    step="0.1"
+                    min="0"
+                    max="100"
+                    info="% off"
+                  />
+                </div>
+              ))}
+            </div>
+          </div>
+          {formData.productType === "customized" && onPrintSidePricingChange && (
+            <div style={{ gridColumn: "1 / -1", marginTop: "8px" }}>
+              <h4
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "600",
+                  marginBottom: "20px",
+                  color: "#444444",
+                  borderBottom: "2px solid #444444",
+                  paddingBottom: "12px",
+                  paddingTop: "8px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.03em",
+                }}
+              >
+                Print Sides
+              </h4>
+              <p style={{ fontSize: "12px", color: "#6b7280", marginBottom: "14px" }}>
+                Options come from <strong>Print Side Manager</strong>. Enable each side and set its add-on price (same currency as base price).
+              </p>
+              {printSidesForProduct.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "#9ca3af", fontStyle: "italic" }}>
+                  No print sides yet. Add them under Product attributes → Print Side Manager.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  {printSidesForProduct.map((def) => {
+                    const id = String(def._id)
+                    const side = formData.printSidePricing?.[id] || { enabled: false, price: "" }
+                    const inactive = def.isActive === false
+                    return (
+                      <div
+                        key={id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          padding: "12px 14px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "8px",
+                          backgroundColor: "#fafafa",
+                          opacity: inactive ? 0.75 : 1,
+                        }}
+                      >
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "130px", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(side.enabled)}
+                            onChange={(e) => onPrintSidePricingChange(id, "enabled", e.target.checked)}
+                          />
+                          <span style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>
+                            {def.name}
+                            {inactive ? " (inactive)" : ""}
+                          </span>
+                        </label>
+                        <div style={{ flex: 1, minWidth: "100px" }}>
+                          <label style={{ fontSize: "11px", color: "#6b7280", display: "block", marginBottom: "4px" }}>
+                            Price (add-on)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            disabled={!side.enabled}
+                            value={side.price === "" || side.price == null ? "" : side.price}
+                            onChange={(e) => onPrintSidePricingChange(id, "price", e.target.value)}
+                            placeholder="0"
+                            style={{
+                              width: "100%",
+                              padding: "8px 10px",
+                              fontSize: "14px",
+                              border: "1px solid #d1d5db",
+                              borderRadius: "6px",
+                              backgroundColor: side.enabled ? "#fff" : "#f3f4f6",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {formData.productType === "customized" && onAddOnPricingChange && (
+            <div style={{ gridColumn: "1 / -1", marginTop: "8px" }}>
+              <h4
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "600",
+                  marginBottom: "20px",
+                  color: "#444444",
+                  borderBottom: "2px solid #444444",
+                  paddingBottom: "12px",
+                  paddingTop: "8px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.03em",
+                }}
+              >
+                Add Ons
+              </h4>
+              <p style={{ fontSize: "12px", color: "#6b7280", marginBottom: "14px" }}>
+                Options come from <strong>Product Add-ons Manager</strong>. Enable each add-on and set its price when applicable.
+              </p>
+              {productAddonsForProduct.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "#9ca3af", fontStyle: "italic" }}>
+                  No add-ons yet. Add them under Product attributes → Product Add-ons Manager.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  {productAddonsForProduct.map((def) => {
+                    const id = String(def._id)
+                    const opt = formData.addOnPricing?.[id] || { enabled: false, price: "" }
+                    const inactive = def.isActive === false
+                    return (
+                      <div
+                        key={id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          padding: "12px 14px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "8px",
+                          backgroundColor: "#fafafa",
+                          opacity: inactive ? 0.75 : 1,
+                        }}
+                      >
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "130px", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(opt.enabled)}
+                            onChange={(e) => onAddOnPricingChange(id, "enabled", e.target.checked)}
+                          />
+                          <span style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>
+                            {def.name}
+                            {inactive ? " (inactive)" : ""}
+                          </span>
+                        </label>
+                        <div style={{ flex: 1, minWidth: "100px" }}>
+                          <label style={{ fontSize: "11px", color: "#6b7280", display: "block", marginBottom: "4px" }}>
+                            Price (add-on)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            disabled={!opt.enabled}
+                            value={opt.price === "" || opt.price == null ? "" : opt.price}
+                            onChange={(e) => onAddOnPricingChange(id, "price", e.target.value)}
+                            placeholder="0"
+                            style={{
+                              width: "100%",
+                              padding: "8px 10px",
+                              fontSize: "14px",
+                              border: "1px solid #d1d5db",
+                              borderRadius: "6px",
+                              backgroundColor: opt.enabled ? "#fff" : "#f3f4f6",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
           <div>
             <FormField
               type="select"
@@ -575,107 +849,6 @@ const ProductDetailsTab = ({
           )}
         </div>
       </div>
-
-      {/* Customization Settings - Only for Customized Products */}
-      {formData.productType === "customized" && (
-        <div style={{ marginBottom: "30px" }}>
-          <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "20px", color: "#444444", borderBottom: "2px solid #444444", paddingBottom: "12px", paddingTop: "8px" }}>
-            Customization Settings
-          </h3>
-          <div style={{ marginBottom: "20px" }}>
-            <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <FormField
-                type="checkbox"
-                name="livePreviewEnabled"
-                checked={formData.livePreviewEnabled}
-                onChange={handleInputChange}
-              />
-              <span>Enable Live Preview (Frontend supports real-time preview)</span>
-            </label>
-          </div>
-          <div style={{ marginBottom: "20px", padding: "15px", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
-            <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "10px" }}>Text Customization</h4>
-            <label style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-              <FormField
-                type="checkbox"
-                name="textCustomization_enabled"
-                checked={formData.textCustomization.enabled}
-                onChange={handleInputChange}
-              />
-              <span>Enable Text Customization</span>
-            </label>
-            {formData.textCustomization.enabled && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px" }}>
-                <FormField
-                  type="number"
-                  name="textCustomization_maxCharacters"
-                  label="Max Characters"
-                  value={formData.textCustomization.maxCharacters}
-                  onChange={handleInputChange}
-                  min="1"
-                />
-                <FormField
-                  type="text"
-                  name="textCustomization_placeholder"
-                  label="Placeholder Text"
-                  value={formData.textCustomization.placeholder}
-                  onChange={handleInputChange}
-                />
-                <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <FormField
-                    type="checkbox"
-                    name="textCustomization_required"
-                    checked={formData.textCustomization.required}
-                    onChange={handleInputChange}
-                  />
-                  <span>Required</span>
-                </label>
-              </div>
-            )}
-          </div>
-          <div style={{ padding: "15px", backgroundColor: "#f8f9fa", borderRadius: "4px" }}>
-            <h4 style={{ fontSize: "16px", fontWeight: "600", marginBottom: "10px" }}>Image Upload Customization</h4>
-            <label style={{ display: "flex", alignItems: "center", gap: "10px", marginBottom: "10px" }}>
-              <FormField
-                type="checkbox"
-                name="imageUploadCustomization_enabled"
-                checked={formData.imageUploadCustomization.enabled}
-                onChange={handleInputChange}
-              />
-              <span>Enable Image Upload Customization</span>
-            </label>
-            {formData.imageUploadCustomization.enabled && (
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px", marginTop: "10px" }}>
-                <FormField
-                  type="text"
-                  name="imageUploadCustomization_allowedFileTypes"
-                  label="Allowed File Types (comma-separated)"
-                  value={formData.imageUploadCustomization.allowedFileTypes.join(", ")}
-                  onChange={handleInputChange}
-                  placeholder="jpg, jpeg, png"
-                />
-                <FormField
-                  type="number"
-                  name="imageUploadCustomization_maxFileSize"
-                  label="Max File Size (MB)"
-                  value={formData.imageUploadCustomization.maxFileSize}
-                  onChange={handleInputChange}
-                  min="1"
-                />
-                <label style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                  <FormField
-                    type="checkbox"
-                    name="imageUploadCustomization_required"
-                    checked={formData.imageUploadCustomization.required}
-                    onChange={handleInputChange}
-                  />
-                  <span>Required</span>
-                </label>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
       {/* Shipping & Fulfillment */}
       <div style={{ marginBottom: "30px" }}>

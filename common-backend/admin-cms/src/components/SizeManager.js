@@ -14,10 +14,31 @@ const SizeManager = () => {
     description: "",
     image: null,
     isActive: false,
+    chestInch: "",
+    chestCm: "",
+    frontLengthInch: "",
+    frontLengthCm: "",
+    sleeveLengthInch: "",
+    sleeveLengthCm: "",
   }
 
   const [formData, setFormData] = useState(initialFormData)
   const [currentImageUrl, setCurrentImageUrl] = useState(null)
+
+  /** 1 in = 2.54 cm — used when inch fields change to fill cm textboxes (rounded whole cm) */
+  const inchesToCmDisplay = (inchStr) => {
+    const trimmed = String(inchStr ?? "").trim()
+    if (trimmed === "") return ""
+    const n = parseFloat(trimmed.replace(",", "."))
+    if (!Number.isFinite(n)) return ""
+    return String(Math.round(n * 2.54))
+  }
+
+  const INCH_TO_CM_FIELD = {
+    chestInch: "chestCm",
+    frontLengthInch: "frontLengthCm",
+    sleeveLengthInch: "sleeveLengthCm",
+  }
   const [searchQuery, setSearchQuery] = useState("") // Search query state
   const [statusFilter, setStatusFilter] = useState("all") // 'all', 'active', 'inactive', 'deleted'
 
@@ -143,7 +164,16 @@ const SizeManager = () => {
         setError("")
       }
     } else {
-      setFormData({ ...formData, [name]: value })
+      const cmField = INCH_TO_CM_FIELD[name]
+      if (cmField) {
+        setFormData({
+          ...formData,
+          [name]: value,
+          [cmField]: inchesToCmDisplay(value),
+        })
+      } else {
+        setFormData({ ...formData, [name]: value })
+      }
     }
   }
 
@@ -221,6 +251,15 @@ const SizeManager = () => {
       // Check if image is a File object (not a string URL from existing image)
       const hasNewImage = formData.image && formData.image instanceof File
       
+      const measurementPayload = {
+        chestInch: formData.chestInch === "" ? "" : formData.chestInch,
+        chestCm: formData.chestCm === "" ? "" : formData.chestCm,
+        frontLengthInch: formData.frontLengthInch === "" ? "" : formData.frontLengthInch,
+        frontLengthCm: formData.frontLengthCm === "" ? "" : formData.frontLengthCm,
+        sleeveLengthInch: formData.sleeveLengthInch === "" ? "" : formData.sleeveLengthInch,
+        sleeveLengthCm: formData.sleeveLengthCm === "" ? "" : formData.sleeveLengthCm,
+      }
+
       if (hasNewImage) {
         // Use FormData for file upload
         sizeData = new FormData()
@@ -229,6 +268,7 @@ const SizeManager = () => {
         sizeData.append("description", formData.description.trim() || "")
         sizeData.append("isActive", formData.isActive ? "true" : "false")
         sizeData.append("image", formData.image)
+        Object.entries(measurementPayload).forEach(([k, v]) => sizeData.append(k, v != null ? String(v) : ""))
       } else {
         // Use JSON for better boolean handling
         sizeData = {
@@ -237,7 +277,8 @@ const SizeManager = () => {
           description: formData.description.trim() || "",
           isActive: formData.isActive,
           // If editing and no new image, send null to remove image, or keep existing
-          image: editingId && !currentImageUrl ? null : (currentImageUrl || null)
+          image: editingId && !currentImageUrl ? null : (currentImageUrl || null),
+          ...measurementPayload,
         }
       }
 
@@ -298,6 +339,7 @@ const SizeManager = () => {
 
   // Edit size
   const handleEdit = (size) => {
+    const numStr = (v) => (v != null && v !== "" && Number.isFinite(Number(v)) ? String(v) : "")
     setFormData({
       ...initialFormData,
       name: size.name || "",
@@ -305,6 +347,12 @@ const SizeManager = () => {
       description: size.description || "",
       image: null, // Reset image field for new file selection
       isActive: size.isActive !== undefined ? size.isActive : false,
+      chestInch: numStr(size.chestInch),
+      chestCm: numStr(size.chestCm),
+      frontLengthInch: numStr(size.frontLengthInch),
+      frontLengthCm: numStr(size.frontLengthCm),
+      sleeveLengthInch: numStr(size.sleeveLengthInch),
+      sleeveLengthCm: numStr(size.sleeveLengthCm),
     })
     // Only set currentImageUrl if size has a valid image
     const imageUrl = size.image && size.image.trim && size.image.trim() !== '' 
@@ -749,6 +797,37 @@ const SizeManager = () => {
           <div className="makeFlex row gap10">
             <div className="fullWidth">
               <FormField type="textarea" name="description" label="Description" value={formData.description} onChange={handleChange} placeholder="Enter Size Description" rows={3} />
+            </div>
+          </div>
+
+          <div className="makeFlex row gap10 appendBottom8">
+            <div className="fullWidth">
+              <p className="font14 textUppercase blackText fontSemiBold appendBottom12">Size chart (storefront modal)</p>
+              <p className="font12 grayText appendBottom16">Optional. Shown in the product page &quot;Size guide&quot; popup (In / Cms toggle).</p>
+            </div>
+          </div>
+          <div className="makeFlex row gap10 wrap">
+            <div className="halfWidth minWidth200">
+              <FormField type="text" name="chestInch" label="Chest (inch)" value={formData.chestInch} onChange={handleChange} placeholder="e.g. 41" />
+            </div>
+            <div className="halfWidth minWidth200">
+              <FormField type="text" name="chestCm" label="Chest (cm)" value={formData.chestCm} onChange={handleChange} placeholder="e.g. 104" />
+            </div>
+          </div>
+          <div className="makeFlex row gap10 wrap">
+            <div className="halfWidth minWidth200">
+              <FormField type="text" name="frontLengthInch" label="Front length (inch)" value={formData.frontLengthInch} onChange={handleChange} placeholder="e.g. 29.5" />
+            </div>
+            <div className="halfWidth minWidth200">
+              <FormField type="text" name="frontLengthCm" label="Front length (cm)" value={formData.frontLengthCm} onChange={handleChange} placeholder="e.g. 75" />
+            </div>
+          </div>
+          <div className="makeFlex row gap10 wrap">
+            <div className="halfWidth minWidth200">
+              <FormField type="text" name="sleeveLengthInch" label="Sleeve length (inch)" value={formData.sleeveLengthInch} onChange={handleChange} placeholder="e.g. 25.125" />
+            </div>
+            <div className="halfWidth minWidth200">
+              <FormField type="text" name="sleeveLengthCm" label="Sleeve length (cm)" value={formData.sleeveLengthCm} onChange={handleChange} placeholder="e.g. 64" />
             </div>
           </div>
 
