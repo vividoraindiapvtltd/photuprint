@@ -1,7 +1,6 @@
-import React, { useEffect, useState, useCallback, useMemo } from "react"
+import React, { useEffect, useState, useCallback } from "react"
 import api from "../api/axios"
 import { usePermissions } from "../context/PermissionContext"
-import { useAuth } from "../context/AuthContext"
 import { PageHeader, AlertMessage, FormField } from "../common"
 
 const PERIOD_OPTIONS = [
@@ -23,33 +22,18 @@ const getLoggedInUser = () => {
   return null
 }
 
-/** Mongo/API may expose `_id` or `id` */
-const getUserId = (u) => {
-  if (!u || typeof u !== "object") return ""
-  const raw = u._id ?? u.id
-  return raw != null ? String(raw) : ""
-}
-
 const IncentiveReport = () => {
   const { isSuperAdmin, role, loading: permLoading } = usePermissions()
-  const { user: adminSession } = useAuth()
-
-  const profileUser = useMemo(() => {
-    const fromAuth = adminSession?.user
-    return fromAuth || getLoggedInUser()
-  }, [adminSession])
-
-  /** Alias for any code paths expecting `loggedInUser` (same object as profileUser) */
-  const loggedInUser = profileUser
+  const [loggedInUser] = useState(() => getLoggedInUser())
 
   // Determine agent status from both context and localStorage (sync fallback)
   const contextIsAgent = role === "editor" && !isSuperAdmin
-  const localRole = profileUser?.role
+  const localRole = loggedInUser?.role
   const isAgent = contextIsAgent || (localRole === "editor" && !isSuperAdmin)
 
   const [salesAgents, setSalesAgents] = useState([])
   const [agentId, setAgentId] = useState(() => {
-    if (localRole === "editor") return getUserId(getLoggedInUser())
+    if (localRole === "editor") return loggedInUser?._id || ""
     return ""
   })
   const [period, setPeriod] = useState("monthly")
@@ -60,13 +44,12 @@ const IncentiveReport = () => {
   const [success, setSuccess] = useState("")
   const [report, setReport] = useState(null)
 
-  // When permission context / auth loads, ensure sales agents have a stable Mongo id (_id or id)
+  // When permission context finishes loading and user is an agent, ensure agentId is set
   useEffect(() => {
-    if (permLoading) return
-    if (!isAgent) return
-    const uid = getUserId(profileUser)
-    if (uid) setAgentId((prev) => prev || uid)
-  }, [permLoading, isAgent, profileUser])
+    if (!permLoading && isAgent && loggedInUser?._id && !agentId) {
+      setAgentId(loggedInUser._id)
+    }
+  }, [permLoading, isAgent, loggedInUser, agentId])
 
   useEffect(() => {
     // Agents only see their own report — no need to fetch the agents list
@@ -96,7 +79,6 @@ const IncentiveReport = () => {
   const fetchReport = useCallback(async () => {
     if (!agentId) {
       setError("Please select a sales agent.")
-      setLoading(false)
       return
     }
     try {
@@ -105,27 +87,20 @@ const IncentiveReport = () => {
       setSuccess("")
       setReport(null)
 
-      const y = year === "" || year == null ? new Date().getFullYear() : Number(year)
       const params = {
         agentId,
         period,
-        year: Number.isFinite(y) ? y : new Date().getFullYear(),
+        year,
         _t: Date.now(),
       }
-      if (month !== "" && month != null) params.month = Number(month)
+      if (month) params.month = month
 
       const res = await api.get("/incentives/payout", { params })
       setReport(res.data)
       setSuccess("Incentive report generated successfully.")
     } catch (err) {
       console.error("Error fetching incentive report:", err)
-      const code = err.response?.data?.code
-      const msg = err.response?.data?.msg || "Failed to load incentive report."
-      if (code === "MISSING_WEBSITE_ID" || /website id/i.test(msg)) {
-        setError(`${msg} Select a website from the website switcher, then try again.`)
-      } else {
-        setError(msg)
-      }
+      setError(err.response?.data?.msg || "Failed to load incentive report.")
     } finally {
       setLoading(false)
     }

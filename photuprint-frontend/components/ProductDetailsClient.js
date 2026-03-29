@@ -138,6 +138,8 @@ export default function ProductDetailsClient({ initialProduct }) {
   /** Draft quantities for "Select multiple sizes" — drives tier total + blue chip borders. */
   const [multiSizeDraftQty, setMultiSizeDraftQty] = useState(() => ({}))
   const [selectedMaterialId, setSelectedMaterialId] = useState(null)
+  const [selectedGsmId, setSelectedGsmId] = useState(null)
+  const [selectedCapacityId, setSelectedCapacityId] = useState(null)
   const [selectedPrintSideIds, setSelectedPrintSideIds] = useState([])
   const [deliveryPincode, setDeliveryPincode] = useState("")
   const [deliveryChecking, setDeliveryChecking] = useState(false)
@@ -305,6 +307,22 @@ export default function ProductDetailsClient({ initialProduct }) {
   const variationSizeOptions = useMemo(() => buildUniqueSizeOptionsFromVariations(product), [product])
   const materialOptions = useMemo(() => buildMaterialOptionsFromProduct(product), [product])
 
+  const gsmOptions = useMemo(() => {
+    const raw = product?.gsms
+    if (!Array.isArray(raw)) return []
+    return raw
+      .map((g) => ({ _id: String(g._id ?? g.id), name: g.name ?? "" }))
+      .filter((g) => g._id)
+  }, [product?.gsms])
+
+  const capacityOptions = useMemo(() => {
+    const raw = product?.capacities
+    if (!Array.isArray(raw)) return []
+    return raw
+      .map((c) => ({ _id: String(c._id ?? c.id), name: c.name ?? "" }))
+      .filter((c) => c._id)
+  }, [product?.capacities])
+
   const apparelSizeUi = useMemo(() => {
     if (variationDefinesSize) return null
     if (!productShouldShowApparelSizeLadder(product, sizeOptions)) return null
@@ -332,7 +350,7 @@ export default function ProductDetailsClient({ initialProduct }) {
       return { _id: null, name: label, initial: label }
     })
     const options = [...ladder, ...unmapped]
-    const perVariationStock = buildVariationSizeStockByIndex(product, variationSizeOptions)
+    const perVariationStock = buildVariationSizeStockByIndex(product, variationSizeOptions, selected)
     const stockById = new Map(
       variationSizeOptions.map((opt, i) => [String(opt._id), perVariationStock[i]]),
     )
@@ -341,7 +359,7 @@ export default function ProductDetailsClient({ initialProduct }) {
       return stockById.get(String(opt._id)) ?? { available: false, left: 0 }
     })
     return { options, stock }
-  }, [variationDefinesSize, customizedPdpLayout, variationSizeOptions, product])
+  }, [variationDefinesSize, customizedPdpLayout, variationSizeOptions, product, selected])
 
   const sizeOptionsForUi = useMemo(() => {
     if (variationDefinesSize) {
@@ -500,6 +518,16 @@ export default function ProductDetailsClient({ initialProduct }) {
   /** Plain SKU has no print-side add-ons in the price breakdown. */
   const printSideAddonForPricing = plainPricingActive ? 0 : printSideAddon
 
+  const materialAddon = useMemo(() => {
+    if (!selectedMaterialId || !materialOptions.length) return 0
+    const opt = materialOptions.find((o) => String(o._id) === String(selectedMaterialId))
+    if (!opt) return 0
+    const a = Number(opt.addonPrice)
+    return Number.isFinite(a) && a >= 0 ? Math.round(a) : 0
+  }, [materialOptions, selectedMaterialId])
+
+  const materialAddonForPricing = plainPricingActive ? 0 : materialAddon
+
   const selectedPrintSides = useMemo(() => {
     if (!selectedPrintSideIds.length) return []
     const selected = new Set(selectedPrintSideIds.map(String))
@@ -518,7 +546,7 @@ export default function ProductDetailsClient({ initialProduct }) {
     () => getVolumeAdjustedUnitPrice(effectivePricingPayload, effectiveTierQty),
     [effectivePricingPayload, effectiveTierQty],
   )
-  const unitForQty = volumeUnitForQty + printSideAddonForPricing
+  const unitForQty = volumeUnitForQty + printSideAddonForPricing + materialAddonForPricing
 
   const tierQtySamples = useMemo(() => [1, 6, 11, 21], [])
   const tierBandLabels = useMemo(() => ["1-5", "6-10", "11-20", "21+"], [])
@@ -543,7 +571,7 @@ export default function ProductDetailsClient({ initialProduct }) {
     if (variationDefinesSize) {
       if (customizationApparelLadderUi) return customizationApparelLadderUi.stock
       if (customizedPdpLayout && variationSizeOptions.length > 0) {
-        return buildVariationSizeStockByIndex(product, variationSizeOptions)
+        return buildVariationSizeStockByIndex(product, variationSizeOptions, selected)
       }
       return []
     }
@@ -559,6 +587,7 @@ export default function ProductDetailsClient({ initialProduct }) {
     apparelSizeUi,
     sizeOptions.length,
     sizeStockByIndex,
+    selected,
   ])
 
   /** Sync size/material from selected variant when user picks a colour (customized + variations). */
@@ -650,6 +679,38 @@ export default function ProductDetailsClient({ initialProduct }) {
     return materialOptions.find((m) => String(m._id) === String(selectedMaterialId)) || null
   }, [selectedMaterialId, materialOptions])
 
+  useEffect(() => {
+    if (gsmOptions.length === 0) {
+      setSelectedGsmId(null)
+      return
+    }
+    setSelectedGsmId((prev) => {
+      if (prev != null && gsmOptions.some((g) => String(g._id) === String(prev))) return prev
+      return gsmOptions[0]._id
+    })
+  }, [product?._id, gsmOptions])
+
+  useEffect(() => {
+    if (capacityOptions.length === 0) {
+      setSelectedCapacityId(null)
+      return
+    }
+    setSelectedCapacityId((prev) => {
+      if (prev != null && capacityOptions.some((c) => String(c._id) === String(prev))) return prev
+      return capacityOptions[0]._id
+    })
+  }, [product?._id, capacityOptions])
+
+  const selectedGsmRow = useMemo(() => {
+    if (!selectedGsmId || !gsmOptions.length) return null
+    return gsmOptions.find((g) => String(g._id) === String(selectedGsmId)) || null
+  }, [selectedGsmId, gsmOptions])
+
+  const selectedCapacityRow = useMemo(() => {
+    if (!selectedCapacityId || !capacityOptions.length) return null
+    return capacityOptions.find((c) => String(c._id) === String(selectedCapacityId)) || null
+  }, [selectedCapacityId, capacityOptions])
+
   const cartVariant = useMemo(() => resolveCartVariantForPdp(selected), [selected])
 
   const getPricingPayloadForSizeRow = useCallback(
@@ -713,7 +774,9 @@ export default function ProductDetailsClient({ initialProduct }) {
       const sizeRow = sizeOptionsForUi.find((s) => String(s._id) === String(sizeIdStr))
       if (!sizeRow) continue
       const payload = plainPricingActive ? effectivePricingPayload : getPricingPayloadForSizeRow(sizeRow)
-      const vol = getVolumeAdjustedUnitPrice(payload, tierQty) + (plainPricingActive ? 0 : printSideAddon)
+      const vol =
+        getVolumeAdjustedUnitPrice(payload, tierQty) +
+        (plainPricingActive ? 0 : printSideAddon + materialAddon)
       sum += vol * qn
     }
     return sum
@@ -725,6 +788,7 @@ export default function ProductDetailsClient({ initialProduct }) {
     sizeOptionsForUi,
     getPricingPayloadForSizeRow,
     printSideAddon,
+    materialAddon,
     plainPricingActive,
     effectivePricingPayload,
   ])
@@ -744,6 +808,20 @@ export default function ProductDetailsClient({ initialProduct }) {
     }
     return out
   }, [showSizeSelector, sizeOptionsForUi, sizeStockForUi])
+
+  /** Real catalog sizes (not empty ladder slots). Show multi-size link when ≥2 sizes exist and ≥1 is in stock. */
+  const catalogSizeCount = useMemo(
+    () =>
+      sizeOptionsForUi.filter((s) => {
+        const id = s._id ?? s.id
+        return id != null && String(id).trim() !== ""
+      }).length,
+    [sizeOptionsForUi],
+  )
+  const showMultipleSizesEntry = useMemo(
+    () => catalogSizeCount >= 2 && multiSizeModalRows.length >= 1,
+    [catalogSizeCount, multiSizeModalRows.length],
+  )
 
   const multiSizeFooterNote = useMemo(() => {
     if (!multiSizeModalRows.length) return null
@@ -821,6 +899,8 @@ export default function ProductDetailsClient({ initialProduct }) {
           variant: variantForLine || null,
           size: sizeRow,
           material: selectedMaterialRow,
+          gsm: selectedGsmRow,
+          capacity: selectedCapacityRow,
           customDesign: plainPricingActive ? null : savedDesign || null,
           printSides:
             plainPricingActive || !(printSideOptions.length > 0 && selectedPrintSides.length > 0)
@@ -828,6 +908,7 @@ export default function ProductDetailsClient({ initialProduct }) {
               : selectedPrintSides.map(({ _id, name }) => ({ _id, name })),
           printSide: null,
           printSideAddon: plainPricingActive ? 0 : printSideOptions.length > 0 ? printSideAddon : 0,
+          materialAddon: plainPricingActive ? 0 : materialAddon,
           plainWithoutCustomization: plainPricingActive || undefined,
         })
         addedCount += 1
@@ -845,6 +926,7 @@ export default function ProductDetailsClient({ initialProduct }) {
       addToCart,
       cartVariant,
       printSideAddon,
+      materialAddon,
       printSideOptions.length,
       product,
       productId,
@@ -855,6 +937,8 @@ export default function ProductDetailsClient({ initialProduct }) {
       selected,
       selectedMaterialId,
       selectedMaterialRow,
+      selectedGsmRow,
+      selectedCapacityRow,
       selectedPrintSides,
       sizeOptionsForUi,
       sizeStockForUi,
@@ -1103,7 +1187,7 @@ export default function ProductDetailsClient({ initialProduct }) {
     const basePrice = Number(effectivePricingPayload?.price)
     const discountPrice = getEffectiveBaseUnitPrice(effectivePricingPayload)
     if (!Number.isFinite(basePrice) || basePrice < 0) return null
-    const addon = printSideAddonForPricing
+    const addon = printSideAddonForPricing + materialAddonForPricing
     const showStrike = Number.isFinite(discountPrice) && discountPrice < basePrice - 0.01
     let pct = product?.discountPercentage != null ? Math.round(Number(product.discountPercentage)) : null
     if ((pct == null || pct <= 0) && showStrike && basePrice > 0) {
@@ -1115,7 +1199,7 @@ export default function ProductDetailsClient({ initialProduct }) {
       showStrike,
       pctOff: pct != null && pct > 0 ? pct : null,
     }
-  }, [product?.price, product?.discountPercentage, effectivePricingPayload, printSideAddonForPricing])
+  }, [product?.price, product?.discountPercentage, effectivePricingPayload, printSideAddonForPricing, materialAddonForPricing])
 
   useEffect(() => {
     if (product) {
@@ -1267,10 +1351,13 @@ export default function ProductDetailsClient({ initialProduct }) {
               variant: cartVariant || null,
               size: selectedSize,
               material: selectedMaterialRow,
+              gsm: selectedGsmRow,
+              capacity: selectedCapacityRow,
               customDesign: null,
               printSides: [],
               printSide: null,
               printSideAddon: 0,
+              materialAddon: 0,
               plainWithoutCustomization: true,
             })
           } else {
@@ -1289,6 +1376,8 @@ export default function ProductDetailsClient({ initialProduct }) {
               variant: cartVariant || null,
               size: selectedSize,
               material: selectedMaterialRow,
+              gsm: selectedGsmRow,
+              capacity: selectedCapacityRow,
               customDesign: savedDesign || null,
               printSides:
                 printSideOptions.length > 0 && selectedPrintSides.length > 0
@@ -1296,6 +1385,7 @@ export default function ProductDetailsClient({ initialProduct }) {
                   : [],
               printSide: null,
               printSideAddon: printSideOptions.length > 0 ? printSideAddon : 0,
+              materialAddon,
             })
           }
           setAddToCartSuccess(true)
@@ -1737,7 +1827,7 @@ export default function ProductDetailsClient({ initialProduct }) {
                     onChange={(id) => setSelectedSizeId(id)}
                     onSizeGuideClick={() => setSizeGuideOpen(true)}
                     onNotifyClick={() => window.alert("We will notify you when this size is back in stock.")}
-                    showMultipleSizesLink={multiSizeModalRows.length >= 2}
+                    showMultipleSizesLink={showMultipleSizesEntry}
                     onOpenMultipleSizes={() => setMultiSizeModalOpen(true)}
                     multiSizeQuantities={multiSizeDraftQty}
                   />
@@ -1755,6 +1845,22 @@ export default function ProductDetailsClient({ initialProduct }) {
                   selectedId={selected?._id}
                   onChange={(_, v) => setSelected(v)}
                 />
+                {gsmOptions.length > 0 ? (
+                  <MaterialSelector
+                    label="GSM"
+                    materials={gsmOptions}
+                    selectedId={selectedGsmId}
+                    onChange={(id) => setSelectedGsmId(id)}
+                  />
+                ) : null}
+                {capacityOptions.length > 0 ? (
+                  <MaterialSelector
+                    label="Capacity"
+                    materials={capacityOptions}
+                    selectedId={selectedCapacityId}
+                    onChange={(id) => setSelectedCapacityId(id)}
+                  />
+                ) : null}
               </>
             ) : (
               <>
@@ -1766,12 +1872,28 @@ export default function ProductDetailsClient({ initialProduct }) {
                     onChange={(id) => setSelectedSizeId(id)}
                     onSizeGuideClick={() => setSizeGuideOpen(true)}
                     onNotifyClick={() => window.alert("We will notify you when this size is back in stock.")}
-                    showMultipleSizesLink={multiSizeModalRows.length >= 2}
+                    showMultipleSizesLink={showMultipleSizesEntry}
                     onOpenMultipleSizes={() => setMultiSizeModalOpen(true)}
                     multiSizeQuantities={multiSizeDraftQty}
                   />
                 ) : null}
                 <ColorSelector variants={colorOptions} selectedId={selected?._id} onChange={(_, v) => setSelected(v)} />
+                {gsmOptions.length > 0 ? (
+                  <MaterialSelector
+                    label="GSM"
+                    materials={gsmOptions}
+                    selectedId={selectedGsmId}
+                    onChange={(id) => setSelectedGsmId(id)}
+                  />
+                ) : null}
+                {capacityOptions.length > 0 ? (
+                  <MaterialSelector
+                    label="Capacity"
+                    materials={capacityOptions}
+                    selectedId={selectedCapacityId}
+                    onChange={(id) => setSelectedCapacityId(id)}
+                  />
+                ) : null}
               </>
             )}
 
@@ -1807,8 +1929,8 @@ export default function ProductDetailsClient({ initialProduct }) {
                     const volPct = tierColumnExtraPercents[i]
                     const showBulkStrike =
                       volPct > 0 && baseUnit > 0 && unit < baseUnit - 0.01
-                    const displayBase = baseUnit + printSideAddonForPricing
-                    const displayUnit = unit + printSideAddonForPricing
+                    const displayBase = baseUnit + printSideAddonForPricing + materialAddonForPricing
+                    const displayUnit = unit + printSideAddonForPricing + materialAddonForPricing
                     return (
                       <div
                         key={i}
@@ -2274,8 +2396,12 @@ export default function ProductDetailsClient({ initialProduct }) {
                       quantityDiscountTiers: product?.quantityDiscountTiers || null,
                       quantity: effectiveTierQty, image,
                       variant: cartVariant || null, size: selectedSize,
-                      material: selectedMaterialRow, customDesign: null,
+                      material: selectedMaterialRow,
+                      gsm: selectedGsmRow,
+                      capacity: selectedCapacityRow,
+                      customDesign: null,
                       printSides: [], printSide: null, printSideAddon: 0,
+                      materialAddon: 0,
                       plainWithoutCustomization: true,
                     })
                   } else {
@@ -2286,12 +2412,15 @@ export default function ProductDetailsClient({ initialProduct }) {
                       quantityDiscountTiers: product?.quantityDiscountTiers || null,
                       quantity, image, variant: cartVariant || null,
                       size: selectedSize, material: selectedMaterialRow,
+                      gsm: selectedGsmRow,
+                      capacity: selectedCapacityRow,
                       customDesign: savedDesign || null,
                       printSides: printSideOptions.length > 0 && selectedPrintSides.length > 0
                         ? selectedPrintSides.map(({ _id, name }) => ({ _id, name }))
                         : [],
                       printSide: null,
                       printSideAddon: printSideOptions.length > 0 ? printSideAddon : 0,
+                      materialAddon,
                     })
                   }
                   setAddToCartSuccess(true)

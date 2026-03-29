@@ -23,7 +23,7 @@ export default function MaterialSelector({ materials = [], selectedId, onChange,
                   : "border border-gray-300 bg-white text-gray-700 hover:border-gray-400"
               }`}
             >
-              {m.name}
+              {m.addonPrice != null && Number(m.addonPrice) > 0 ? `${m.name} (+₹${m.addonPrice})` : m.name}
             </button>
           )
         })}

@@ -76,12 +76,40 @@ const StatCard = ({ title, value, icon, color, subtitle, onClick, clickable = fa
 export default function DashboardHome() {
   const navigate = useNavigate();
   const [stats, setStats] = useState(null);
+  const [recentClients, setRecentClients] = useState([]);
+  const [recentOrders, setRecentOrders] = useState([]);
+  const [recentUsers, setRecentUsers] = useState([]);
+  const [recentReviews, setRecentReviews] = useState([]);
+  const [recentTestimonials, setRecentTestimonials] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
   useEffect(() => {
     fetchDashboardStats();
   }, []);
+
+  useEffect(() => {
+    if (!stats) return;
+    const fetchRecent = async () => {
+      try {
+        const [clientsRes, ordersRes, usersRes, reviewsRes, testimonialsRes] = await Promise.all([
+          api.get('/clients/recent?limit=10'),
+          api.get('/orders?limit=10'),
+          api.get('/users?limit=10'),
+          api.get('/reviews?limit=10&page=1'),
+          api.get('/testimonials?limit=10&page=1')
+        ]);
+        setRecentClients(Array.isArray(clientsRes.data) ? clientsRes.data : []);
+        setRecentOrders(Array.isArray(ordersRes.data) ? ordersRes.data : []);
+        setRecentUsers(Array.isArray(usersRes.data) ? usersRes.data : []);
+        setRecentReviews(Array.isArray(reviewsRes.data?.reviews) ? reviewsRes.data.reviews : []);
+        setRecentTestimonials(Array.isArray(testimonialsRes.data?.testimonials) ? testimonialsRes.data.testimonials : []);
+      } catch (err) {
+        console.error('Error fetching recent data:', err);
+      }
+    };
+    fetchRecent();
+  }, [stats]);
 
   const fetchDashboardStats = async () => {
     try {
@@ -244,6 +272,72 @@ export default function DashboardHome() {
             onClick={() => navigate('/dashboard/addorder')}
           />
         </div>
+
+        {/* Recent orders */}
+        {recentOrders.length > 0 && (
+          <div style={{ marginTop: '24px', background: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', margin: 0 }}>
+                Recent orders
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/addorder')}
+                style={{
+                  padding: '8px 16px',
+                  background: '#3B82F6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                View all
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #E5E7EB', color: '#6B7280', fontWeight: '600', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 12px' }}>Order</th>
+                    <th style={{ padding: '10px 12px' }}>Customer</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                    <th style={{ padding: '10px 12px' }}>Amount</th>
+                    <th style={{ padding: '10px 12px' }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentOrders.slice(0, 10).map((o) => (
+                    <tr
+                      key={o._id}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
+                      onClick={() => navigate('/dashboard/addorder')}
+                    >
+                      <td style={{ padding: '12px', fontWeight: '500', color: '#1F2937' }}>{o.orderNumber || '-'}</td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{o.user?.name || o.shippingAddress?.name || '-'}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          background: o.orderStatus === 'delivered' ? '#D1FAE5' : o.orderStatus === 'cancelled' ? '#FEE2E2' : '#DBEAFE',
+                          color: o.orderStatus === 'delivered' ? '#065F46' : o.orderStatus === 'cancelled' ? '#991B1B' : '#1E40AF'
+                        }}>
+                          {o.orderStatus || '-'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{formatCurrency(o.totalAmount ?? 0)}</td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{o.createdAt ? new Date(o.createdAt).toLocaleDateString() : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Revenue Section */}
@@ -281,6 +375,142 @@ export default function DashboardHome() {
             subtitle="All time"
           />
         </div>
+      </div>
+
+      {/* Lead Management Section */}
+      <div style={{ marginBottom: '40px' }}>
+        <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#374151', marginBottom: '20px' }}>
+          Lead Management
+        </h2>
+        <div className="gridStyle" style={{ gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))' }}>
+          <StatCard
+            title="New leads"
+            value={stats.clients?.leads ?? 0}
+            icon="🎯"
+            color="orange"
+            subtitle="Leads in pipeline"
+            clickable={true}
+            onClick={() => navigate('/dashboard/clients?status=lead')}
+          />
+          <StatCard
+            title="New today"
+            value={stats.clients?.today ?? 0}
+            icon="📥"
+            color="blue"
+            subtitle="Added today"
+            clickable={true}
+            onClick={() => navigate('/dashboard/clients?filter=today')}
+          />
+          <StatCard
+            title="This week"
+            value={stats.clients?.thisWeek ?? 0}
+            icon="📊"
+            color="indigo"
+            subtitle="Last 7 days"
+            clickable={true}
+            onClick={() => navigate('/dashboard/clients?filter=weekly')}
+          />
+          <StatCard
+            title="Active clients"
+            value={stats.clients?.activeClients ?? 0}
+            icon="✅"
+            color="green"
+            subtitle="Active status"
+            clickable={true}
+            onClick={() => navigate('/dashboard/clients?status=active')}
+          />
+          <StatCard
+            title="Total leads"
+            value={stats.clients?.total ?? 0}
+            icon="👥"
+            color="purple"
+            subtitle="All leads (all statuses)"
+            clickable={true}
+            onClick={() => navigate('/dashboard/clients')}
+          />
+          <StatCard
+            title="Upcoming follow-ups"
+            value={stats.clients?.upcomingFollowUps ?? 0}
+            icon="📅"
+            color="teal"
+            subtitle="Next 7 days"
+            clickable={true}
+            onClick={() => navigate('/dashboard/clients?filter=followups')}
+          />
+        </div>
+
+        {/* New leads / Recent clients list */}
+        {recentClients.length > 0 && (
+          <div style={{ marginTop: '24px', background: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', margin: 0 }}>
+                Recent clients
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/clients')}
+                style={{
+                  padding: '8px 16px',
+                  background: '#3B82F6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                View all
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #E5E7EB', color: '#6B7280', fontWeight: '600', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 12px' }}>Name</th>
+                    <th style={{ padding: '10px 12px' }}>Company</th>
+                    <th style={{ padding: '10px 12px' }}>Product</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                    <th style={{ padding: '10px 12px' }}>Contact</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentClients.map((c) => (
+                    <tr
+                      key={c._id}
+                      style={{
+                        borderBottom: '1px solid #F3F4F6',
+                        cursor: 'pointer'
+                      }}
+                      onClick={() => navigate('/dashboard/clients')}
+                    >
+                      <td style={{ padding: '12px' }}>
+                        <span style={{ fontWeight: '500', color: '#1F2937' }}>
+                          {[c.firstName, c.lastName].filter(Boolean).join(' ') || c.clientId || '-'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{c.company || '-'}</td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{c.productName || '-'}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          background: c.status === 'lead' ? '#FEF3C7' : c.status === 'active' ? '#D1FAE5' : c.status === 'prospect' ? '#DBEAFE' : '#F3F4F6',
+                          color: c.status === 'lead' ? '#92400E' : c.status === 'active' ? '#065F46' : c.status === 'prospect' ? '#1E40AF' : '#374151'
+                        }}>
+                          {c.status || '-'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{c.email || c.phone || '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Users Section */}
@@ -326,6 +556,70 @@ export default function DashboardHome() {
             onClick={() => navigate('/dashboard/adduser')}
           />
         </div>
+
+        {/* Recent users */}
+        {recentUsers.length > 0 && (
+          <div style={{ marginTop: '24px', background: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', margin: 0 }}>
+                Recent users
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/adduser')}
+                style={{
+                  padding: '8px 16px',
+                  background: '#3B82F6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                View all
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #E5E7EB', color: '#6B7280', fontWeight: '600', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 12px' }}>Name</th>
+                    <th style={{ padding: '10px 12px' }}>Email</th>
+                    <th style={{ padding: '10px 12px' }}>Role</th>
+                    <th style={{ padding: '10px 12px' }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentUsers.slice(0, 10).map((u) => (
+                    <tr
+                      key={u._id}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
+                      onClick={() => navigate('/dashboard/adduser')}
+                    >
+                      <td style={{ padding: '12px', fontWeight: '500', color: '#1F2937' }}>{u.name || '-'}</td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{u.email || '-'}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          background: u.role === 'admin' ? '#E0E7FF' : '#F3F4F6',
+                          color: u.role === 'admin' ? '#3730A3' : '#374151'
+                        }}>
+                          {u.role || '-'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{u.createdAt ? new Date(u.createdAt).toLocaleDateString() : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Products Section */}
@@ -495,13 +789,79 @@ export default function DashboardHome() {
                   </div>
                 </div>
               ))}
+</div>
+          </div>
+        )}
+
+        {/* Recent reviews */}
+        {recentReviews.length > 0 && (
+          <div style={{ marginTop: '24px', background: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', margin: 0 }}>
+                Recent reviews
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/reviewmanager')}
+                style={{
+                  padding: '8px 16px',
+                  background: '#3B82F6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                View all
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #E5E7EB', color: '#6B7280', fontWeight: '600', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 12px' }}>Product</th>
+                    <th style={{ padding: '10px 12px' }}>Rating</th>
+                    <th style={{ padding: '10px 12px' }}>Comment</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                    <th style={{ padding: '10px 12px' }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentReviews.slice(0, 10).map((r) => (
+                    <tr
+                      key={r._id}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
+                      onClick={() => navigate('/dashboard/reviewmanager')}
+                    >
+                      <td style={{ padding: '12px', fontWeight: '500', color: '#1F2937' }}>{r.productId?.name || r.productName || '-'}</td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{'⭐'.repeat(r.rating || 0)}</td>
+                      <td style={{ padding: '12px', color: '#6B7280', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{r.comment || r.title || '-'}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          background: r.status === 'approved' ? '#D1FAE5' : r.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
+                          color: r.status === 'approved' ? '#065F46' : r.status === 'rejected' ? '#991B1B' : '#92400E'
+                        }}>
+                          {r.status || '-'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
       </div>
 
       {/* Testimonials Section */}
-      <div style={{ marginBottom: '40px' }}>
+        <div style={{ marginBottom: '40px' }}>
         <h2 style={{ fontSize: '20px', fontWeight: '600', color: '#374151', marginBottom: '20px' }}>
           Customer Testimonials
         </h2>
@@ -671,6 +1031,72 @@ export default function DashboardHome() {
                   </div>
                 </div>
               ))}
+            </div>
+          </div>
+        )}
+
+        {/* Recent testimonials */}
+        {recentTestimonials.length > 0 && (
+          <div style={{ marginTop: '24px', background: 'white', borderRadius: '12px', padding: '24px', boxShadow: '0 2px 8px rgba(0,0,0,0.1)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+              <h3 style={{ fontSize: '18px', fontWeight: '600', color: '#374151', margin: 0 }}>
+                Recent testimonials
+              </h3>
+              <button
+                type="button"
+                onClick={() => navigate('/dashboard/testimonialmanager')}
+                style={{
+                  padding: '8px 16px',
+                  background: '#3B82F6',
+                  color: 'white',
+                  border: 'none',
+                  borderRadius: '8px',
+                  fontSize: '14px',
+                  cursor: 'pointer',
+                  fontWeight: '500'
+                }}
+              >
+                View all
+              </button>
+            </div>
+            <div style={{ overflowX: 'auto' }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '14px' }}>
+                <thead>
+                  <tr style={{ borderBottom: '2px solid #E5E7EB', color: '#6B7280', fontWeight: '600', textAlign: 'left' }}>
+                    <th style={{ padding: '10px 12px' }}>Author</th>
+                    <th style={{ padding: '10px 12px' }}>Rating</th>
+                    <th style={{ padding: '10px 12px' }}>Testimonial</th>
+                    <th style={{ padding: '10px 12px' }}>Status</th>
+                    <th style={{ padding: '10px 12px' }}>Date</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {recentTestimonials.slice(0, 10).map((t) => (
+                    <tr
+                      key={t._id}
+                      style={{ borderBottom: '1px solid #F3F4F6', cursor: 'pointer' }}
+                      onClick={() => navigate('/dashboard/testimonialmanager')}
+                    >
+                      <td style={{ padding: '12px', fontWeight: '500', color: '#1F2937' }}>{t.name || t.company || '-'}</td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{'⭐'.repeat(t.rating || 0)}</td>
+                      <td style={{ padding: '12px', color: '#6B7280', maxWidth: '200px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{t.testimonial || '-'}</td>
+                      <td style={{ padding: '12px' }}>
+                        <span style={{
+                          padding: '4px 8px',
+                          borderRadius: '12px',
+                          fontSize: '12px',
+                          fontWeight: '500',
+                          background: t.status === 'approved' ? '#D1FAE5' : t.status === 'rejected' ? '#FEE2E2' : '#FEF3C7',
+                          color: t.status === 'approved' ? '#065F46' : t.status === 'rejected' ? '#991B1B' : '#92400E'
+                        }}>
+                          {t.status || '-'}
+                        </span>
+                      </td>
+                      <td style={{ padding: '12px', color: '#6B7280' }}>{t.createdAt ? new Date(t.createdAt).toLocaleDateString() : '-'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </div>
         )}

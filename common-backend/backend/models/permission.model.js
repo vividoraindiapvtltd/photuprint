@@ -146,6 +146,9 @@ permissionSchema.statics.seedDefaultPermissions = async function() {
     { key: "clients_create", label: "Create Clients", module: "clients", action: "create", sortOrder: 2 },
     { key: "clients_edit", label: "Edit Clients", module: "clients", action: "edit", sortOrder: 3 },
     { key: "clients_delete", label: "Delete Clients", module: "clients", action: "delete", sortOrder: 4 },
+    { key: "leads_download_view", label: "Download Leads", module: "clients", action: "view", sortOrder: 5 },
+    { key: "incentives_view", label: "View Incentive Manager", module: "clients", action: "view", sortOrder: 6 },
+    { key: "incentive_report_view", label: "View Incentive Report", module: "clients", action: "view", sortOrder: 7 },
     
     // Reviews
     { key: "reviews_view", label: "View Reviews", module: "reviews", action: "view", sortOrder: 1 },

@@ -8,6 +8,7 @@ function buildVariantImageUrl(imageUrl) {
   const base = getUploadBaseURL();
   const trimmed = imageUrl.trim();
   if (!trimmed) return null;
+  if (trimmed.startsWith("blob:")) return trimmed;
   if (trimmed.startsWith("http://") || trimmed.startsWith("https://")) {
     if (trimmed.includes("/backend/uploads/") || trimmed.includes("/Users/")) {
       const filename = trimmed.split("/").pop();
@@ -22,6 +23,51 @@ function buildVariantImageUrl(imageUrl) {
   if (trimmed.startsWith("/uploads/")) return `${base}${trimmed}`;
   if (trimmed.startsWith("uploads/")) return `${base}/${trimmed}`;
   return `${base}/uploads/${trimmed}`;
+}
+
+/**
+ * Selling price for display: variant.discountedPrice, else parent product sale (form),
+ * else MRP. Variants created earlier often only have variant.price copied — product.discountedPrice
+ * lives on the product, not on each variant document until saved.
+ */
+function getVariantDisplayPrice(variant, productBasePrice, productDiscountPrice) {
+  const num = (v) => {
+    if (v == null || v === "") return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  };
+  const variantMrp = num(variant?.price);
+  const productMrp = num(productBasePrice);
+  const mrp = variantMrp != null && variantMrp > 0 ? variantMrp : (productMrp ?? 0);
+
+  const variantSale = num(variant?.discountedPrice);
+  const productSale = num(productDiscountPrice);
+
+  const selling =
+    variantSale != null
+      ? variantSale
+      : productSale != null
+        ? productSale
+        : mrp;
+
+  const showStrike = mrp > 0 && selling < mrp;
+  return { selling, mrp, hasDiscount: showStrike };
+}
+
+function defaultVariantDiscountedField(variant, productDiscountPrice) {
+  if (variant?.discountedPrice != null && variant.discountedPrice !== "") return variant.discountedPrice;
+  return productDiscountPrice != null && productDiscountPrice !== "" ? productDiscountPrice : "";
+}
+
+function stockDisplayLabel(stock) {
+  if (stock === -1) return "Unlimited";
+  return String(stock ?? 0);
+}
+
+function parseStockFromInput(value) {
+  if (value === "" || value === undefined || value === null) return 0;
+  const n = parseInt(String(value).trim(), 10);
+  return Number.isNaN(n) ? 0 : n;
 }
 
 /**
@@ -130,17 +176,28 @@ const CreateVariantsForm = ({
   onCreate,
   loading,
   generatedCount,
-  requiredAttributes = ["color", "size"],
+  requiredAttributes = ["color"],
   attributeOrder: attributeOrderProp,
 }) => {
   // Check if all required attributes have at least one value selected
   const isDisabled = loading || requiredAttributes.some(
-    attr => !selectedAttributes[attr]?.length
+    (attr) => !(selectedAttributes[attr]?.length > 0)
   );
 
   // Use prop order for display; include material if available. Default: color, size, material
   const baseOrder = Array.isArray(attributeOrderProp) && attributeOrderProp.length > 0 ? [...attributeOrderProp] : ["color", "size"];
   const attributeOrder = baseOrder.includes("material") || !availableAttributes.material?.length ? baseOrder : [...baseOrder, "material"];
+
+  const toggleAttributeId = (attr, rawId) => {
+    const id = String(rawId);
+    const current = (selectedAttributes[attr] || []).map(String);
+    const next = current.includes(id) ? current.filter((x) => x !== id) : [...current, id];
+    onAttributeChange(attr, next);
+  };
+
+  const requiredLabel = requiredAttributes
+    .map((a) => a.charAt(0).toUpperCase() + a.slice(1))
+    .join(" and ");
 
   return (
     <div
@@ -155,6 +212,11 @@ const CreateVariantsForm = ({
       <h3 style={{ fontSize: "18px", fontWeight: "600", marginBottom: "15px" }}>
         Create Variants from Attributes
       </h3>
+      <p style={{ fontSize: "13px", color: "#555", marginTop: "-8px", marginBottom: "14px", lineHeight: 1.45 }}>
+        {requiredAttributes.includes("size")
+          ? "Tick one or more options in each required column. We generate every combination of the selected attributes."
+          : "Select one or more colors. One variant is created per color. Set quantity for each size on the variant cards below (sizes come from selected sizes on Product Details)."}
+      </p>
 
       <div
         style={{
@@ -164,42 +226,60 @@ const CreateVariantsForm = ({
           marginBottom: "15px",
         }}
       >
-        {/* Render attributes in specific order: Color, Size, Material */}
+        {/* Render attributes in specific order: Color, Size, Material — checkboxes work on mobile & desktop */}
         {attributeOrder.map((attr) => {
           if (!availableAttributes[attr] || availableAttributes[attr].length === 0) return null;
-          
+
+          const selectedSet = new Set((selectedAttributes[attr] || []).map(String));
+
           return (
             <div key={attr}>
-              <label
-                style={{ display: "block", marginBottom: "5px", fontWeight: "500" }}
-              >
+              <label style={{ display: "block", marginBottom: "8px", fontWeight: "500" }}>
                 {attr.charAt(0).toUpperCase() + attr.slice(1)}
                 {requiredAttributes.includes(attr) && <span style={{ color: "#dc3545" }}> *</span>}
               </label>
-              <select
-                multiple
+              <div
+                role="group"
+                aria-label={`${attr} options`}
                 style={{
                   width: "100%",
-                  padding: "8px",
+                  maxHeight: "220px",
+                  overflowY: "auto",
+                  padding: "10px",
                   borderRadius: "4px",
                   border: "1px solid #ced4da",
+                  backgroundColor: "#fff",
+                  boxSizing: "border-box",
                 }}
-                value={selectedAttributes[attr] || []}
-                onChange={(e) =>
-                  onAttributeChange(
-                    attr,
-                    Array.from(e.target.selectedOptions, (o) => o.value)
-                  )
-                }
               >
-                {availableAttributes[attr]?.map((item) => (
-                  <option key={item._id} value={item._id}>
-                    {item.name} {item.initial ? `(${item.initial})` : ""}
-                  </option>
-                )) || []}
-              </select>
-              <small style={{ color: "#666" }}>Hold Ctrl/Cmd to select multiple</small>
-              <div style={{ fontSize: "11px", color: "#666", marginTop: "4px" }}>
+                {availableAttributes[attr]?.map((item) => {
+                  const id = String(item._id);
+                  const checked = selectedSet.has(id);
+                  const labelText = `${item.name}${item.initial ? ` (${item.initial})` : ""}`;
+                  return (
+                    <label
+                      key={id}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "10px",
+                        padding: "6px 4px",
+                        cursor: "pointer",
+                        fontSize: "14px",
+                        borderRadius: "4px",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={() => toggleAttributeId(attr, item._id)}
+                      />
+                      <span>{labelText}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{ fontSize: "11px", color: "#666", marginTop: "6px" }}>
                 Selected: {selectedAttributes[attr]?.length || 0} {attr}(s)
               </div>
             </div>
@@ -215,16 +295,15 @@ const CreateVariantsForm = ({
           className="btnPrimary"
           style={{
             opacity: isDisabled ? 0.5 : 1,
-            cursor: isDisabled ? 'not-allowed' : 'pointer',
+            cursor: isDisabled ? "not-allowed" : "pointer",
           }}
         >
           {loading ? "Creating..." : `Generate ${generatedCount} Variant(s)`}
         </button>
 
-        {/* Warning if required attributes are missing (varies by variation basis) */}
         {isDisabled && !loading && (
-          <div style={{ color: "#dc3545", fontSize: "12px", marginTop: "5px" }}>
-            ⚠️ Please select at least one {requiredAttributes.map(a => a.charAt(0).toUpperCase() + a.slice(1)).join(" and one ")}.
+          <div style={{ color: "#6c757d", fontSize: "12px", marginTop: "8px", lineHeight: 1.4 }}>
+            Choose at least one {requiredLabel} above to enable generation.
           </div>
         )}
       </div>
@@ -235,7 +314,8 @@ const CreateVariantsForm = ({
 /**
  * Single Variant Row
  */
-const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes }) => {
+const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes, productQuantity = -1, productBasePrice, productDiscountPrice, colorOnlyVariations = false, productSizesForTable = [] }) => {
+  const productUnlimited = productQuantity < 0;
   // Image popup state
   const [imagePopup, setImagePopup] = useState({ isOpen: false, imageUrl: null });
   // Local state for stock input when not in edit mode
@@ -244,8 +324,9 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
 
   const normalizeImageUrl = buildVariantImageUrl;
   const [formData, setFormData] = useState({
-    price: variant.price || "",
-    stock: variant.stock || 0,
+    price: variant.price ?? "",
+    discountedPrice: defaultVariantDiscountedField(variant, productDiscountPrice),
+    stock: variant.stock !== undefined && variant.stock !== null ? variant.stock : 0,
     sku: variant.sku || "",
     isActive: variant.isActive !== undefined ? variant.isActive : true,
     primaryImage: variant.primaryImage || variant.image || null,
@@ -258,21 +339,23 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
   useEffect(() => {
     if (isEditing) {
       setFormData({
-        price: variant.price || "",
-        stock: variant.stock || 0,
+        price: variant.price ?? "",
+        discountedPrice: defaultVariantDiscountedField(variant, productDiscountPrice),
+        stock: variant.stock !== undefined && variant.stock !== null ? variant.stock : 0,
         sku: variant.sku || "",
         isActive: variant.isActive !== undefined ? variant.isActive : true,
         primaryImage: variant.primaryImage || variant.image || null,
         images: Array.isArray(variant.images) ? variant.images : []
       });
     }
-  }, [isEditing, variant._id, variant.stock, variant.price, variant.sku, variant.isActive]);
+  }, [isEditing, variant._id, variant.stock, variant.price, variant.discountedPrice, variant.sku, variant.isActive, productDiscountPrice]);
 
   // Sync localStock when variant changes
   useEffect(() => {
-    setLocalStock(variant.stock || 0);
+    setLocalStock(variant.stock !== undefined && variant.stock !== null ? variant.stock : 0);
   }, [variant.stock, variant._id]);
   const isLowStock = variant.stock !== -1 && variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
+  const displayPrice = getVariantDisplayPrice(variant, productBasePrice, productDiscountPrice);
 
   // Preview only — primary image is uploaded when user clicks "Update Variant" (multipart with ref file)
   const handlePrimaryImageChange = (e) => {
@@ -374,6 +457,7 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
             // Get attribute names from availableAttributes for better display
             const attrDisplay = [];
             for (const [key, value] of Object.entries(attrs)) {
+              if (colorOnlyVariations && !String(key).toLowerCase().includes("color")) continue;
               let displayValue = value;
               
               // Try to find the actual name from availableAttributes
@@ -413,60 +497,85 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
 
       <td style={{ padding: "12px" }}>
         {isEditing ? (
-          <input
-            type="number"
-            step="0.01"
-            value={formData.price}
-            onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
-            style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ced4da" }}
-          />
+          <div style={{ display: "flex", flexDirection: "column", gap: "6px" }}>
+            <label style={{ fontSize: "11px", color: "#666" }}>MRP</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              value={formData.price}
+              onChange={(e) => setFormData(prev => ({ ...prev, price: e.target.value }))}
+              style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ced4da" }}
+            />
+            <label style={{ fontSize: "11px", color: "#666" }}>Sale price</label>
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              placeholder="Same as MRP if empty"
+              value={formData.discountedPrice}
+              onChange={(e) => setFormData(prev => ({ ...prev, discountedPrice: e.target.value }))}
+              style={{ width: "100%", padding: "6px", borderRadius: "4px", border: "1px solid #ced4da" }}
+            />
+          </div>
         ) : (
-          <>₹{variant.price?.toFixed(2) || "0.00"}</>
+          <div>
+            <span style={{ fontWeight: 600, color: "#28a745" }}>₹{displayPrice.selling.toFixed(2)}</span>
+            {displayPrice.hasDiscount && (
+              <span style={{ marginLeft: "8px", textDecoration: "line-through", color: "#888", fontSize: "12px" }}>
+                ₹{displayPrice.mrp.toFixed(2)}
+              </span>
+            )}
+          </div>
         )}
       </td>
 
       <td style={{ padding: "12px" }}>
-        {isEditing ? (
+        {colorOnlyVariations && productSizesForTable.length > 0 ? (
+          <div>
+            <div style={{ fontWeight: "600", fontSize: "13px" }}>Total: {stockDisplayLabel(variant.stock)}</div>
+            <div style={{ fontSize: "10px", color: "#888", marginTop: "4px", maxWidth: "160px" }}>
+              Per-size qty: use <strong>card view</strong> to edit.
+            </div>
+          </div>
+        ) : isEditing ? (
           <input
             type="number"
             value={formData.stock}
             onChange={(e) => {
               const value = e.target.value;
-              // Allow empty string for user to clear the field, but store as string
               setFormData(prev => ({ ...prev, stock: value === "" ? "" : value }));
             }}
             onBlur={(e) => {
-              // Update stock immediately when user leaves the field in edit mode
-              const inputValue = e.target.value;
-              const newStock = inputValue === "" ? 0 : parseInt(inputValue) || 0;
-              const currentStock = parseInt(variant.stock) || 0;
-              // Update formData to reflect the parsed value
+              const newStock = parseStockFromInput(e.target.value);
+              const currentStock = variant.stock !== undefined && variant.stock !== null ? variant.stock : 0;
               setFormData(prev => ({ ...prev, stock: newStock }));
-              // Call onStockUpdate if value changed
               if (onStockUpdate && newStock !== currentStock) {
                 onStockUpdate(variant._id, newStock);
               }
             }}
             style={{ width: "80px", padding: "6px", borderRadius: "4px", border: "1px solid #ced4da" }}
-            min="0"
+            min={productUnlimited ? "-1" : "0"}
+            title={productUnlimited ? "Use -1 for unlimited (when product inventory is unlimited)" : "Quantity"}
           />
         ) : (
           <input
             type="number"
             value={localStock}
             onChange={(e) => {
-              // Allow immediate editing even when not in edit mode
-              const newStock = parseInt(e.target.value) || 0;
-              setLocalStock(newStock);
+              const v = e.target.value;
+              if (v === "" || v === "-") {
+                setLocalStock(v);
+                return;
+              }
+              setLocalStock(parseStockFromInput(v));
             }}
             onBlur={(e) => {
-              const newStock = parseInt(e.target.value) || 0;
-              const currentStock = parseInt(variant.stock) || 0;
+              const newStock = parseStockFromInput(e.target.value);
+              const currentStock = variant.stock !== undefined && variant.stock !== null ? variant.stock : 0;
+              setLocalStock(newStock);
               if (onStockUpdate && newStock !== currentStock) {
                 onStockUpdate(variant._id, newStock);
-              } else if (newStock !== currentStock) {
-                // Rollback if update failed or was cancelled
-                setLocalStock(currentStock);
               }
             }}
             style={{
@@ -476,11 +585,15 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
               border: "1px solid #ced4da",
               backgroundColor: variant.isOutOfStock ? "#fff5f5" : isLowStock ? "#fffbf0" : "#fff"
             }}
-            min="0"
+            min={productUnlimited ? "-1" : "0"}
+            title={productUnlimited ? "-1 = unlimited" : "Quantity"}
           />
         )}
-        {isLowStock && <div style={{ fontSize: "11px", color: "#ffc107" }}>Low Stock</div>}
-        {variant.isOutOfStock && <div style={{ fontSize: "11px", color: "#dc3545" }}>Out of Stock</div>}
+        {!isEditing && !(colorOnlyVariations && productSizesForTable.length > 0) && variant.stock === -1 && (
+          <div style={{ fontSize: "11px", color: "#0d6efd", marginTop: "4px" }}>Unlimited</div>
+        )}
+        {!(colorOnlyVariations && productSizesForTable.length > 0) && isLowStock && <div style={{ fontSize: "11px", color: "#ffc107" }}>Low Stock</div>}
+        {!(colorOnlyVariations && productSizesForTable.length > 0) && variant.isOutOfStock && <div style={{ fontSize: "11px", color: "#dc3545" }}>Out of Stock</div>}
       </td>
 
       <td style={{ padding: "12px" }}>
@@ -519,7 +632,11 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
                   e.preventDefault();
                   e.stopPropagation();
                   const primaryFile = primaryImageInputRef.current?.files?.[0] || null;
-                  onUpdate(variant._id, formData, { primaryFile });
+                  const payload = { ...formData };
+                  if (variant?.sizeStock?.length > 0) {
+                    delete payload.stock;
+                  }
+                  onUpdate(variant._id, payload, { primaryFile });
                 }} 
                 className="btnPrimary" 
                 style={{ padding: "4px 12px", fontSize: "12px" }}
@@ -848,7 +965,8 @@ const VariantRow = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpd
 /**
  * Variant Card Component
  */
-const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes }) => {
+const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes, productQuantity = -1, productBasePrice, productDiscountPrice, colorOnlyVariations = false, productSizesForTable = [] }) => {
+  const productUnlimited = productQuantity < 0;
   // Image popup state
   const [imagePopup, setImagePopup] = useState({ isOpen: false, imageUrl: null });
   const primaryImageInputRef = useRef(null);
@@ -877,17 +995,48 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
   }, [variant.images]);
 
   const [formData, setFormData] = useState({
-    price: variant.price || "",
-    stock: variant.stock || 0,
+    price: variant.price ?? "",
+    discountedPrice: defaultVariantDiscountedField(variant, productDiscountPrice),
+    stock: variant.stock !== undefined && variant.stock !== null ? variant.stock : 0,
     sku: variant.sku || "",
     isActive: variant.isActive !== undefined ? variant.isActive : true,
     primaryImage: normalizedPrimaryImage,
     images: normalizedImages
   });
 
+  const [sizeStockDraft, setSizeStockDraft] = useState({});
+
+  useEffect(() => {
+    if (!colorOnlyVariations || !productSizesForTable.length) return;
+    const next = {};
+    for (const sz of productSizesForTable) {
+      const id = String(sz._id);
+      const row = (variant.sizeStock || []).find((r) => String(r.size) === id);
+      next[id] = row != null ? row.stock : 0;
+    }
+    setSizeStockDraft(next);
+  }, [variant._id, variant.sizeStock, colorOnlyVariations, productSizesForTable]);
+
+  const buildUpdatePayload = () => {
+    const base = { ...formData };
+    if (colorOnlyVariations && productSizesForTable.length) {
+      base.sizeStock = productSizesForTable.map((sz) => {
+        const id = String(sz._id);
+        const raw = sizeStockDraft[id];
+        if (productUnlimited && (raw === -1 || raw === "-1" || String(raw).trim() === "-1")) {
+          return { size: sz._id, stock: -1 };
+        }
+        const n = parseInt(String(raw === undefined || raw === "" ? 0 : raw).trim(), 10);
+        return { size: sz._id, stock: Number.isNaN(n) ? 0 : n };
+      });
+    }
+    return base;
+  };
+
   const isEditing = editingId === variant._id;
   const isLowStock = variant.stock !== -1 && variant.stock > 0 && variant.stock <= (variant.lowStockThreshold || 10);
   const isOutOfStock = variant.stock === 0;
+  const displayPrice = getVariantDisplayPrice(variant, productBasePrice, productDiscountPrice);
 
   // Update formData when entering edit mode or variant changes
   useEffect(() => {
@@ -901,8 +1050,9 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
     
     if (isEditing) {
       setFormData({
-        price: variant.price || "",
-        stock: variant.stock || 0,
+        price: variant.price ?? "",
+        discountedPrice: defaultVariantDiscountedField(variant, productDiscountPrice),
+        stock: variant.stock !== undefined && variant.stock !== null ? variant.stock : 0,
         sku: variant.sku || "",
         isActive: variant.isActive !== undefined ? variant.isActive : true,
         primaryImage: normalizedPrimary,
@@ -916,7 +1066,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
         images: normalizedImgs.length > 0 ? normalizedImgs : (prev.images || [])
       }));
     }
-  }, [isEditing, variant._id, variant.stock, variant.price, variant.sku, variant.isActive, variant.primaryImage, variant.image, variant.images]);
+  }, [isEditing, variant._id, variant.stock, variant.price, variant.discountedPrice, variant.sku, variant.isActive, variant.primaryImage, variant.image, variant.images, productDiscountPrice]);
 
   // Get attribute display names
   const getAttributeDisplay = () => {
@@ -927,6 +1077,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
     
     const attrDisplay = [];
     for (const [key, value] of Object.entries(attrs)) {
+      if (colorOnlyVariations && !String(key).toLowerCase().includes("color")) continue;
       let displayValue = value;
       
       if (key === "color" && availableAttributes.color) {
@@ -1149,7 +1300,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
         <div style={{ fontSize: "14px", fontWeight: "600", color: "#28a745", marginBottom: "8px" }}>
           {isEditing ? (
             <div>
-              <label style={{ fontSize: "12px", color: "#666", display: "block", marginBottom: "4px" }}>Price:</label>
+              <label style={{ fontSize: "12px", color: "#666", display: "block", marginBottom: "4px" }}>MRP</label>
               <input
                 type="number"
                 value={formData.price}
@@ -1164,12 +1315,86 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
                 step="0.01"
                 min="0"
               />
+              <label style={{ fontSize: "12px", color: "#666", display: "block", marginTop: "8px", marginBottom: "4px" }}>Sale price</label>
+              <input
+                type="number"
+                value={formData.discountedPrice}
+                onChange={(e) => setFormData(prev => ({ ...prev, discountedPrice: e.target.value }))}
+                placeholder="Same as MRP if empty"
+                style={{
+                  width: "100%",
+                  padding: "4px 8px",
+                  borderRadius: "4px",
+                  border: "1px solid #ced4da",
+                  fontSize: "14px"
+                }}
+                step="0.01"
+                min="0"
+              />
             </div>
           ) : (
-            `₹${variant.price?.toFixed(2) || "0.00"}`
+            <div>
+              <span style={{ fontWeight: 700 }}>₹{displayPrice.selling.toFixed(2)}</span>
+              {displayPrice.hasDiscount && (
+                <span style={{ marginLeft: "8px", textDecoration: "line-through", color: "#888", fontSize: "13px", fontWeight: 400 }}>
+                  ₹{displayPrice.mrp.toFixed(2)}
+                </span>
+              )}
+            </div>
           )}
         </div>
         
+        {colorOnlyVariations && productSizesForTable.length > 0 ? (
+          <div style={{ fontSize: "13px", color: "#333", marginBottom: "8px" }}>
+            <div style={{ fontWeight: "600", marginBottom: "6px" }}>Size & quantity</div>
+            <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "12px" }}>
+              <thead>
+                <tr>
+                  <th style={{ textAlign: "left", padding: "4px", borderBottom: "1px solid #dee2e6" }}>Size</th>
+                  <th style={{ textAlign: "right", padding: "4px", borderBottom: "1px solid #dee2e6" }}>Qty</th>
+                </tr>
+              </thead>
+              <tbody>
+                {productSizesForTable.map((sz) => {
+                  const id = String(sz._id);
+                  const label = `${sz.name}${sz.initial ? ` (${sz.initial})` : ""}`;
+                  const raw = sizeStockDraft[id];
+                  return (
+                    <tr key={id}>
+                      <td style={{ padding: "4px", borderBottom: "1px solid #f0f0f0" }}>{label}</td>
+                      <td style={{ padding: "4px", borderBottom: "1px solid #f0f0f0", textAlign: "right" }}>
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            value={raw === undefined || raw === -1 ? (raw === -1 ? -1 : "") : raw}
+                            onChange={(e) => {
+                              const v = e.target.value;
+                              if (v === "" || v === "-") {
+                                setSizeStockDraft((prev) => ({ ...prev, [id]: v }));
+                                return;
+                              }
+                              const n = parseInt(String(v).trim(), 10);
+                              setSizeStockDraft((prev) => ({ ...prev, [id]: Number.isNaN(n) ? 0 : n }));
+                            }}
+                            style={{ width: "72px", padding: "4px", borderRadius: "4px", border: "1px solid #ced4da" }}
+                            min={productUnlimited ? "-1" : "0"}
+                            title={productUnlimited ? "-1 = unlimited for this size" : "Units in stock"}
+                          />
+                        ) : (
+                          <span>{stockDisplayLabel((variant.sizeStock || []).find((r) => String(r.size) === id)?.stock ?? 0)}</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+            <div style={{ marginTop: "6px", fontSize: "12px", color: "#666" }}>
+              <strong>Total:</strong>{" "}
+              <span style={{ fontWeight: "600", color: "#28a745" }}>{stockDisplayLabel(variant.stock)}</span>
+            </div>
+          </div>
+        ) : (
         <div style={{ fontSize: "13px", color: "#666", marginBottom: "8px" }}>
           <strong>Stock:</strong>{" "}
           {isEditing ? (
@@ -1178,17 +1403,12 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
               value={formData.stock}
               onChange={(e) => {
                 const value = e.target.value;
-                // Allow empty string for user to clear the field, but store as string
                 setFormData(prev => ({ ...prev, stock: value === "" ? "" : value }));
               }}
               onBlur={(e) => {
-                // Update stock immediately when user leaves the field
-                const inputValue = e.target.value;
-                const newStock = inputValue === "" ? 0 : parseInt(inputValue) || 0;
-                const currentStock = parseInt(variant.stock) || 0;
-                // Update formData to reflect the parsed value
+                const newStock = parseStockFromInput(e.target.value);
+                const currentStock = variant.stock !== undefined && variant.stock !== null ? variant.stock : 0;
                 setFormData(prev => ({ ...prev, stock: newStock }));
-                // Call onStockUpdate if value changed
                 if (onStockUpdate && newStock !== currentStock) {
                   onStockUpdate(variant._id, newStock);
                 }
@@ -1200,18 +1420,23 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
                 border: "1px solid #ced4da",
                 fontSize: "13px"
               }}
-              min="0"
+              min={productUnlimited ? "-1" : "0"}
+              title={productUnlimited ? "Use -1 for unlimited when product inventory is unlimited" : "Quantity"}
             />
           ) : (
             <>
               <span style={{ color: isOutOfStock ? "#dc3545" : isLowStock ? "#ffc107" : "#28a745", fontWeight: "600" }}>
-                {variant.stock || 0}
+                {stockDisplayLabel(variant.stock)}
               </span>
+              {variant.stock === -1 && (
+                <span style={{ color: "#0d6efd", marginLeft: "5px", fontSize: "12px" }}>(unlimited)</span>
+              )}
               {isLowStock && <span style={{ color: "#ffc107", marginLeft: "5px" }}>(Low Stock)</span>}
               {isOutOfStock && <span style={{ color: "#dc3545", marginLeft: "5px" }}>(Out of Stock)</span>}
             </>
           )}
         </div>
+        )}
       </div>
 
       {/* Additional Images */}
@@ -1357,7 +1582,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
                 e.preventDefault();
                 e.stopPropagation();
                 const primaryFile = primaryImageInputRef.current?.files?.[0] || null;
-                onUpdate(variant._id, formData, { primaryFile });
+                onUpdate(variant._id, buildUpdatePayload(), { primaryFile });
               }}
               className="btnPrimary"
               style={{ padding: "6px 12px", fontSize: "12px" }}
@@ -1426,7 +1651,7 @@ const VariantCard = ({ variant, editingId, onEdit, onUpdate, onCancel, onStockUp
 /**
  * Variant Card Grid
  */
-const VariantCardGrid = ({ variants, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes }) => {
+const VariantCardGrid = ({ variants, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes, productQuantity = -1, productBasePrice, productDiscountPrice, colorOnlyVariations, productSizesForTable }) => {
   if (!variants || variants.length === 0) {
     return (
       <div style={{ backgroundColor: "#fff", borderRadius: "8px", border: "1px solid #dee2e6", padding: "40px", textAlign: "center" }}>
@@ -1464,6 +1689,11 @@ const VariantCardGrid = ({ variants, editingId, onEdit, onUpdate, onCancel, onSt
             onDelete={onDelete}
             onImageUpload={onImageUpload}
             availableAttributes={availableAttributes}
+            productQuantity={productQuantity}
+            productBasePrice={productBasePrice}
+            productDiscountPrice={productDiscountPrice}
+            colorOnlyVariations={colorOnlyVariations}
+            productSizesForTable={productSizesForTable}
           />
         ))}
     </div>
@@ -1473,7 +1703,7 @@ const VariantCardGrid = ({ variants, editingId, onEdit, onUpdate, onCancel, onSt
 /**
  * Variant Table
  */
-const VariantTable = ({ variants, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes, productQuantity }) => {
+const VariantTable = ({ variants, editingId, onEdit, onUpdate, onCancel, onStockUpdate, onStatusToggle, onDelete, onImageUpload, availableAttributes, productQuantity, productBasePrice, productDiscountPrice, colorOnlyVariations, productSizesForTable }) => {
   console.log("VariantTable render - variants:", variants, "count:", variants?.length);
   
   if (!variants || variants.length === 0) {
@@ -1494,9 +1724,13 @@ const VariantTable = ({ variants, editingId, onEdit, onUpdate, onCancel, onStock
       <div style={{ padding: "15px", backgroundColor: "#f8f9fa", borderBottom: "1px solid #dee2e6" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <h3 style={{ fontSize: "18px", fontWeight: "600", margin: 0 }}>Variants ({variants.length})</h3>
-          {productQuantity >= 0 && (
+          {productQuantity >= 0 ? (
             <div style={{ fontSize: "13px", color: "#666" }}>
-              Product Quantity Limit: <strong style={{ color: "#333" }}>{productQuantity}</strong>
+              Product quantity limit: <strong style={{ color: "#333" }}>{productQuantity}</strong>
+            </div>
+          ) : (
+            <div style={{ fontSize: "13px", color: "#666" }}>
+              Product inventory: <strong style={{ color: "#0d6efd" }}>Unlimited</strong> — use variant stock <strong>-1</strong> for unlimited per variant
             </div>
           )}
         </div>
@@ -1534,6 +1768,11 @@ const VariantTable = ({ variants, editingId, onEdit, onUpdate, onCancel, onStock
                     onDelete={onDelete}
                     onImageUpload={onImageUpload}
                     availableAttributes={availableAttributes}
+                    productQuantity={productQuantity}
+                    productBasePrice={productBasePrice}
+                    productDiscountPrice={productDiscountPrice}
+                    colorOnlyVariations={colorOnlyVariations}
+                    productSizesForTable={productSizesForTable}
                   />
                 );
               })}
@@ -1547,9 +1786,10 @@ const VariantTable = ({ variants, editingId, onEdit, onUpdate, onCancel, onStock
 /**
  * Main Product Variations Component
  */
-const ProductVariationsTab = ({ productId, productName, productQuantity = -1, requiredAttributes = ["color", "size"], attributeOrder: attributeOrderProp, onVariantsChange, onNextTab }) => {
+const ProductVariationsTab = ({ productId, productName, productQuantity = -1, productBasePrice, productDiscountPrice, requiredAttributes = ["color"], attributeOrder: attributeOrderProp, productSizeIds = [], onVariantsChange, onNextTab }) => {
   const [variants, setVariants] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(false); // initial variants list fetch only
+  const [creatingVariants, setCreatingVariants] = useState(false); // POST create — do not hide whole tab
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
   const [editingVariantId, setEditingVariantId] = useState(null);
@@ -1568,7 +1808,6 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
   const lastProductIdRef = useRef(null);
   const isFetchingRef = useRef(false);
   const attributesFetchedRef = useRef(false);
-  const [refreshTrigger, setRefreshTrigger] = useState(0); // Trigger to force refresh
   const currentProductIdRef = useRef(productId); // Track current productId for async operations
   
   // Update currentProductIdRef when productId prop changes
@@ -1578,6 +1817,22 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
   }, [productId]);
 
   const memoizedProductName = useMemo(() => productName || "Product", [productName]);
+
+  const colorOnlyVariations = useMemo(
+    () =>
+      Array.isArray(requiredAttributes) &&
+      requiredAttributes.includes("color") &&
+      !requiredAttributes.includes("size"),
+    [requiredAttributes]
+  );
+
+  const productSizesForTable = useMemo(() => {
+    const ids = (productSizeIds || []).map(String).filter(Boolean);
+    const pool = availableAttributes.size || [];
+    if (ids.length === 0) return [];
+    const set = new Set(ids);
+    return pool.filter((s) => set.has(String(s._id)));
+  }, [productSizeIds, availableAttributes.size]);
 
   const normalizeImageUrl = buildVariantImageUrl;
 
@@ -1662,11 +1917,12 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
         // Extract unique values for each attribute type
         Object.keys(attrs).forEach(key => {
           const value = attrs[key];
-          if (value) {
+          if (value != null && value !== "") {
             const attrKey = key.toLowerCase();
             if (attrKey === 'size' || attrKey === 'color' || attrKey === 'material') {
-              if (!extracted[attrKey].includes(value)) {
-                extracted[attrKey].push(value);
+              const str = String(value);
+              if (!extracted[attrKey].includes(str)) {
+                extracted[attrKey].push(str);
               }
             }
           }
@@ -1684,11 +1940,10 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
       return;
     }
     
-    // Always fetch on initial mount (when lastProductIdRef.current is null)
-    // Or when productId changes, or when refreshTrigger is set
+    // Fetch on initial mount or when productId changes (no duplicate refresh after inline create)
     const isProductIdChanged = productId !== lastProductIdRef.current;
     const isInitialMount = lastProductIdRef.current === null;
-    const shouldRefresh = isInitialMount || isProductIdChanged || refreshTrigger > 0;
+    const shouldRefresh = isInitialMount || isProductIdChanged;
     
     if (!shouldRefresh) {
       console.log("ProductId unchanged and no refresh trigger, skipping variant fetch");
@@ -1701,7 +1956,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
       return;
     }
     
-    console.log("Fetching variants for productId:", productId, "refreshTrigger:", refreshTrigger, "isInitialMount:", isInitialMount);
+    console.log("Fetching variants for productId:", productId, "isInitialMount:", isInitialMount);
     
     // Update refs BEFORE starting async operation
     lastProductIdRef.current = productId;
@@ -1843,7 +2098,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
         isFetchingRef.current = false;
       }
     };
-  }, [productId, refreshTrigger]); // Only depend on productId and refreshTrigger
+  }, [productId]);
   
   // Ensure loading is reset after a delay (safety net)
   useEffect(() => {
@@ -1888,7 +2143,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
     }
     
     try {
-      setLoading(true);
+      setCreatingVariants(true);
       setError("");
       setSuccess("");
       
@@ -1897,7 +2152,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
       const attributes = {};
       attrKeys.forEach(key => {
         if (selectedAttributes[key]?.length > 0) {
-          attributes[key] = selectedAttributes[key];
+          attributes[key] = selectedAttributes[key].map(String);
         }
       });
       
@@ -1912,27 +2167,6 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
       
       if (response.data.variants && response.data.variants.length > 0) {
         setSuccess(`✅ Created ${response.data.variants.length} variant(s) successfully!`);
-        
-        // Refresh variants list
-        const updated = await api.get(`/products/${productId}/variants`);
-        setVariants(normalizeVariants(updated.data.variants || []));
-        setStats(updated.data.stats || {
-          total: 0,
-          active: 0,
-          outOfStock: 0,
-          lowStock: 0,
-          totalStock: 0
-        });
-        
-        // Notify parent component
-        if (onVariantsChange) {
-          setTimeout(() => {
-            onVariantsChange(updated.data.variants || []);
-          }, 0);
-        }
-        
-        // Clear selections
-        setSelectedAttributes({ size: [], color: [], material: [] });
       }
       
       // Show errors if any
@@ -1952,13 +2186,13 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
           const names = [];
           for (const [key, value] of Object.entries(attributes)) {
             if (key === "color" && availableAttributes.color) {
-              const color = availableAttributes.color.find(c => c._id === value);
+              const color = availableAttributes.color.find(c => String(c._id) === String(value));
               if (color) names.push(`Color: ${color.name}`);
             } else if (key === "size" && availableAttributes.size) {
-              const size = availableAttributes.size.find(s => s._id === value);
+              const size = availableAttributes.size.find(s => String(s._id) === String(value));
               if (size) names.push(`Size: ${size.name}`);
             } else if (key === "material" && availableAttributes.material) {
-              const material = availableAttributes.material.find(m => m._id === value);
+              const material = availableAttributes.material.find(m => String(m._id) === String(value));
               if (material) names.push(`Material: ${material.name}`);
             } else {
               names.push(`${key}: ${value}`);
@@ -2040,13 +2274,6 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
         totalStock: 0
       });
       
-      // Force a refresh trigger for the useEffect (increment to trigger)
-      setRefreshTrigger(prev => {
-        const newValue = prev + 1;
-        console.log("Incrementing refresh trigger from", prev, "to", newValue);
-        return newValue;
-      });
-      
       // Notify parent component
       if (onVariantsChange) {
         setTimeout(() => {
@@ -2069,7 +2296,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
         setError(`❌ ${errorMsg}`);
       }
     } finally { 
-      setLoading(false); 
+      setCreatingVariants(false); 
     }
   };
 
@@ -2108,13 +2335,34 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
         actualPrimaryImage = originalVariant.primaryImage || originalVariant.image || null;
       }
       
+      const stockNum = (() => {
+        const s = formData.stock;
+        if (s === "" || s === undefined || s === null) return 0;
+        const n = parseInt(String(s).trim(), 10);
+        return Number.isNaN(n) ? 0 : n;
+      })();
+
+      let discountedPayload = null;
+      if (formData.discountedPrice === "" || formData.discountedPrice == null) {
+        discountedPayload = null;
+      } else {
+        const n = parseFloat(formData.discountedPrice);
+        discountedPayload = Number.isNaN(n) ? null : n;
+      }
+
       // Prepare update payload - only send actual data, not blob URLs
       const updatePayload = {
         price: parseFloat(formData.price) || 0,
-        stock: parseInt(formData.stock) || 0,
+        discountedPrice: discountedPayload,
+        stock: stockNum,
         sku: formData.sku || "",
         isActive: formData.isActive !== undefined ? formData.isActive : true
       };
+      if (Array.isArray(formData.sizeStock) && formData.sizeStock.length > 0) {
+        updatePayload.sizeStock = formData.sizeStock;
+      } else if (originalVariant?.sizeStock?.length > 0) {
+        delete updatePayload.stock;
+      }
       
       // Only include images if they're actual URLs (not blob URLs)
       if (actualImages.length > 0) {
@@ -2134,9 +2382,13 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
       if (primaryFile) {
         const fd = new FormData();
         fd.append("price", String(parseFloat(formData.price) || 0));
-        fd.append("stock", String(parseInt(formData.stock, 10) || 0));
+        fd.append("discountedPrice", formData.discountedPrice === "" || formData.discountedPrice == null ? "" : String(parseFloat(formData.discountedPrice)));
+        fd.append("stock", String(stockNum));
         fd.append("sku", formData.sku || "");
         fd.append("isActive", String(formData.isActive !== undefined ? formData.isActive : true));
+        if (Array.isArray(formData.sizeStock) && formData.sizeStock.length > 0) {
+          fd.append("sizeStock", JSON.stringify(formData.sizeStock));
+        }
         fd.append("primaryImage", primaryFile);
         await api.put(`/variants/${variantId}`, fd);
       } else {
@@ -2194,16 +2446,29 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
     const variant = variants.find(v => v._id === variantId);
     if (!variant) return;
     
-    const newStock = Number(stock) || 0;
+    const newStock =
+      typeof stock === "number" && !Number.isNaN(stock)
+        ? stock
+        : parseInt(String(stock).trim(), 10);
+    const newStockNum = Number.isNaN(newStock) ? 0 : newStock;
+    
+    if (productQuantity >= 0 && newStockNum < 0) {
+      setError("Unlimited variant quantity (-1) is only allowed when product inventory is unlimited.");
+      setVariants(prev => prev.map(v => (v._id === variantId ? { ...v, stock: variant.stock } : v)));
+      return;
+    }
     
     // Validate against product quantity if product has stock tracking enabled
     if (productQuantity >= 0) {
-      // Calculate total stock of all variants (excluding the current variant being updated)
       const otherVariantsStock = variants
         .filter(v => v._id !== variantId)
-        .reduce((sum, v) => sum + (Number(v.stock) || 0), 0);
+        .reduce((sum, v) => {
+          const s = Number(v.stock);
+          if (s < 0) return sum;
+          return sum + (Number.isFinite(s) ? s : 0);
+        }, 0);
       
-      const totalStock = otherVariantsStock + newStock;
+      const totalStock = otherVariantsStock + newStockNum;
       
       if (totalStock > productQuantity) {
         const availableStock = productQuantity - otherVariantsStock;
@@ -2215,11 +2480,11 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
     }
     
     const prevStock = variant.stock;
-    setVariants(prev => prev.map(v => v._id === variantId ? { ...v, stock: newStock } : v));
+    setVariants(prev => prev.map(v => v._id === variantId ? { ...v, stock: newStockNum } : v));
     setError(""); // Clear any previous errors
     
     try {
-      await api.put(`/variants/${variantId}`, { stock: newStock });
+      await api.put(`/variants/${variantId}`, { stock: newStockNum });
       // Refresh to get updated data
       const updated = await api.get(`/products/${productId}/variants?includeDeleted=true`);
       const normalized = normalizeVariants(updated.data.variants || []);
@@ -2468,7 +2733,7 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
             selectedAttributes={selectedAttributes}
             onAttributeChange={handleAttributeChange}
             onCreate={handleCreateVariants}
-            loading={loading}
+            loading={creatingVariants}
             generatedCount={generatedCombinations.length}
             requiredAttributes={requiredAttributes}
             attributeOrder={attributeOrderProp}
@@ -2517,6 +2782,11 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
                   onDelete={handleDelete}
                   onImageUpload={handleImageUpload}
                   availableAttributes={availableAttributes}
+                  productQuantity={productQuantity}
+                  productBasePrice={productBasePrice}
+                  productDiscountPrice={productDiscountPrice}
+                  colorOnlyVariations={colorOnlyVariations}
+                  productSizesForTable={productSizesForTable}
                 />
               )}
 
@@ -2534,6 +2804,10 @@ const ProductVariationsTab = ({ productId, productName, productQuantity = -1, re
                   onImageUpload={handleImageUpload}
                   availableAttributes={availableAttributes}
                   productQuantity={productQuantity}
+                  productBasePrice={productBasePrice}
+                  productDiscountPrice={productDiscountPrice}
+                  colorOnlyVariations={colorOnlyVariations}
+                  productSizesForTable={productSizesForTable}
                 />
               )}
             </>

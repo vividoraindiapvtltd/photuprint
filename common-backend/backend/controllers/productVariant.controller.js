@@ -1,7 +1,15 @@
 import ProductVariant from "../models/productVariant.model.js"
 import Product from "../models/product.model.js"
 import mongoose from "mongoose"
-import { uploadLocalFileToCloudinary, uploadMulterFilesToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
+import { variantStockExceedsProductStock } from "../utils/productStockValidation.js"
+import {
+  uploadBufferToCloudinary,
+  uploadLocalFileToCloudinary,
+  uploadMulterFilesToCloudinary,
+  uploadMulterMemoryFilesToCloudinary,
+  resourceTypeFromMime,
+  removeLocalFiles,
+} from "../utils/cloudinaryUpload.js"
 
 /**
  * Generate all possible variant combinations from selected attributes
@@ -67,6 +75,11 @@ export const createVariants = async (req, res) => {
       // Generate base SKU from product
       const baseSku = product.sku || product.productId || `PROD-${productId.toString().substring(18, 26)}`
       
+      const rawProductSizes = product.sizes || []
+      const productSizeIds = rawProductSizes.map((s) =>
+        typeof s === "object" && s?._id ? s._id : s
+      ).filter(Boolean)
+
       variantData = combinations.map((combo, index) => {
         // Generate SKU from attribute IDs (last 4 chars of each ID)
         const attrValues = Object.values(combo)
@@ -80,15 +93,31 @@ export const createVariants = async (req, res) => {
         // Create unique SKU: BASE-ATTR1-ATTR2-VAR001
         const variantSku = `${baseSku}-${attrValues}-${String(index + 1).padStart(3, '0')}`
         
-        return {
+        const productUnlimited = product.stock != null && Number(product.stock) < 0
+        const keys = Object.keys(combo)
+        const isColorOnly =
+          keys.length === 1 && keys[0] === "color" && combo.color != null
+
+        const row = {
           product: productId,
           attributes: new Map(Object.entries(combo)),
           price: product.price || 0,
-          stock: 0,
+          discountedPrice: product.discountedPrice != null ? product.discountedPrice : null,
+          stock: productUnlimited ? -1 : 0,
           sku: variantSku, // Set SKU explicitly to avoid validation error
           website: req.websiteId,
           isActive: true
         }
+
+        if (isColorOnly && productSizeIds.length > 0) {
+          row.sizeStock = productSizeIds.map((size) => ({
+            size,
+            stock: productUnlimited ? -1 : 0,
+          }))
+          row.stock = productUnlimited ? -1 : 0
+        }
+
+        return row
       })
     } else if (variants && Array.isArray(variants)) {
       // If variants array provided directly
@@ -117,17 +146,23 @@ export const createVariants = async (req, res) => {
     const createdVariants = []
     const errors = []
     
-    // Fetch product stock for validation
-    const productStock = product.stock || 0
+    const productStock = product.stock
     
     for (const variantDataItem of variantData) {
       try {
-        // Validate stock doesn't exceed product stock
-        const variantStock = variantDataItem.stock || 0
-        if (variantStock > productStock) {
+        const variantStock = variantDataItem.stock ?? 0
+        const vs = Number(variantStock)
+        if (!Number.isNaN(vs) && vs < 0 && productStock != null && Number(productStock) >= 0) {
           errors.push({
             attributes: Object.fromEntries(variantDataItem.attributes),
-            error: `Variant stock (${variantStock}) cannot be greater than product stock (${productStock})`
+            error: "Unlimited variant quantity (-1) is only allowed when product inventory is unlimited.",
+          })
+          continue
+        }
+        if (variantStockExceedsProductStock(variantStock, productStock)) {
+          errors.push({
+            attributes: Object.fromEntries(variantDataItem.attributes),
+            error: `Variant stock (${variantStock}) cannot be greater than product stock (${productStock ?? 0})`
           })
           continue
         }
@@ -325,12 +360,22 @@ export const updateVariant = async (req, res) => {
       return res.status(404).json({ msg: "Variant not found" })
     }
     
-    // Handle primary image upload (if provided) — Cloudinary only
+    // Handle primary image upload (if provided) — memory buffer → Cloudinary (no disk temp file)
     if (req.files && req.files.primaryImage && req.files.primaryImage.length > 0) {
       try {
-        variant.primaryImage = await uploadLocalFileToCloudinary(req.files.primaryImage[0].path, {
-          folder: "photuprint/variants",
-        })
+        const file = req.files.primaryImage[0]
+        if (file.buffer && file.buffer.length > 0) {
+          variant.primaryImage = await uploadBufferToCloudinary(file.buffer, {
+            folder: "photuprint/variants",
+            resource_type: resourceTypeFromMime(file.mimetype),
+          })
+        } else if (file.path) {
+          variant.primaryImage = await uploadLocalFileToCloudinary(file.path, {
+            folder: "photuprint/variants",
+          })
+        } else {
+          return res.status(400).json({ msg: "Primary image file is empty or invalid" })
+        }
         console.log("Primary image uploaded to Cloudinary:", variant.primaryImage)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -344,9 +389,16 @@ export const updateVariant = async (req, res) => {
     // Handle additional images uploads (if provided)
     if (req.files && req.files.images && req.files.images.length > 0) {
       try {
-        const newImageUrls = await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/variants" })
-        const existingImages = Array.isArray(variant.images) ? variant.images : []
+        const mem = req.files.images[0]?.buffer
+        const newImageUrls =
+          mem && mem.length > 0
+            ? await uploadMulterMemoryFilesToCloudinary(req.files.images, { folder: "photuprint/variants" })
+            : await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/variants" })
+        const existingImages = Array.isArray(variant.images)
+          ? variant.images.filter((img) => typeof img === "string" && img.length > 0)
+          : []
         variant.images = [...existingImages, ...newImageUrls].slice(0, 9)
+        variant.markModified("images")
         console.log("Additional images uploaded to Cloudinary:", newImageUrls)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -371,6 +423,7 @@ export const updateVariant = async (req, res) => {
       weight,
       barcode,
       attributes,
+      sizeStock,
     } = body
 
     if (typeof images === "string") {
@@ -378,6 +431,20 @@ export const updateVariant = async (req, res) => {
         images = JSON.parse(images)
       } catch {
         images = undefined
+      }
+    }
+    if (typeof attributes === "string") {
+      try {
+        attributes = JSON.parse(attributes)
+      } catch {
+        attributes = undefined
+      }
+    }
+    if (typeof sizeStock === "string") {
+      try {
+        sizeStock = JSON.parse(sizeStock)
+      } catch {
+        sizeStock = undefined
       }
     }
     if (primaryImage === "null" || primaryImage === "") {
@@ -397,6 +464,12 @@ export const updateVariant = async (req, res) => {
       if (isActive === "true" || isActive === true) isActive = true
       else if (isActive === "false" || isActive === false) isActive = false
     }
+    if (discountedPrice !== undefined && discountedPrice !== "") {
+      const dp = typeof discountedPrice === "string" ? parseFloat(discountedPrice) : discountedPrice
+      discountedPrice = Number.isNaN(dp) ? undefined : dp
+    } else if (discountedPrice === "" || discountedPrice === "null") {
+      discountedPrice = null
+    }
 
     console.log("Updating variant:", variantId, "with body:", {
       price,
@@ -405,16 +478,62 @@ export const updateVariant = async (req, res) => {
       isActive,
       imagesCount: images != null ? (Array.isArray(images) ? images.length : 0) : undefined,
       primaryImage: primaryImage != null && typeof primaryImage === "string" ? primaryImage.substring(0, 50) + "..." : primaryImage,
+      sizeStockLen: Array.isArray(sizeStock) ? sizeStock.length : undefined,
     })
-    
-    // Validate stock doesn't exceed product stock
-    if (stock !== undefined) {
-      const product = await Product.findById(variant.product)
+
+    const product = await Product.findById(variant.product)
+
+    if (Array.isArray(sizeStock)) {
+      const cleaned = []
+      for (const row of sizeStock) {
+        if (!row || row.size == null) continue
+        const sid =
+          typeof row.size === "object" && row.size._id != null ? row.size._id : row.size
+        const rawSt = row.stock === "" || row.stock === undefined ? 0 : row.stock
+        const st = typeof rawSt === "string" ? parseInt(rawSt, 10) : rawSt
+        const n = Number.isNaN(Number(st)) ? 0 : Number(st)
+        cleaned.push({ size: sid, stock: n })
+      }
+      variant.sizeStock = cleaned
+      variant.markModified("sizeStock")
+      if (cleaned.length > 0) {
+        let sum = 0
+        let anyUnlimited = false
+        for (const r of cleaned) {
+          const n = Number(r.stock)
+          if (n === -1) {
+            anyUnlimited = true
+            break
+          }
+          if (Number.isFinite(n) && n >= 0) sum += n
+        }
+        const computed = anyUnlimited ? -1 : sum
+        if (product) {
+          if (!Number.isNaN(Number(computed)) && computed < 0 && product.stock != null && Number(product.stock) >= 0) {
+            return res.status(400).json({
+              msg: "Unlimited variant quantity (-1) is only allowed when product inventory is unlimited.",
+            })
+          }
+          if (variantStockExceedsProductStock(computed, product.stock)) {
+            return res.status(400).json({
+              msg: `Variant stock (${computed}) cannot be greater than product stock (${product.stock ?? 0})`,
+            })
+          }
+        }
+        variant.stock = computed
+        variant.isOutOfStock = computed === 0
+      }
+    } else if (stock !== undefined) {
       if (product) {
-        const productStock = product.stock || 0
-        if (stock > productStock) {
+        const s = Number(stock)
+        if (!Number.isNaN(s) && s < 0 && product.stock != null && Number(product.stock) >= 0) {
+          return res.status(400).json({
+            msg: "Unlimited variant quantity (-1) is only allowed when product inventory is unlimited.",
+          })
+        }
+        if (variantStockExceedsProductStock(stock, product.stock)) {
           return res.status(400).json({ 
-            msg: `Variant stock (${stock}) cannot be greater than product stock (${productStock})` 
+            msg: `Variant stock (${stock}) cannot be greater than product stock (${product.stock ?? 0})` 
           })
         }
       }
@@ -422,9 +541,17 @@ export const updateVariant = async (req, res) => {
       variant.isOutOfStock = stock === 0
     }
     
-    if (price !== undefined) variant.price = price
-    if (discountedPrice !== undefined) variant.discountedPrice = discountedPrice
-    if (sku !== undefined) variant.sku = sku
+    if (price !== undefined && price !== null && !Number.isNaN(Number(price))) {
+      variant.price = Number(price)
+    }
+    if (discountedPrice !== undefined) {
+      variant.discountedPrice = discountedPrice === null ? null : Number(discountedPrice)
+      variant.markModified("discountedPrice")
+    }
+    // Required field — never persist empty sku (multipart often sends "")
+    if (sku !== undefined && sku !== null && String(sku).trim() !== "") {
+      variant.sku = String(sku).trim()
+    }
     // Only update images from body if no new image files were uploaded in this request
     if (images !== undefined && (!req.files || !req.files.images || req.files.images.length === 0)) {
       const validImages = Array.isArray(images)
@@ -451,8 +578,8 @@ export const updateVariant = async (req, res) => {
     if (weight !== undefined) variant.weight = weight
     if (barcode !== undefined) variant.barcode = barcode
     
-    // Update attributes (check for duplicates)
-    if (attributes) {
+    // Update attributes (check for duplicates) — only plain objects / Maps
+    if (attributes && typeof attributes === "object" && !Array.isArray(attributes)) {
       const newAttributes = new Map(Object.entries(attributes))
       const duplicate = await ProductVariant.findDuplicate(
         variant.product,
@@ -488,6 +615,13 @@ export const updateVariant = async (req, res) => {
   } catch (error) {
     console.error("Error updating variant:", error)
     console.error("Error stack:", error.stack)
+    if (error.name === "ValidationError") {
+      return res.status(400).json({
+        msg: "Validation failed",
+        error: error.message,
+        details: error.errors,
+      })
+    }
     res.status(500).json({ msg: "Failed to update variant", error: error.message })
   }
 }
@@ -521,7 +655,7 @@ export const updateVariantStock = async (req, res) => {
       return res.status(404).json({ msg: "Product not found" })
     }
     
-    const productStock = product.stock || 0
+    const productStock = product.stock
     let newStock
     
     if (operation === "add") {
@@ -532,10 +666,16 @@ export const updateVariantStock = async (req, res) => {
       newStock = stock
     }
     
-    // Validate stock doesn't exceed product stock
-    if (newStock > productStock) {
+    const ns = Number(newStock)
+    if (!Number.isNaN(ns) && ns < 0 && productStock != null && Number(productStock) >= 0) {
+      return res.status(400).json({
+        msg: "Unlimited variant quantity (-1) is only allowed when product inventory is unlimited.",
+      })
+    }
+    
+    if (variantStockExceedsProductStock(newStock, productStock)) {
       return res.status(400).json({ 
-        msg: `Variant stock (${newStock}) cannot be greater than product stock (${productStock})` 
+        msg: `Variant stock (${newStock}) cannot be greater than product stock (${productStock ?? 0})` 
       })
     }
     
@@ -676,7 +816,7 @@ export const bulkUpdateVariants = async (req, res) => {
       return res.status(404).json({ msg: "Product not found" })
     }
     
-    const productStock = product.stock || 0
+    const productStock = product.stock
     const results = []
     const errors = []
     
@@ -698,11 +838,18 @@ export const bulkUpdateVariants = async (req, res) => {
         Object.keys(item.updates || {}).forEach(key => {
           if (key === "stock") {
             const newStock = item.updates[key]
-            // Validate stock doesn't exceed product stock
-            if (newStock > productStock) {
+            const ns = Number(newStock)
+            if (!Number.isNaN(ns) && ns < 0 && productStock != null && Number(productStock) >= 0) {
+              errors.push({
+                variantId: item.variantId,
+                error: "Unlimited variant quantity (-1) is only allowed when product inventory is unlimited.",
+              })
+              return
+            }
+            if (variantStockExceedsProductStock(newStock, productStock)) {
               errors.push({ 
                 variantId: item.variantId, 
-                error: `Variant stock (${newStock}) cannot be greater than product stock (${productStock})` 
+                error: `Variant stock (${newStock}) cannot be greater than product stock (${productStock ?? 0})` 
               })
               return // Skip this variant
             }

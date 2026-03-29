@@ -26,6 +26,14 @@ const productSchema = new mongoose.Schema(
         price: { type: Number, default: null },
       },
     ],
+    /** Per-material add-on pricing for customized products; refs Material manager. */
+    materialPricing: [
+      {
+        material: { type: mongoose.Schema.Types.ObjectId, ref: "Material" },
+        enabled: { type: Boolean, default: false },
+        price: { type: Number, default: null },
+      },
+    ],
     /** Per add-on pricing; options are defined in ProductAddon manager. */
     addOnPricing: [
       {
@@ -52,6 +60,8 @@ const productSchema = new mongoose.Schema(
     video: { type: String, default: null },
     colors: [{ type: mongoose.Schema.Types.ObjectId, ref: "Color" }],
     sizes: [{ type: mongoose.Schema.Types.ObjectId, ref: "Size" }],
+    gsms: [{ type: mongoose.Schema.Types.ObjectId, ref: "Gsm" }],
+    capacities: [{ type: mongoose.Schema.Types.ObjectId, ref: "Capacity" }],
     templates: [{ type: mongoose.Schema.Types.ObjectId, ref: "Template" }],
     heights: [{ type: mongoose.Schema.Types.ObjectId, ref: "Height" }],
     lengths: [{ type: mongoose.Schema.Types.ObjectId, ref: "Length" }],

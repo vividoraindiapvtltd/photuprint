@@ -17,7 +17,7 @@ const storage = multer.diskStorage({
 })
 
 // File filter - allow images, videos, and design files
-const fileFilter = (req, file, cb) => {
+export const uploadFileFilter = (req, file, cb) => {
   const ext = path.extname(file.originalname).toLowerCase()
   // NOTE: This middleware is used across multiple managers (brands/templates/etc).
   // Keep the allowlist broad but explicit.
@@ -47,15 +47,26 @@ const fileFilter = (req, file, cb) => {
   cb(null, true)
 }
 
+const uploadLimits = {
+  fileSize: 10 * 1024 * 1024, // 10MB file size limit
+  fieldSize: 50 * 1024 * 1024, // 50MB field size limit (for large JSON like fabricJson)
+  fields: 50, // Max number of non-file fields
+}
+
 // Create upload instance
 const upload = multer({
   storage: storage,
-  fileFilter: fileFilter,
-  limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB file size limit
-    fieldSize: 50 * 1024 * 1024, // 50MB field size limit (for large JSON like fabricJson)
-    fields: 50, // Max number of non-file fields
-  },
+  fileFilter: uploadFileFilter,
+  limits: uploadLimits,
+})
+
+/**
+ * In-memory uploads for routes that stream straight to Cloudinary (avoids disk ENOENT if uploads/ is missing or races).
+ */
+export const variantUploadMemory = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: uploadFileFilter,
+  limits: uploadLimits,
 })
 
 export default upload

@@ -1,5 +1,6 @@
 import Client from "../models/client.model.js"
 import Interaction from "../models/interaction.model.js"
+import User from "../models/user.model.js"
 import { removeLocalFile } from "../utils/fileCleanup.js"
 import { uploadLocalFileToCloudinary } from "../utils/cloudinaryUpload.js"
 

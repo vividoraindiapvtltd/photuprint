@@ -125,6 +125,7 @@ const ProductDetailsTab = ({
   managedPrintSides = [],
   managedProductAddons = [],
   onPrintSidePricingChange,
+  onMaterialPricingChange,
   onAddOnPricingChange,
   quantityTierLabels = ["1–5 units", "6–10 units", "11–20 units", "21+ units"],
   categories,
@@ -143,6 +144,8 @@ const ProductDetailsTab = ({
   heights,
   colors = [],
   sizes = [],
+  gsms = [],
+  capacities = [],
   categorySupportsVariations = false,
   getUnitAbbreviation
 }) => {
@@ -155,6 +158,14 @@ const ProductDetailsTab = ({
             (a.sortOrder ?? 0) - (b.sortOrder ?? 0) || (a.name || "").localeCompare(b.name || "")
         ),
     [managedPrintSides]
+  )
+
+  const materialsForProduct = useMemo(
+    () =>
+      (materials || [])
+        .filter((m) => !m.deleted)
+        .sort((a, b) => (a.name || "").localeCompare(b.name || "")),
+    [materials]
   )
 
   const productAddonsForProduct = useMemo(
@@ -373,6 +384,30 @@ const ProductDetailsTab = ({
             info="From Size Manager."
           />
         </div>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", marginBottom: "15px" }}>
+          <MultiSelectDropdown
+            label="GSM (Optional)"
+            options={(gsms || []).filter((g) => !g.deleted && g.isActive !== false).map((g) => ({
+              value: String(g._id),
+              label: g.name,
+            }))}
+            value={formData.selectedGsms || []}
+            onChange={(arr) => handleMultiSelect && handleMultiSelect("selectedGsms", arr)}
+            placeholder="Type to search GSM..."
+            info="From GSM Manager."
+          />
+          <MultiSelectDropdown
+            label="Capacity (Optional)"
+            options={(capacities || []).filter((c) => !c.deleted && c.isActive !== false).map((c) => ({
+              value: String(c._id),
+              label: c.name,
+            }))}
+            value={formData.selectedCapacities || []}
+            onChange={(arr) => handleMultiSelect && handleMultiSelect("selectedCapacities", arr)}
+            placeholder="Type to search capacity..."
+            info="From Capacity Manager."
+          />
+        </div>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px" }}>
           <div>
             <SearchableSelect
@@ -389,21 +424,23 @@ const ProductDetailsTab = ({
                 }))}
             />
           </div>
-          <div>
-            <SearchableSelect
-              name="material"
-              label="Material (Optional)"
-              value={formData.material != null ? String(formData.material) : ""}
-              onChange={handleInputChange}
-              placeholder="Type to search materials..."
-              options={(materials || [])
-                .filter(material => (!material.deleted && material.isActive) || (formData.material && String(material._id) === String(formData.material)))
-                .map(material => ({
-                  value: String(material._id),
-                  label: `${material.name}${!material.isActive ? " (Inactive)" : ""}`
-                }))}
-            />
-          </div>
+          {formData.productType !== "customized" && (
+            <div>
+              <SearchableSelect
+                name="material"
+                label="Material (Optional)"
+                value={formData.material != null ? String(formData.material) : ""}
+                onChange={handleInputChange}
+                placeholder="Type to search materials..."
+                options={(materials || [])
+                  .filter(material => (!material.deleted && material.isActive) || (formData.material && String(material._id) === String(formData.material)))
+                  .map(material => ({
+                    value: String(material._id),
+                    label: `${material.name}${!material.isActive ? " (Inactive)" : ""}`
+                  }))}
+              />
+            </div>
+          )}
           <div>
             <SearchableSelect
               name="pattern"
@@ -674,6 +711,97 @@ const ProductDetailsTab = ({
                               border: "1px solid #d1d5db",
                               borderRadius: "6px",
                               backgroundColor: side.enabled ? "#fff" : "#f3f4f6",
+                              boxSizing: "border-box",
+                            }}
+                          />
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+          {formData.productType === "customized" && onMaterialPricingChange && (
+            <div style={{ gridColumn: "1 / -1", marginTop: "8px" }}>
+              <h4
+                style={{
+                  fontSize: "18px",
+                  fontWeight: "600",
+                  marginBottom: "20px",
+                  color: "#444444",
+                  borderBottom: "2px solid #444444",
+                  paddingBottom: "12px",
+                  paddingTop: "8px",
+                  textTransform: "uppercase",
+                  letterSpacing: "0.03em",
+                }}
+              >
+                Materials (customization)
+              </h4>
+              <p style={{ fontSize: "12px", color: "#6b7280", marginBottom: "14px" }}>
+                Options come from <strong>Material Manager</strong>. Enable each material and set its add-on price (same currency as base price). Shoppers pick one material on the product page.
+              </p>
+              {materialsForProduct.length === 0 ? (
+                <p style={{ fontSize: "13px", color: "#9ca3af", fontStyle: "italic" }}>
+                  No materials yet. Add them under Product attributes → Material Manager.
+                </p>
+              ) : (
+                <div
+                  style={{
+                    display: "grid",
+                    gridTemplateColumns: "repeat(auto-fill, minmax(280px, 1fr))",
+                    gap: "12px",
+                  }}
+                >
+                  {materialsForProduct.map((def) => {
+                    const id = String(def._id)
+                    const row = formData.materialPricing?.[id] || { enabled: false, price: "" }
+                    const inactive = def.isActive === false
+                    return (
+                      <div
+                        key={id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "12px",
+                          padding: "12px 14px",
+                          border: "1px solid #e5e7eb",
+                          borderRadius: "8px",
+                          backgroundColor: "#fafafa",
+                          opacity: inactive ? 0.75 : 1,
+                        }}
+                      >
+                        <label style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: "130px", cursor: "pointer" }}>
+                          <input
+                            type="checkbox"
+                            checked={Boolean(row.enabled)}
+                            onChange={(e) => onMaterialPricingChange(id, "enabled", e.target.checked)}
+                          />
+                          <span style={{ fontSize: "14px", fontWeight: "500", color: "#111827" }}>
+                            {def.name}
+                            {inactive ? " (inactive)" : ""}
+                          </span>
+                        </label>
+                        <div style={{ flex: 1, minWidth: "100px" }}>
+                          <label style={{ fontSize: "11px", color: "#6b7280", display: "block", marginBottom: "4px" }}>
+                            Price (add-on)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="1"
+                            disabled={!row.enabled}
+                            value={row.price === "" || row.price == null ? "" : row.price}
+                            onChange={(e) => onMaterialPricingChange(id, "price", e.target.value)}
+                            placeholder="0"
+                            style={{
+                              width: "100%",
+                              padding: "8px 10px",
+                              fontSize: "14px",
+                              border: "1px solid #d1d5db",
+                              borderRadius: "6px",
+                              backgroundColor: row.enabled ? "#fff" : "#f3f4f6",
                               boxSizing: "border-box",
                             }}
                           />

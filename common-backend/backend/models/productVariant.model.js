@@ -1,4 +1,19 @@
 import mongoose from "mongoose"
+import { variantStockExceedsProductStock } from "../utils/productStockValidation.js"
+
+function attributeEntries(attrs) {
+  if (!attrs) return []
+  if (attrs instanceof Map) return Array.from(attrs.entries())
+  if (typeof attrs === "object" && !Array.isArray(attrs)) return Object.entries(attrs)
+  return []
+}
+
+function attributeValues(attrs) {
+  if (!attrs) return []
+  if (attrs instanceof Map) return Array.from(attrs.values())
+  if (typeof attrs === "object" && !Array.isArray(attrs)) return Object.values(attrs)
+  return []
+}
 
 /**
  * ProductVariant Model
@@ -44,11 +59,11 @@ const productVariantSchema = new mongoose.Schema(
       min: 0
     },
     
-    // Stock/Quantity management
+    // Stock/Quantity management (-1 = unlimited at variant level when product is unlimited)
     stock: {
       type: Number,
       default: 0,
-      min: 0
+      min: -1
     },
     
     // Low stock threshold (for alerts)
@@ -57,11 +72,11 @@ const productVariantSchema = new mongoose.Schema(
       default: 10
     },
     
-    // Variant-specific images
-    images: [{
-      type: String,
-      default: []
-    }],
+    // Variant-specific images (array of URL strings)
+    images: {
+      type: [String],
+      default: [],
+    },
     
     // Primary image for this variant
     primaryImage: {
@@ -112,6 +127,20 @@ const productVariantSchema = new mongoose.Schema(
       type: Number,
       default: 0,
     },
+
+    /**
+     * Per-size quantities when the variant is color-only (attributes have color, not size).
+     * `stock` is kept in sync as the sum of rows (or -1 if any row is unlimited).
+     */
+    sizeStock: {
+      type: [
+        {
+          size: { type: mongoose.Schema.Types.ObjectId, ref: "Size", required: true },
+          stock: { type: Number, default: 0, min: -1 },
+        },
+      ],
+      default: [],
+    },
   },
   {
     timestamps: true
@@ -120,13 +149,17 @@ const productVariantSchema = new mongoose.Schema(
 
 // Generate SKU from attributes if not provided
 productVariantSchema.pre("save", async function (next) {
+  if (this.attributes && !(this.attributes instanceof Map) && typeof this.attributes === "object") {
+    this.attributes = new Map(Object.entries(this.attributes))
+  }
+
   if (!this.sku && this.product) {
     const Product = mongoose.model("Product")
     const product = await Product.findById(this.product)
     
     if (product) {
       // Generate SKU: Product SKU + Attribute values
-      const attrValues = Array.from(this.attributes.values())
+      const attrValues = attributeValues(this.attributes)
         .map(val => String(val).substring(0, 3).toUpperCase().replace(/[^A-Z0-9]/g, ""))
         .join("-")
       
@@ -150,15 +183,32 @@ productVariantSchema.pre("save", async function (next) {
     }
   }
   
-  // Validate stock doesn't exceed product stock
+  if (this.sizeStock && Array.isArray(this.sizeStock) && this.sizeStock.length > 0) {
+    let sum = 0
+    let anyUnlimited = false
+    for (const r of this.sizeStock) {
+      const n = Number(r.stock)
+      if (n === -1) {
+        anyUnlimited = true
+        break
+      }
+      if (Number.isFinite(n) && n >= 0) sum += n
+    }
+    this.stock = anyUnlimited ? -1 : sum
+    this.isOutOfStock = this.stock === 0
+  }
+
   if (this.stock !== undefined && this.product) {
     const Product = mongoose.model("Product")
     const product = await Product.findById(this.product)
     
     if (product) {
-      const productStock = product.stock || 0
-      if (this.stock > productStock) {
-        return next(new Error(`Variant stock (${this.stock}) cannot be greater than product stock (${productStock})`))
+      const s = Number(this.stock)
+      if (!Number.isNaN(s) && s < 0 && product.stock != null && Number(product.stock) >= 0) {
+        return next(new Error("Unlimited variant quantity (-1) is only allowed when product inventory is unlimited."))
+      }
+      if (variantStockExceedsProductStock(this.stock, product.stock)) {
+        return next(new Error(`Variant stock (${this.stock}) cannot be greater than product stock (${product.stock ?? 0})`))
       }
     }
   }
@@ -184,7 +234,7 @@ productVariantSchema.virtual('isLowStock').get(function() {
 
 // Method to generate variant key (for duplicate detection)
 productVariantSchema.methods.generateVariantKey = function() {
-  const sortedAttrs = Array.from(this.attributes.entries())
+  const sortedAttrs = attributeEntries(this.attributes)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, value]) => `${key}:${value}`)
     .join("|")
@@ -193,7 +243,7 @@ productVariantSchema.methods.generateVariantKey = function() {
 
 // Static method to check for duplicate variants
 productVariantSchema.statics.findDuplicate = async function(productId, attributes, websiteId, excludeId = null) {
-  const variantKey = Array.from(attributes.entries())
+  const variantKey = attributeEntries(attributes)
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, value]) => `${key}:${value}`)
     .join("|")

@@ -4,6 +4,7 @@ import {
   getClients,
   getClientById,
   createClient,
+  createLead,
   updateClient,
   deleteClient,
   restoreClient,
@@ -19,15 +20,16 @@ import {
   getRecentClients,
   searchClients,
   getTags,
+  exportLeads,
 } from "../controllers/client.controller.js"
 import { protect, adminOnly, optionalAuth } from "../middlewares/auth.middleware.js"
-import { resolveTenant } from "../middlewares/tenant.middleware.js"
+import { resolveTenantIfPresent } from "../middlewares/tenant.middleware.js"
 import upload from "../middlewares/upload.middleware.js"
 
 const router = express.Router()
 
-// Apply tenant resolution middleware to all routes
-router.use(resolveTenant)
+// Resolve tenant when X-Website-Id is sent; when omitted, super_admin can see all leads
+router.use(resolveTenantIfPresent)
 
 // ============================================================================
 // STATISTICS AND DASHBOARD
@@ -88,6 +90,19 @@ router.post("/bulk-status", protect, adminOnly, bulkUpdateStatus)
  * Get all clients with filters and pagination
  */
 router.get("/", protect, getClients)
+
+/**
+ * GET /api/clients/export
+ * Export leads as CSV (query: period=day|week|month|year, assignedTo=userId|all)
+ */
+router.get("/export", protect, exportLeads)
+
+/**
+ * POST /api/clients/lead
+ * Create a lead from public website (bulk product enquiry) – no auth required.
+ * optionalAuth ensures no 401 if a token is sent (e.g. expired) or missing.
+ */
+router.post("/lead", optionalAuth, createLead)
 
 /**
  * POST /api/clients

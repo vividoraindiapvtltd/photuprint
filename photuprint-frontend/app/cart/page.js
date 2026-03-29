@@ -949,6 +949,8 @@ export default function CartPage() {
                           )}
                           {item.variant?.name && <p className="text-sm text-gray-500 mt-0.5">{item.variant.name}</p>}
                           {item.size?.name && <p className="text-sm text-gray-500 mt-0.5">Size: {item.size.name}</p>}
+                          {item.gsm?.name && <p className="text-sm text-gray-500 mt-0.5">GSM: {item.gsm.name}</p>}
+                          {item.capacity?.name && <p className="text-sm text-gray-500 mt-0.5">Capacity: {item.capacity.name}</p>}
                           {(Array.isArray(item.printSides) && item.printSides.length > 0) || item.printSide?.name ? (
                             <p className="text-sm text-gray-500 mt-0.5">
                               Print:{" "}

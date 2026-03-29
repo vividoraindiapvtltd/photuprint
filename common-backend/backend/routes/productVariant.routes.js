@@ -12,7 +12,7 @@ import {
 } from "../controllers/productVariant.controller.js"
 import { protect, adminOnly } from "../middlewares/auth.middleware.js"
 import { resolveTenantFromHeader, requireTenant } from "../middlewares/tenant.middleware.js"
-import upload from "../middlewares/upload.middleware.js"
+import { variantUploadMemory } from "../middlewares/upload.middleware.js"
 
 const router = express.Router()
 
@@ -20,7 +20,7 @@ const router = express.Router()
 function variantUpdateUpload(req, res, next) {
   const ct = (req.headers["content-type"] || "").toLowerCase()
   if (ct.includes("multipart/form-data")) {
-    return upload.fields([
+    return variantUploadMemory.fields([
       { name: "primaryImage", maxCount: 1 },
       { name: "images", maxCount: 9 },
     ])(req, res, next)

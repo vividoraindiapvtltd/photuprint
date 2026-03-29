@@ -54,7 +54,9 @@ export function getCartLineUnitPrice(item) {
   )
   const addon = Number(item.printSideAddon)
   const a = Number.isFinite(addon) && addon > 0 ? addon : 0
-  return Math.round(vol + a)
+  const mat = Number(item.materialAddon)
+  const m = Number.isFinite(mat) && mat > 0 ? mat : 0
+  return Math.round(vol + a + m)
 }
 
 /** Per-unit price before quantity-band discount (product offer + print-side add-on). */
@@ -66,7 +68,9 @@ export function getCartLineUnitPriceBeforeVolumeTier(item) {
   })
   const addon = Number(item.printSideAddon)
   const a = Number.isFinite(addon) && addon > 0 ? addon : 0
-  return base + a
+  const mat = Number(item.materialAddon)
+  const m = Number.isFinite(mat) && mat > 0 ? mat : 0
+  return base + a + m
 }
 
 export function getCartLineTotal(item) {

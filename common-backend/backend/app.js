@@ -97,6 +97,7 @@ export const setupRoutes = async () => {
     const newsletterRoutes = (await import("./routes/newsletter.routes.js")).default
     const carouselRoutes = (await import("./routes/carousel.routes.js")).default
     const clientRoutes = (await import("./routes/client.routes.js")).default
+    const incentiveRoutes = (await import("./routes/incentive.routes.js")).default
     const interactionRoutes = (await import("./routes/interaction.routes.js")).default
     const userAccessRoutes = (await import("./routes/userAccess.routes.js")).default
     const recentlyViewedProductRoutes = (await import("./routes/recentlyViewedProduct.routes.js")).default
@@ -179,6 +180,7 @@ export const setupRoutes = async () => {
     app.use("/api/newsletter", newsletterRoutes)
     app.use("/api/carousel", carouselRoutes)
     app.use("/api/clients", clientRoutes)
+    app.use("/api/incentives", incentiveRoutes)
     app.use("/api/interactions", interactionRoutes)
     app.use("/api/recently-viewed-products", recentlyViewedProductRoutes)
     app.use("/api/wishlist", wishlistRoutes)

@@ -45,13 +45,17 @@ function makeLineId(
   printSidesKey = "",
   materialId = "",
   plainWithoutCustomization = false,
+  gsmId = "",
+  capacityId = "",
 ) {
   const v = variantId || ""
   const s = sizeId || ""
   const p = printSidesKey || ""
   const m = materialId || ""
+  const g = gsmId || ""
+  const c = capacityId || ""
   const mode = plainWithoutCustomization ? "plain" : isCustom ? "custom" : "std"
-  return `${productId}|${v}|${s}|${mode}|${p}|${m}`
+  return `${productId}|${v}|${s}|${mode}|${p}|${m}|${g}|${c}`
 }
 
 export function CartProvider({ children }) {
@@ -82,8 +86,11 @@ export function CartProvider({ children }) {
         printSide,
         printSides,
         printSideAddon,
+        materialAddon,
         material,
         plainWithoutCustomization,
+        gsm,
+        capacity,
       } = payload
       const printSidesKey = (() => {
         if (Array.isArray(printSides) && printSides.length) {
@@ -96,6 +103,8 @@ export function CartProvider({ children }) {
         const one = printSide?._id || printSide?.id
         return one != null ? String(one) : ""
       })()
+      const gsmId = gsm?._id || gsm?.id || ""
+      const capacityId = capacity?._id || capacity?.id || ""
       const lineId = makeLineId(
         productId,
         variant?._id || variant?.id,
@@ -104,6 +113,8 @@ export function CartProvider({ children }) {
         printSidesKey,
         material?._id || material?.id || "",
         plainWithoutCustomization === true,
+        gsmId,
+        capacityId,
       )
       setItems((prev) => {
         const i = prev.findIndex((x) => x.lineId === lineId)
@@ -114,6 +125,7 @@ export function CartProvider({ children }) {
           return next
         }
         const addon = printSideAddon != null ? Number(printSideAddon) : 0
+        const matAdd = materialAddon != null ? Number(materialAddon) : 0
         const normalizedPrintSides = Array.isArray(printSides)
           ? printSides.map((p) => ({ _id: String(p._id || p.id), name: p.name || "" })).filter((p) => p._id)
           : printSide
@@ -132,10 +144,13 @@ export function CartProvider({ children }) {
           variant: variant || null,
           size: size || null,
           material: material || null,
+          gsm: gsm || null,
+          capacity: capacity || null,
           customDesign: customDesign || null,
           printSides: normalizedPrintSides,
           printSide: printSide || null,
           printSideAddon: Number.isFinite(addon) && addon >= 0 ? Math.round(addon) : 0,
+          materialAddon: Number.isFinite(matAdd) && matAdd >= 0 ? Math.round(matAdd) : 0,
           plainWithoutCustomization: plainWithoutCustomization === true,
         })
         return next

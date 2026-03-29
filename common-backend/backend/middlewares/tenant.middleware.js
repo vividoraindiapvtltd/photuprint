@@ -184,6 +184,26 @@ export const resolveTenantFromDomain = async (req, res, next) => {
 };
 
 /**
+ * Resolve tenant only when X-Website-Id header is present.
+ * When header is absent, next() without setting req.websiteId (allows super_admin "all leads" when controller allows it).
+ */
+export const resolveTenantIfPresent = async (req, res, next) => {
+  try {
+    const websiteId = req.headers['x-website-id'] || req.headers['X-Website-Id'];
+    if (websiteId) {
+      return await resolveTenantFromHeader(req, res, next);
+    }
+    return next();
+  } catch (error) {
+    console.error('Error in resolveTenantIfPresent:', error);
+    res.status(500).json({
+      msg: 'Failed to resolve tenant',
+      code: 'TENANT_RESOLUTION_ERROR',
+    });
+  }
+};
+
+/**
  * Combined middleware: tries header first (admin), then domain (storefront)
  * Useful for routes that serve both admin and storefront
  */

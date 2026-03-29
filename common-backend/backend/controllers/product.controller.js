@@ -7,7 +7,14 @@ import Review from "../models/review.model.js"
 import * as cashbackService from "../services/cashback.service.js"
 import sanitizeHtml from "sanitize-html"
 import mongoose from "mongoose"
-import { uploadLocalFileToCloudinary, uploadMulterFilesToCloudinary, removeLocalFiles } from "../utils/cloudinaryUpload.js"
+import {
+  uploadBufferToCloudinary,
+  uploadLocalFileToCloudinary,
+  uploadMulterFilesToCloudinary,
+  uploadMulterMemoryFilesToCloudinary,
+  resourceTypeFromMime,
+  removeLocalFiles,
+} from "../utils/cloudinaryUpload.js"
 import { parseQuantityDiscountTiers } from "../utils/quantityTierPricing.js"
 
 /** Populated fields for product.sizes — measurements required for PDP size guide modal. */
@@ -42,6 +49,35 @@ function parseDimensions(dim) {
     }
   } catch {
     return { length: null, width: null, height: null }
+  }
+}
+
+/** Parse materialPricing JSON array from FormData (refs Material documents). */
+function parseMaterialPricing(raw) {
+  if (raw == null || raw === "") return []
+  try {
+    const arr = typeof raw === "string" ? JSON.parse(raw) : raw
+    if (!Array.isArray(arr)) return []
+    return arr
+      .map((item) => {
+        const id = item.material || item.materialId
+        if (!id) return null
+        const p = item.price
+        const price =
+          p === "" || p == null || p === undefined
+            ? null
+            : Number.isFinite(Number(p))
+              ? Math.round(Number(p))
+              : null
+        return {
+          material: id,
+          enabled: Boolean(item.enabled),
+          price,
+        }
+      })
+      .filter(Boolean)
+  } catch {
+    return []
   }
 }
 
@@ -412,6 +448,18 @@ async function attachStorefrontVariations(doc, productMongoId, websiteId) {
       price: v.price,
       discountedPrice: v.discountedPrice ?? null,
       stock: v.stock,
+      sizeStock: Array.isArray(v.sizeStock)
+        ? v.sizeStock.map((row) => {
+            const ref = row?.size
+            const sizeId =
+              ref != null && typeof ref === "object" && ref._id != null
+                ? String(ref._id)
+                : ref != null
+                  ? String(ref)
+                  : ""
+            return { size: sizeId, stock: row.stock }
+          })
+        : [],
       sku: v.sku,
       primaryImage: v.primaryImage || null,
       images: Array.isArray(v.images) ? v.images.filter((x) => x != null && String(x).trim()) : [],
@@ -456,13 +504,21 @@ export const createProduct = async (req, res) => {
     // Main image is optional for draft saves (tab-by-tab saving)
     // It will be required when saving from the Media tab or final submission
 
-    // Handle main image upload (optional for draft saves) — Cloudinary only
+    // Handle main image upload (optional for draft saves) — buffer → Cloudinary
     let mainImageUrl = ""
     if (req.files && req.files.mainImage && req.files.mainImage.length > 0) {
       try {
-        mainImageUrl = await uploadLocalFileToCloudinary(req.files.mainImage[0].path, {
-          folder: "photuprint/products",
-        })
+        const file = req.files.mainImage[0]
+        if (file.buffer && file.buffer.length > 0) {
+          mainImageUrl = await uploadBufferToCloudinary(file.buffer, {
+            folder: "photuprint/products",
+            resource_type: resourceTypeFromMime(file.mimetype),
+          })
+        } else if (file.path) {
+          mainImageUrl = await uploadLocalFileToCloudinary(file.path, { folder: "photuprint/products" })
+        } else {
+          return res.status(400).json({ msg: "Main image file is empty or invalid" })
+        }
         console.log("Main image uploaded to Cloudinary:", mainImageUrl)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -474,9 +530,13 @@ export const createProduct = async (req, res) => {
     }
 
     let imageUrls = []
-    if (req.files.images && req.files.images.length > 0) {
+    if (req.files?.images && req.files.images.length > 0) {
       try {
-        imageUrls = await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
+        const first = req.files.images[0]
+        imageUrls =
+          first.buffer && first.buffer.length > 0
+            ? await uploadMulterMemoryFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
+            : await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
         console.log("Additional images uploaded to Cloudinary:", imageUrls)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -489,12 +549,22 @@ export const createProduct = async (req, res) => {
     }
 
     let videoUrl = null
-    if (req.files.video && req.files.video.length > 0) {
+    if (req.files?.video && req.files.video.length > 0) {
       try {
-        videoUrl = await uploadLocalFileToCloudinary(req.files.video[0].path, {
-          folder: "photuprint/products/videos",
-          resource_type: "video",
-        })
+        const file = req.files.video[0]
+        if (file.buffer && file.buffer.length > 0) {
+          videoUrl = await uploadBufferToCloudinary(file.buffer, {
+            folder: "photuprint/products/videos",
+            resource_type: "video",
+          })
+        } else if (file.path) {
+          videoUrl = await uploadLocalFileToCloudinary(file.path, {
+            folder: "photuprint/products/videos",
+            resource_type: "video",
+          })
+        } else {
+          return res.status(400).json({ msg: "Video file is empty or invalid" })
+        }
         console.log("Video uploaded to Cloudinary:", videoUrl)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -549,6 +619,8 @@ export const createProduct = async (req, res) => {
       video: videoUrl,
       colors: Array.isArray(req.body.colors) ? req.body.colors : req.body.colors ? [req.body.colors] : [],
       sizes: Array.isArray(req.body.sizes) ? req.body.sizes : req.body.sizes ? [req.body.sizes] : [],
+      gsms: Array.isArray(req.body.gsms) ? req.body.gsms : req.body.gsms ? [req.body.gsms] : [],
+      capacities: Array.isArray(req.body.capacities) ? req.body.capacities : req.body.capacities ? [req.body.capacities] : [],
       templates: Array.isArray(req.body.templates) ? req.body.templates : req.body.templates ? [req.body.templates] : [],
       heights: Array.isArray(req.body.heights) ? req.body.heights : req.body.heights ? [req.body.heights] : [],
       lengths: Array.isArray(req.body.lengths) ? req.body.lengths : req.body.lengths ? [req.body.lengths] : [],
@@ -566,6 +638,7 @@ export const createProduct = async (req, res) => {
       // Multi-tenant: Set website from tenant context
       website: req.websiteId,
       printSidePricing: parsePrintSidePricing(req.body.printSidePricing),
+      materialPricing: parseMaterialPricing(req.body.materialPricing),
       addOnPricing: parseAddOnPricing(req.body.addOnPricing),
       quantityDiscountTiers: parseQuantityDiscountTiers(req.body.quantityDiscountTiers),
     }
@@ -584,6 +657,8 @@ export const createProduct = async (req, res) => {
       .populate("fitType", "name")
       .populate("colors", "name code image")
       .populate("sizes", SIZE_POPULATE_SELECT)
+      .populate("gsms", "name description")
+      .populate("capacities", "name description")
       .populate({
         path: "templates",
         select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -597,6 +672,7 @@ export const createProduct = async (req, res) => {
         select: "name description",
       })
       .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+      .populate({ path: "materialPricing.material", select: "name type description isActive deleted" })
       .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
 
     res.status(201).json({
@@ -689,6 +765,8 @@ export const getAllProducts = async (req, res) => {
       .populate("fitType", "name")
       .populate("colors", "name code image")
       .populate("sizes", SIZE_POPULATE_SELECT)
+      .populate("gsms", "name description")
+      .populate("capacities", "name description")
       .populate({
         path: "templates",
         select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -702,6 +780,7 @@ export const getAllProducts = async (req, res) => {
         select: "name description",
       })
       .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+      .populate({ path: "materialPricing.material", select: "name type description isActive deleted" })
       .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
       .skip(skip)
       .limit(limit)
@@ -796,6 +875,8 @@ export const getProductById = async (req, res) => {
         .populate("fitType", "name")
         .populate("colors", "name code image")
         .populate("sizes", SIZE_POPULATE_SELECT)
+        .populate("gsms", "name description")
+        .populate("capacities", "name description")
         .populate("material", "name type")
         .populate({
           path: "templates",
@@ -811,6 +892,7 @@ export const getProductById = async (req, res) => {
           select: "name description",
         })
         .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+        .populate({ path: "materialPricing.material", select: "name type description isActive deleted" })
         .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
 
       if (!product) {
@@ -878,13 +960,21 @@ export const updateProduct = async (req, res) => {
       return res.status(404).json({ msg: "Product not found" })
     }
 
-    // Handle main image upload (if provided) — Cloudinary only
+    // Handle main image upload (if provided) — buffer → Cloudinary
     let mainImageUrl = null
-    if (req.files.mainImage && req.files.mainImage.length > 0) {
+    if (req.files?.mainImage && req.files.mainImage.length > 0) {
       try {
-        mainImageUrl = await uploadLocalFileToCloudinary(req.files.mainImage[0].path, {
-          folder: "photuprint/products",
-        })
+        const file = req.files.mainImage[0]
+        if (file.buffer && file.buffer.length > 0) {
+          mainImageUrl = await uploadBufferToCloudinary(file.buffer, {
+            folder: "photuprint/products",
+            resource_type: resourceTypeFromMime(file.mimetype),
+          })
+        } else if (file.path) {
+          mainImageUrl = await uploadLocalFileToCloudinary(file.path, { folder: "photuprint/products" })
+        } else {
+          return res.status(400).json({ msg: "Main image file is empty or invalid" })
+        }
         console.log("Main image uploaded to Cloudinary:", mainImageUrl)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -896,9 +986,13 @@ export const updateProduct = async (req, res) => {
     }
 
     let newImageUrls = []
-    if (req.files.images && req.files.images.length > 0) {
+    if (req.files?.images && req.files.images.length > 0) {
       try {
-        newImageUrls = await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
+        const first = req.files.images[0]
+        newImageUrls =
+          first.buffer && first.buffer.length > 0
+            ? await uploadMulterMemoryFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
+            : await uploadMulterFilesToCloudinary(req.files.images, { folder: "photuprint/products" })
         console.log("New additional images uploaded to Cloudinary:", newImageUrls)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -911,12 +1005,22 @@ export const updateProduct = async (req, res) => {
     }
 
     let videoUrl = null
-    if (req.files.video && req.files.video.length > 0) {
+    if (req.files?.video && req.files.video.length > 0) {
       try {
-        videoUrl = await uploadLocalFileToCloudinary(req.files.video[0].path, {
-          folder: "photuprint/products/videos",
-          resource_type: "video",
-        })
+        const file = req.files.video[0]
+        if (file.buffer && file.buffer.length > 0) {
+          videoUrl = await uploadBufferToCloudinary(file.buffer, {
+            folder: "photuprint/products/videos",
+            resource_type: "video",
+          })
+        } else if (file.path) {
+          videoUrl = await uploadLocalFileToCloudinary(file.path, {
+            folder: "photuprint/products/videos",
+            resource_type: "video",
+          })
+        } else {
+          return res.status(400).json({ msg: "Video file is empty or invalid" })
+        }
         console.log("Video uploaded to Cloudinary:", videoUrl)
       } catch (uploadError) {
         console.error("Cloudinary upload failed:", uploadError)
@@ -985,6 +1089,10 @@ export const updateProduct = async (req, res) => {
         req.body.printSidePricing !== undefined
           ? parsePrintSidePricing(req.body.printSidePricing)
           : product.printSidePricing,
+      materialPricing:
+        req.body.materialPricing !== undefined
+          ? parseMaterialPricing(req.body.materialPricing)
+          : product.materialPricing,
       addOnPricing:
         req.body.addOnPricing !== undefined ? parseAddOnPricing(req.body.addOnPricing) : product.addOnPricing,
       quantityDiscountTiers:
@@ -1034,6 +1142,12 @@ export const updateProduct = async (req, res) => {
     if (req.body.templates !== undefined) {
       updateData.templates = Array.isArray(req.body.templates) ? req.body.templates : req.body.templates ? [req.body.templates] : []
     }
+    if (req.body.gsms) {
+      updateData.gsms = Array.isArray(req.body.gsms) ? req.body.gsms : [req.body.gsms]
+    }
+    if (req.body.capacities) {
+      updateData.capacities = Array.isArray(req.body.capacities) ? req.body.capacities : [req.body.capacities]
+    }
 
     const updatedProduct = await Product.findByIdAndUpdate(req.params.id, updateData, { new: true })
       .populate("category", "name categoryId")
@@ -1044,6 +1158,8 @@ export const updateProduct = async (req, res) => {
       .populate("fitType", "name")
       .populate("colors", "name code image")
       .populate("sizes", SIZE_POPULATE_SELECT)
+      .populate("gsms", "name description")
+      .populate("capacities", "name description")
       .populate({
         path: "templates",
         select: "templateId name description categoryId categoryName backgroundImages logoImages previewImage textOption",
@@ -1057,6 +1173,7 @@ export const updateProduct = async (req, res) => {
         select: "name description",
       })
       .populate({ path: "printSidePricing.printSide", select: "name description sortOrder isActive deleted" })
+      .populate({ path: "materialPricing.material", select: "name type description isActive deleted" })
       .populate({ path: "addOnPricing.productAddon", select: "name description sortOrder isActive deleted" })
 
     res.json(updatedProduct)

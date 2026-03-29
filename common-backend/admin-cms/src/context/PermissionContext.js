@@ -60,10 +60,10 @@ const PERMISSION_MENU_MAP = {
   testimonials_manage: [33],
   
   // Users
-  users_view: [20],
-  users_create: [20],
-  users_edit: [20],
-  users_manage: [20],
+  users_view: [20, 57],
+  users_create: [20, 57],
+  users_edit: [20, 57],
+  users_manage: [20, 57],
   
   // User Access Management
   user_access_view: [36],
@@ -74,6 +74,11 @@ const PERMISSION_MENU_MAP = {
   clients_create: [35],
   clients_edit: [35],
   clients_manage: [35],
+
+  // Download Leads, Incentive Manager, Incentive Report (explicit permissions)
+  leads_download_view: [58],
+  incentives_view: [59],
+  incentive_report_view: [60],
   
   // Orders
   orders_view: [21, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 63, 64, 65],
@@ -309,6 +314,9 @@ export const ROUTE_PERMISSION_MAP = {
   '/dashboard/templatemanager': ['templates_view', 'templates_manage'],
   '/dashboard/adduser': ['users_view', 'users_manage'],
   '/dashboard/clients': ['clients_view', 'clients_manage'],
+  '/dashboard/leads-download': ['leads_download_view'],
+  '/dashboard/incentives': ['incentives_view'],
+  '/dashboard/incentive-report': ['incentive_report_view'],
   '/dashboard/user-access': ['user_access_view', 'user_access_manage'],
   '/dashboard/addorder': ['orders_view', 'orders_manage'],
   '/dashboard/addshipping': ['shipping_view', 'shipping_manage'],

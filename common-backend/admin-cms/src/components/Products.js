@@ -386,6 +386,8 @@ export default function Products() {
   const [managedPrintSides, setManagedPrintSides] = useState([])
   const [managedProductAddons, setManagedProductAddons] = useState([])
   const [countries, setCountries] = useState([])
+  const [gsms, setGsms] = useState([])
+  const [capacities, setCapacities] = useState([])
 
   // Store name for SEO defaults (multi-tenant safe) - memoize to prevent re-renders
   const storeName = useMemo(() => selectedWebsite?.name || "Store", [selectedWebsite?.name])
@@ -475,8 +477,9 @@ export default function Products() {
     design: "",
     occasion: "",
     
-    // Pricing & Inventory (keys = PrintSide / ProductAddon _id)
+    // Pricing & Inventory (keys = PrintSide / Material / ProductAddon _id)
     printSidePricing: {},
+    materialPricing: {},
     addOnPricing: {},
     basePrice: "",
     plainProductPrice: "",
@@ -543,6 +546,8 @@ export default function Products() {
     selectedTemplates: [],
     selectedColors: [],
     selectedSizes: [],
+    selectedGsms: [],
+    selectedCapacities: [],
     selectedHeights: [],
     selectedLengths: [],
     /** Mirrors API; used to keep Variations tab visible when editing products that already use variants */
@@ -611,7 +616,9 @@ export default function Products() {
         printingTypesRes,
         printSidesRes,
         productAddonsRes,
-        countriesRes
+        countriesRes,
+        gsmsRes,
+        capacitiesRes,
       ] = await Promise.all([
         api.get(`/categories?_t=${Date.now()}`),
         api.get(`/brands?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
@@ -629,7 +636,9 @@ export default function Products() {
         api.get(`/printing-types?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
         api.get(`/print-sides?includeDeleted=true&_t=${Date.now()}`),
         api.get(`/product-addons?includeDeleted=true&_t=${Date.now()}`),
-        api.get(`/countries?showInactive=true&includeDeleted=true&_t=${Date.now()}`)
+        api.get(`/countries?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/gsms?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
+        api.get(`/capacities?showInactive=true&includeDeleted=true&_t=${Date.now()}`),
       ])
 
       setCategories(categoriesRes.data || [])
@@ -649,6 +658,8 @@ export default function Products() {
       setManagedPrintSides(Array.isArray(printSidesRes.data) ? printSidesRes.data : [])
       setManagedProductAddons(Array.isArray(productAddonsRes.data) ? productAddonsRes.data : [])
       setCountries(countriesRes.data || [])
+      setGsms(gsmsRes.data || [])
+      setCapacities(capacitiesRes.data || [])
       setSubcategories([])
     } catch (err) {
       setError("Failed to load dropdown data")
@@ -1096,6 +1107,28 @@ export default function Products() {
     setFormData(prev => ({ ...prev, [name]: Array.isArray(valueArray) ? valueArray : [] }))
   }
 
+  const handleMaterialPricingChange = useCallback((materialId, field, value) => {
+    const id = String(materialId)
+    setFormData((prev) => {
+      const cur = prev.materialPricing?.[id] || { enabled: false, price: "" }
+      let next = { ...cur }
+      if (field === "enabled") {
+        next.enabled = Boolean(value)
+        if (!value) next.price = ""
+      } else if (field === "price") {
+        if (value === "" || value == null) next.price = ""
+        else {
+          const n = parseFloat(value)
+          next.price = Number.isFinite(n) ? String(Math.round(n)) : ""
+        }
+      }
+      return {
+        ...prev,
+        materialPricing: { ...(prev.materialPricing || {}), [id]: next },
+      }
+    })
+  }, [])
+
   const handlePrintSidePricingChange = useCallback((printSideId, field, value) => {
     const id = String(printSideId)
     setFormData((prev) => {
@@ -1382,7 +1415,11 @@ export default function Products() {
       
     // Product Attributes (Details tab)
       if (formData.collarStyle) productData.append("collarStyle", formData.collarStyle)
-      if (formData.material) productData.append("material", formData.material)
+      if (formData.productType === "standard") {
+        if (formData.material) productData.append("material", formData.material)
+      } else {
+        productData.append("material", "")
+      }
       if (formData.pattern) productData.append("pattern", formData.pattern)
       if (formData.fitType) productData.append("fitType", formData.fitType)
       if (formData.sleeveType) productData.append("sleeveType", formData.sleeveType)
@@ -1414,6 +1451,19 @@ export default function Products() {
           return { printSide: id, enabled: Boolean(v.enabled), price }
         })
       productData.append("printSidePricing", JSON.stringify(printSidePricingPayload))
+      const materialPricingPayload = (materials || [])
+        .filter((d) => !d.deleted)
+        .map((d) => {
+          const id = String(d._id)
+          const v = formData.materialPricing?.[id] || { enabled: false, price: "" }
+          let price = null
+          if (v.enabled && v.price !== "" && v.price != null) {
+            const n = parseFloat(v.price)
+            price = Number.isFinite(n) ? Math.round(n) : null
+          }
+          return { material: id, enabled: Boolean(v.enabled), price }
+        })
+      productData.append("materialPricing", JSON.stringify(materialPricingPayload))
       const addOnPricingPayload = (managedProductAddons || [])
         .filter((d) => !d.deleted)
         .map((d) => {
@@ -1429,6 +1479,7 @@ export default function Products() {
       productData.append("addOnPricing", JSON.stringify(addOnPricingPayload))
     } else {
       productData.append("printSidePricing", JSON.stringify([]))
+      productData.append("materialPricing", JSON.stringify([]))
       productData.append("addOnPricing", JSON.stringify([]))
     }
     productData.append(
@@ -1547,6 +1598,8 @@ export default function Products() {
 
     formData.selectedColors.forEach(colorId => productData.append("colors", colorId))
     formData.selectedSizes.forEach(sizeId => productData.append("sizes", sizeId))
+    ;(formData.selectedGsms || []).forEach((id) => productData.append("gsms", id))
+    ;(formData.selectedCapacities || []).forEach((id) => productData.append("capacities", id))
     formData.selectedHeights.forEach(heightId => productData.append("heights", heightId))
     formData.selectedLengths.forEach(lengthId => productData.append("lengths", lengthId))
 
@@ -1891,6 +1944,10 @@ export default function Products() {
         apiProduct?.printSidePricing ?? p.printSidePricing ?? listProduct.printSidePricing,
         "printSide"
       ),
+      materialPricing: mergePricingMapFromProductRows(
+        apiProduct?.materialPricing ?? p.materialPricing ?? listProduct.materialPricing,
+        "material"
+      ),
       addOnPricing: mergePricingMapFromProductRows(
         apiProduct?.addOnPricing ?? p.addOnPricing ?? listProduct.addOnPricing,
         "productAddon"
@@ -1948,6 +2005,8 @@ export default function Products() {
       selectedTemplates: (p.templates || []).map(t => String(typeof t === "object" && t != null && t._id != null ? t._id : t)),
       selectedColors: (p.colors || []).map(c => String(typeof c === "object" && c != null && c._id != null ? c._id : c)),
       selectedSizes: (p.sizes || []).map(s => String(typeof s === "object" && s != null && s._id != null ? s._id : s)),
+      selectedGsms: (p.gsms || []).map((g) => String(typeof g === "object" && g != null && g._id != null ? g._id : g)),
+      selectedCapacities: (p.capacities || []).map((c) => String(typeof c === "object" && c != null && c._id != null ? c._id : c)),
       selectedHeights: (p.heights || []).map(h => String(typeof h === "object" && h != null && h._id != null ? h._id : h)),
       selectedLengths: (p.lengths || []).map(l => String(typeof l === "object" && l != null && l._id != null ? l._id : l)),
       hasVariations: Boolean(p.hasVariations ?? listProduct.hasVariations),
@@ -2203,21 +2262,18 @@ export default function Products() {
     [categorySupportsVariations, editingId, formData.hasVariations],
   )
 
-  // Which attributes are required when creating variants (from variation setting basis)
+  // Which attributes are required when creating variants (from variation setting basis).
+  // Variants are generated by color only; per-size quantity is edited on each variant card (sizeStock).
   const variationRequiredAttributes = useMemo(() => {
     const basis = variationSettingForProduct?.variationBasis || "size_and_color"
-    if (basis === "color_only") return ["color"]
     if (basis === "size_only") return ["size"]
-    return ["color", "size"]
+    return ["color"]
   }, [variationSettingForProduct])
 
-  // Attribute order for variant UI: color_first => [color, size], size_first => [size, color]
   const variationAttributeOrder = useMemo(() => {
     const basis = variationSettingForProduct?.variationBasis || "size_and_color"
-    const displayBasis = variationSettingForProduct?.displayBasis || "color_first"
-    if (basis === "color_only") return ["color"]
     if (basis === "size_only") return ["size"]
-    return displayBasis === "size_first" ? ["size", "color"] : ["color", "size"]
+    return ["color"]
   }, [variationSettingForProduct])
 
   // Switch away from variations tab if it should no longer be shown
@@ -2336,6 +2392,7 @@ export default function Products() {
                   managedPrintSides={managedPrintSides}
                   managedProductAddons={managedProductAddons}
                   onPrintSidePricingChange={handlePrintSidePricingChange}
+                  onMaterialPricingChange={handleMaterialPricingChange}
                   onAddOnPricingChange={handleAddOnPricingChange}
                   quantityTierLabels={["1–5 units", "6–10 units", "11–20 units", "21+ units"]}
                   categories={categories}
@@ -2354,6 +2411,8 @@ export default function Products() {
                   heights={heights}
                   colors={colors}
                   sizes={sizes}
+                  gsms={gsms}
+                  capacities={capacities}
                   categorySupportsVariations={categorySupportsVariations}
                   getUnitAbbreviation={getUnitAbbreviation}
                 />
@@ -2377,8 +2436,11 @@ export default function Products() {
                     productId={editingId}
                     productName={editingId ? (formData.name || "Product") : "Product"}
                     productQuantity={formData.stockManagement === "track" ? (parseInt(formData.quantity) || 0) : -1}
+                    productBasePrice={formData.basePrice}
+                    productDiscountPrice={formData.discountPrice}
                     requiredAttributes={variationRequiredAttributes}
                     attributeOrder={variationAttributeOrder}
+                    productSizeIds={formData.selectedSizes || []}
                     onVariantsChange={handleVariantsChange}
                     onNextTab={handleMoveToNextTab}
                   />

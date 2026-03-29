@@ -39,6 +39,16 @@ const SIDEBAR_GROUPS = [
     ],
   },
   {
+    label: "Lead Management",
+    links: [
+      "/dashboard/clients",
+      "/dashboard/adduser?role=editor",
+      "/dashboard/leads-download",
+      "/dashboard/incentives",
+      "/dashboard/incentive-report",
+    ],
+  },
+  {
     label: "Reports",
     links: [
       // "/dashboard/reports",
@@ -61,7 +71,7 @@ const SIDEBAR_GROUPS = [
   },
   {
     label: "Users & access",
-    links: ["/dashboard/adduser", "/dashboard/clients", "/dashboard/user-access"],
+    links: ["/dashboard/adduser", "/dashboard/user-access"],
   },
   {
     label: "Settings",
@@ -100,15 +110,11 @@ const LeftContainer = ({ data }) => {
   }, [filteredData])
 
   const grouped = useMemo(() => {
-    const result = SIDEBAR_GROUPS.map((group) => ({
+    return SIDEBAR_GROUPS.map((group) => ({
       label: group.label,
       items: group.links.map((link) => linkToItem[link]).filter(Boolean),
     }))
-    const assignedLinks = new Set(SIDEBAR_GROUPS.flatMap((g) => g.links))
-    const other = filteredData.filter((item) => !assignedLinks.has(item.link))
-    if (other.length) result.push({ label: "Other", items: other })
-    return result
-  }, [filteredData, linkToItem])
+  }, [linkToItem])
 
   const toggleGroup = (index) => {
     setExpandedGroups((prev) => ({ ...prev, [index]: !prev[index] }))

@@ -447,10 +447,25 @@ export const getDashboardStats = async (req, res) => {
     homepageSectionsStats.productTags = productTagsStats;
 
     // Client Management Statistics
-    const clientBaseQuery = {
+    const userId = req.user?._id;
+    const userRole = req.user?.role;
+
+    // By default, stats are for the whole website.
+    // For sales agents (editors), limit stats to their own leads only
+    let clientBaseQuery = {
       website: websiteId,
       deleted: false
     };
+
+    if (userRole === 'editor' && userId) {
+      clientBaseQuery = {
+        ...clientBaseQuery,
+        $or: [
+          { assignedTo: userId },
+          { createdBy: userId }
+        ]
+      };
+    }
 
     const clientsStats = {
       total: await Client.countDocuments(clientBaseQuery),

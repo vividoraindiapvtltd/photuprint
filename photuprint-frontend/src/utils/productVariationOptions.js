@@ -2,6 +2,9 @@
  * Build storefront color/option rows from API product (legacy `colors` or `variations` from ProductVariant).
  */
 
+import { normalizeToApparelSizeKey } from "./apparelSizeLadder"
+import { getSizeDisplayLabel } from "./sizeDisplayLabel"
+
 const OBJECT_ID_RE = /^[0-9a-fA-F]{24}$/
 
 /**
@@ -171,11 +174,29 @@ export function getColorIdFromVariantAttributes(attrs) {
   return getVariantAttributeId(attrs, (k) => isColorAttributeKey(k))
 }
 
+/** True when every variation row is keyed by color only (no size in attributes); size inventory lives on sizeStock. */
+export function productVariationsAreColorOnly(product) {
+  const vars = product?.variations
+  if (!Array.isArray(vars) || vars.length === 0) return false
+  return vars.every((v) => {
+    const a = attrsToPlainObject(v?.attributes)
+    return getColorIdFromVariantAttributes(a) != null && !getSizeIdFromVariantAttributes(a)
+  })
+}
+
 /**
  * Unique size options from product.variations (for customized PDP rows).
  */
 export function buildUniqueSizeOptionsFromVariations(product) {
   const idMap = buildIdLookupMap(product)
+  if (productVariationsAreColorOnly(product) && Array.isArray(product.sizes) && product.sizes.length > 0) {
+    return product.sizes.map((s) => {
+      const id = s._id ?? s.id
+      if (id == null) return null
+      const name = resolveAttributeValue(s, idMap) || s.name || String(id)
+      return { _id: String(id), name, initial: s.initial }
+    }).filter(Boolean)
+  }
   const variations = product?.variations
   if (!Array.isArray(variations) || variations.length === 0) return []
   const seen = new Map()
@@ -193,9 +214,42 @@ export function buildUniqueSizeOptionsFromVariations(product) {
 }
 
 /**
- * Unique material options from variations + optional product.material (backend).
+ * Unique material options: prefer product.materialPricing (customized, per-material add-on),
+ * else variations + optional product.material.
+ * @returns {Array<{ _id: string, name: string, addonPrice?: number }>}
  */
 export function buildMaterialOptionsFromProduct(product) {
+  const pricingRows = product?.materialPricing
+  if (Array.isArray(pricingRows) && pricingRows.length > 0) {
+    const out = []
+    for (const row of pricingRows) {
+      if (row.enabled === false) continue
+      const mat = row.material
+      if (mat == null || mat === "") continue
+      let id = null
+      let baseName = "Material"
+      if (typeof mat === "object") {
+        if (mat.deleted) continue
+        const rawId = mat._id ?? mat.id
+        if (rawId != null) id = String(rawId)
+        if (mat.name != null && String(mat.name).trim()) baseName = String(mat.name).trim()
+      } else if (typeof mat === "string" && /^[0-9a-fA-F]{24}$/.test(mat.trim())) {
+        id = mat.trim()
+      }
+      if (!id) continue
+      const p = row.price
+      const price = p != null && p !== "" && Number.isFinite(Number(p)) ? Math.round(Number(p)) : 0
+      if (!Number.isFinite(price) || price < 0) continue
+      out.push({
+        _id: id,
+        name: baseName,
+        addonPrice: price,
+      })
+    }
+    out.sort((a, b) => (a.name || "").localeCompare(b.name || ""))
+    if (out.length) return out
+  }
+
   const idMap = buildIdLookupMap(product)
   const seen = new Map()
   const variations = product?.variations
@@ -224,10 +278,100 @@ export function buildMaterialOptionsFromProduct(product) {
 
 /**
  * Per-size stock for variation products (sum matching variants; unlimited when any variant has stock -1).
+ * For color-only variants, pass `selectedOption` (PDP colour row) so stock comes from that variant's sizeStock.
  */
-export function buildVariationSizeStockByIndex(product, sizeOptions) {
+export function buildVariationSizeStockByIndex(product, sizeOptions, selectedOption) {
   const variations = product?.variations
   if (!Array.isArray(variations) || !sizeOptions?.length) return []
+
+  if (productVariationsAreColorOnly(product)) {
+    const wantId = selectedOption?.linkedVariantId || selectedOption?._id
+    let v = wantId
+      ? variations.find((x) => String(x._id) === String(wantId))
+      : null
+    if (!v && selectedOption?.attributes) {
+      const a = attrsToPlainObject(selectedOption.attributes)
+      const cid = getColorIdFromVariantAttributes(a)
+      if (cid) {
+        v = variations.find((x) => {
+          const xa = attrsToPlainObject(x.attributes)
+          return String(getColorIdFromVariantAttributes(xa) || "") === String(cid)
+        })
+      }
+    }
+    if (!v) v = variations[0]
+    if (!v) return sizeOptions.map(() => ({ available: false, left: 0 }))
+
+    /**
+     * Prefer per-colour sizeStock from the PDP swatch row (normalizeApiVariation copies it from the variant).
+     * That matches the admin Variations tab. Falling back only to `v.sizeStock` avoids wrong colour when
+     * variant lookup/order is ambiguous (e.g. fallback to variations[0]).
+     */
+    const rows =
+      Array.isArray(selectedOption?.sizeStock) && selectedOption.sizeStock.length > 0
+        ? selectedOption.sizeStock
+        : v.sizeStock || []
+    /** By Size document id (after extractRefId). */
+    const map = new Map()
+    /**
+     * By canonical apparel key (XXS, S, M, …) when variant.sizeStock refs differ from product.sizes ids
+     * but describe the same label (common with duplicate Size docs or legacy data).
+     */
+    const stockByLabelKey = new Map()
+    for (const row of rows) {
+      const id = extractRefId(row?.size)
+      if (!id) continue
+      const n = Number(row.stock)
+      map.set(id, n)
+      const sizeDoc = Array.isArray(product?.sizes)
+        ? product.sizes.find((s) => String(s._id ?? s.id) === String(id))
+        : null
+      let labelKey = null
+      if (sizeDoc) {
+        labelKey = normalizeToApparelSizeKey(getSizeDisplayLabel(sizeDoc))
+      } else if (row.size && typeof row.size === "object" && (row.size.name || row.size.initial)) {
+        labelKey = normalizeToApparelSizeKey(
+          getSizeDisplayLabel({
+            name: row.size.name,
+            initial: row.size.initial,
+          }),
+        )
+      }
+      if (labelKey) stockByLabelKey.set(labelKey, n)
+    }
+
+    /** Legacy: no per-size rows but variant has aggregate stock — treat every catalog size as sellable. */
+    if (rows.length === 0) {
+      const agg = Number(v.stock)
+      if (agg === -1) {
+        return sizeOptions.map((opt) =>
+          opt._id == null || opt._id === "" ? { available: false, left: null } : { available: true, left: null },
+        )
+      }
+      if (Number.isFinite(agg) && agg > 0) {
+        return sizeOptions.map((opt) =>
+          opt._id == null || opt._id === "" ? { available: false, left: null } : { available: true, left: null },
+        )
+      }
+    }
+
+    return sizeOptions.map((opt) => {
+      if (opt._id == null || opt._id === "") return { available: false, left: null }
+      const target = String(opt._id)
+      let n = map.get(target)
+      if (n == null) {
+        const optKey = normalizeToApparelSizeKey(getSizeDisplayLabel(opt))
+        if (optKey != null && stockByLabelKey.has(optKey)) {
+          n = stockByLabelKey.get(optKey)
+        }
+      }
+      if (n == null) return { available: false, left: 0 }
+      if (n === -1) return { available: true, left: null }
+      if (!Number.isFinite(n) || n <= 0) return { available: false, left: 0 }
+      return { available: true, left: n <= 5 ? n : null }
+    })
+  }
+
   return sizeOptions.map((opt) => {
     const target = String(opt._id)
     let sum = 0
@@ -261,12 +405,14 @@ export function findVariantOptionByAttributes(product, { sizeId, materialId, col
   const wantS = sizeId != null ? String(sizeId) : null
   const wantM = materialId != null ? String(materialId) : null
   const wantC = colorId != null ? String(colorId) : null
+  const colorOnly = productVariationsAreColorOnly(product)
   for (const v of vars) {
     const attrs = attrsToPlainObject(v.attributes)
     const s = getSizeIdFromVariantAttributes(attrs)
     const m = getMaterialIdFromVariantAttributes(attrs)
     const c = getColorIdFromVariantAttributes(attrs)
-    if (wantS && s !== wantS) continue
+    if (wantS != null && s != null && wantS !== s) continue
+    if (!colorOnly && wantS != null && s == null) continue
     if (wantM && m && m !== wantM) continue
     if (wantM && !m) continue
     if (wantC && c !== wantC) continue
@@ -366,6 +512,7 @@ function normalizeApiVariation(v, idMap) {
     stock: v.stock,
     isOutOfStock: Boolean(v.isOutOfStock),
     attributes: attrs,
+    sizeStock: Array.isArray(v.sizeStock) ? v.sizeStock : [],
   }
 }
 
@@ -397,6 +544,7 @@ export function buildColorOptionsFromProduct(product) {
 export function productVariationsDefineSize(product) {
   const vars = product?.variations
   if (!Array.isArray(vars) || vars.length === 0) return false
+  if (productVariationsAreColorOnly(product)) return true
   return vars.some((v) => {
     const a = attrsToPlainObject(v?.attributes)
     return Object.keys(a).some((k) => k.toLowerCase().includes("size"))
